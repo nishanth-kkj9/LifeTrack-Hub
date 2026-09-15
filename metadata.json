@@ -1,0 +1,6 @@
+{
+  "name": "LifeTrack Hub",
+  "description": "All-in-one productivity tracker featuring the complete VTU Sync suite (Check: Class & University Rankings, Learn: 2022/2021 CBCS Syllabus & PYQs, Connect: Karnataka Tech Fests & Jobs), SGPA/CGPA calculator, and 85% attendance planner.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
