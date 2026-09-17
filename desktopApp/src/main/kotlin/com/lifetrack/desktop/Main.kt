@@ -40,7 +40,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.lifetrack.core.PlatformIdGenerator
 import com.lifetrack.core.SystemTimeProvider
-import com.lifetrack.data.local.InMemoryTaskLocalDataSource
+import com.lifetrack.data.local.createDesktopTaskLocalDataSource
 import com.lifetrack.data.repository.TaskRepositoryImpl
 import com.lifetrack.domain.usecase.AddSubtaskUseCase
 import com.lifetrack.domain.usecase.CreateTaskUseCase
@@ -64,7 +64,7 @@ fun main() = application {
     val timeProvider = remember { SystemTimeProvider() }
     val idGenerator = remember { PlatformIdGenerator(timeProvider) }
     val secureStorage = remember { DesktopSecureKeyStorage() }
-    val localDataSource = remember { InMemoryTaskLocalDataSource(timeProvider) }
+    val localDataSource = remember { createDesktopTaskLocalDataSource(timeProvider = timeProvider) }
     val taskRepository = remember { TaskRepositoryImpl(localDataSource, timeProvider) }
 
     val viewModel = remember {

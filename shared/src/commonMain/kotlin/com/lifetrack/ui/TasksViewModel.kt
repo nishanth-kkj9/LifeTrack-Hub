@@ -41,6 +41,9 @@ data class TasksUiState(
 sealed interface TasksUiAction {
     data class SubmitNaturalLanguage(val input: String) : TasksUiAction
     data class SelectCategory(val category: TaskCategory?) : TasksUiAction
+    data class SelectPriority(val priority: TaskPriority?) : TasksUiAction
+    data class SelectStatus(val status: TaskStatus?) : TasksUiAction
+    data class SetShowCompleted(val showCompleted: Boolean) : TasksUiAction
     data class Search(val query: String) : TasksUiAction
     data class ToggleCompletion(val taskId: String) : TasksUiAction
     data class DeleteTask(val taskId: String) : TasksUiAction
@@ -93,6 +96,9 @@ class TasksViewModel(
         when (action) {
             is TasksUiAction.SubmitNaturalLanguage -> submitNaturalLanguageTask(action.input)
             is TasksUiAction.SelectCategory -> onCategorySelected(action.category ?: TaskCategory.ALL)
+            is TasksUiAction.SelectPriority -> onPrioritySelected(action.priority)
+            is TasksUiAction.SelectStatus -> onStatusSelected(action.status)
+            is TasksUiAction.SetShowCompleted -> onShowCompletedChanged(action.showCompleted)
             is TasksUiAction.Search -> onSearchQueryChanged(action.query)
             is TasksUiAction.ToggleCompletion -> toggleTaskCompletion(action.taskId)
             is TasksUiAction.DeleteTask -> deleteTask(action.taskId)
@@ -105,6 +111,18 @@ class TasksViewModel(
 
     fun onCategorySelected(category: TaskCategory) {
         _filterState.update { it.copy(selectedCategory = category) }
+    }
+
+    fun onPrioritySelected(priority: TaskPriority?) {
+        _filterState.update { it.copy(selectedPriority = priority) }
+    }
+
+    fun onStatusSelected(status: TaskStatus?) {
+        _filterState.update { it.copy(selectedStatus = status) }
+    }
+
+    fun onShowCompletedChanged(showCompleted: Boolean) {
+        _filterState.update { it.copy(showCompleted = showCompleted) }
     }
 
     fun onSearchQueryChanged(query: String) {

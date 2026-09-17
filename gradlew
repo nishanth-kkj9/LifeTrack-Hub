@@ -22,6 +22,10 @@
 #
 ##############################################################################
 
+if [ -z "$JAVA_HOME" ] && [ -d "/tmp/jdk" ]; then
+    export JAVA_HOME="/tmp/jdk"
+fi
+
 # Attempt to set APP_HOME
 
 # Resolve links: $0 may be a link

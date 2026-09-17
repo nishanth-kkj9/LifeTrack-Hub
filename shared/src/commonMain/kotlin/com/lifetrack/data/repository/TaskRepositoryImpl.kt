@@ -44,11 +44,24 @@ class TaskRepositoryImpl(
     override suspend fun getTaskById(id: String): Task? =
         localDataSource.getTaskById(id)
 
-    override suspend fun saveTask(task: Task): Task =
-        localDataSource.upsertTask(task)
+    override suspend fun saveTask(task: Task): Task {
+        val now = timeProvider.nowEpochMs()
+        val prepared = task.copy(
+            createdAtEpochMs = if (task.createdAtEpochMs > 0L) task.createdAtEpochMs else now,
+            updatedAtEpochMs = now,
+            isSyncPending = true
+        )
+        return localDataSource.upsertTask(prepared)
+    }
 
-    override suspend fun updateTask(task: Task): Task =
-        localDataSource.upsertTask(task)
+    override suspend fun updateTask(task: Task): Task {
+        val now = timeProvider.nowEpochMs()
+        val prepared = task.copy(
+            updatedAtEpochMs = now,
+            isSyncPending = true
+        )
+        return localDataSource.upsertTask(prepared)
+    }
 
     override suspend fun deleteTask(id: String): Boolean =
         localDataSource.deleteTask(id)

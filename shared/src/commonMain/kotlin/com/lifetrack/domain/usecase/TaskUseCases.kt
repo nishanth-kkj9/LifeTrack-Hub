@@ -28,11 +28,12 @@ class GetTasksUseCase(private val repository: TaskRepository) {
                         task.category == filterState.selectedCategory
                 val matchesPriority = filterState.selectedPriority == null || task.priority == filterState.selectedPriority
                 val matchesStatus = filterState.selectedStatus == null || task.status == filterState.selectedStatus
+                val matchesCompleted = filterState.showCompleted || !task.isCompleted
                 val matchesSearch = filterState.searchQuery.isBlank() ||
                         task.title.contains(filterState.searchQuery, ignoreCase = true) ||
                         task.description.contains(filterState.searchQuery, ignoreCase = true) ||
                         task.tags.any { it.contains(filterState.searchQuery, ignoreCase = true) }
-                matchesCategory && matchesPriority && matchesStatus && matchesSearch
+                matchesCategory && matchesPriority && matchesStatus && matchesCompleted && matchesSearch
             }
         }
     }

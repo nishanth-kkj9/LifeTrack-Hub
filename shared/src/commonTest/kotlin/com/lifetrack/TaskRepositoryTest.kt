@@ -100,4 +100,38 @@ class TaskRepositoryTest {
         assertNotNull(toggledParent)
         assertEquals(1, toggledParent.completedSubtasksCount)
     }
+
+    @Test
+    fun testRepositoryWithPersistentDataSource() = runTest {
+        val timeProvider = TestTimeProvider(1710000000000L)
+        val driver = com.lifetrack.data.local.db.MemorySqlDriver()
+        val dataSource = com.lifetrack.data.local.PersistentTaskLocalDataSource(driver, timeProvider, seedIfEmpty = false)
+        val repository = TaskRepositoryImpl(dataSource, timeProvider)
+
+        val task = Task(
+            id = "repo_persist_1",
+            title = "Database Migration Verification",
+            category = TaskCategory.PROJECT,
+            priority = TaskPriority.URGENT,
+            status = TaskStatus.TODO
+        )
+        repository.saveTask(task)
+
+        val retrieved = repository.getTaskById("repo_persist_1")
+        assertNotNull(retrieved)
+        assertEquals("Database Migration Verification", retrieved.title)
+        assertTrue(retrieved.isSyncPending)
+
+        repository.toggleTaskCompletion("repo_persist_1")
+        val completed = repository.getTaskById("repo_persist_1")
+        assertNotNull(completed)
+        assertEquals(TaskStatus.COMPLETED, completed.status)
+        assertEquals(1710000000000L, completed.completedAtEpochMs)
+
+        val metrics = repository.observeTaskMetrics().first()
+        assertEquals(1, metrics.totalCount)
+        assertEquals(1, metrics.completedCount)
+        assertEquals(0, metrics.pendingCount)
+        assertEquals(100f, metrics.completionRate)
+    }
 }

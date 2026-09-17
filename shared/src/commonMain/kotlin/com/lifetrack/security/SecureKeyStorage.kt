@@ -1,9 +1,12 @@
 package com.lifetrack.security
 
 /**
- * Architectural abstraction for platform-backed secure key management.
- * Android: Backed by Android Keystore (hardware-backed Master Key)
- * Windows: Backed by Windows DPAPI / Credential Manager
+ * Architectural contract interface for platform-backed secure key management (Phase 3+ hardening).
+ * Android: Target backing by Android Keystore (hardware-backed Master Key)
+ * Windows: Target backing by Windows DPAPI / Credential Manager
+ *
+ * Note: In Phase 2A, these interfaces establish architectural boundaries. Production encryption
+ * of local databases and biometric workflows are deferred to future hardening phases.
  */
 interface SecureKeyStorage {
     suspend fun storeKey(alias: String, keyBytes: ByteArray)
@@ -13,7 +16,7 @@ interface SecureKeyStorage {
 }
 
 /**
- * Abstraction for local biometric / device credential authentication.
+ * Architectural contract interface for local biometric / device credential authentication (Phase 3+).
  */
 interface BiometricAuthenticator {
     suspend fun canAuthenticate(): Boolean
@@ -21,7 +24,7 @@ interface BiometricAuthenticator {
 }
 
 /**
- * Abstraction for cryptographic primitives (AES-GCM-256 / ChaCha20-Poly1305).
+ * Architectural contract interface for cryptographic primitives (Phase 3+).
  */
 interface CipherProvider {
     fun encrypt(plainText: ByteArray, key: ByteArray, associatedData: ByteArray? = null): ByteArray

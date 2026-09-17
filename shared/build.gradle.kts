@@ -4,22 +4,23 @@ plugins {
     id("org.jetbrains.compose")
 }
 
+android {
+    namespace = "com.lifetrack.shared"
+    compileSdk = 34
+
+    defaultConfig {
+        minSdk = 26
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
 kotlin {
-    androidTarget {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
-        }
-    }
+    androidTarget()
     
-    jvm("desktop") {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
-        }
-    }
+    jvm("desktop")
 
     sourceSets {
         val commonMain by getting {
@@ -58,15 +59,3 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.lifetrack.shared"
-    compileSdk = 34
-
-    defaultConfig {
-        minSdk = 26
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-}

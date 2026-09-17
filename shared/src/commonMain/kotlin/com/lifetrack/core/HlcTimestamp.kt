@@ -1,7 +1,10 @@
 package com.lifetrack.core
 
 /**
- * Hybrid Logical Clock (HLC) timestamp representation for deterministic distributed sync and event ordering.
+ * Hybrid Logical Clock (HLC) timestamp utility structure for event ordering and future sync readiness.
+ *
+ * Note: In Phase 2A local persistence, tasks use monotonic epoch timestamps. This utility is provided
+ * for deterministic timestamp generation, comparison, and serialization in subsequent distributed sync phases.
  */
 data class HlcTimestamp(
     val physicalTimeMs: Long,

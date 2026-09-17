@@ -99,9 +99,11 @@ export function calculateSemesterSgpa(subjects: VtuSubject[]): { sgpa: number; t
       const total = cie + see;
       gp = getGradeFromTotalMarks(total).points;
     }
-    const finalGp = gp !== undefined ? gp : 8; // fallback reasonable
+    if (gp === undefined) {
+      continue; // Exclude subjects with missing grade from calculation rather than assuming fabricated grade
+    }
     totalCredits += credits;
-    totalCreditPoints += credits * finalGp;
+    totalCreditPoints += credits * gp;
   }
 
   const sgpa = totalCredits > 0 ? Math.round((totalCreditPoints / totalCredits) * 100) / 100 : 0;

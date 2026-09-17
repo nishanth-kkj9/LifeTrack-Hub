@@ -3,7 +3,7 @@ package com.lifetrack.android
 import android.app.Application
 import com.lifetrack.core.PlatformIdGenerator
 import com.lifetrack.core.SystemTimeProvider
-import com.lifetrack.data.local.InMemoryTaskLocalDataSource
+import com.lifetrack.data.local.createAndroidTaskLocalDataSource
 import com.lifetrack.data.repository.TaskRepositoryImpl
 import com.lifetrack.domain.repository.TaskRepository
 import com.lifetrack.domain.usecase.AddSubtaskUseCase
@@ -38,7 +38,7 @@ class LifeTrackApp : Application() {
         val idGenerator = PlatformIdGenerator(timeProvider)
 
         secureKeyStorage = AndroidSecureKeyStorage()
-        val localDataSource = InMemoryTaskLocalDataSource(timeProvider)
+        val localDataSource = createAndroidTaskLocalDataSource(this, timeProvider = timeProvider)
         taskRepository = TaskRepositoryImpl(localDataSource, timeProvider)
 
         val getTasksUseCase = GetTasksUseCase(taskRepository)

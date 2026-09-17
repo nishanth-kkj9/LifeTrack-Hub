@@ -7,9 +7,3 @@ plugins {
     id("org.jetbrains.compose") version "1.6.10" apply false
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
