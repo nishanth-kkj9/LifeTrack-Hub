@@ -6,3 +6,23 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Gradle & Build artifacts
+.gradle/
+build/
+*/build/
+bin/
+out/
+local.properties
+.gradle-cache/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+

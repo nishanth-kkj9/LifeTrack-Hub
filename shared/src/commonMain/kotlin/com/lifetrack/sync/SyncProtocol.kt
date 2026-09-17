@@ -1,22 +1,49 @@
 package com.lifetrack.sync
 
-enum class SyncStatus {
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+
+enum class SyncState {
     IDLE,
     SYNCING,
-    SUCCESS,
     OFFLINE,
-    ERROR
+    ERROR,
+    SUCCESS
 }
 
-data class SyncResult(
-    val status: SyncStatus,
-    val uploadedRecords: Int = 0,
-    val downloadedRecords: Int = 0,
-    val conflictRecords: Int = 0,
+data class SyncStatus(
+    val state: SyncState = SyncState.IDLE,
+    val lastSyncedTimestamp: Long? = null,
+    val pendingOutboxCount: Int = 0,
+    val activeDeviceName: String = "Local Device",
     val errorMessage: String? = null
 )
 
-interface SyncManager {
-    fun observeSyncStatus(): kotlinx.coroutines.flow.Flow<SyncStatus>
-    suspend fun synchronize(): SyncResult
+data class SyncRecord(
+    val id: String,
+    val entityType: String,
+    val entityId: String,
+    val operation: String, // UPSERT or DELETE
+    val payloadEncrypted: ByteArray,
+    val hlcTimestamp: String,
+    val createdAt: Long
+)
+
+/**
+ * Architectural abstraction for the multi-device sync engine.
+ */
+interface SyncEngine {
+    val syncStatus: StateFlow<SyncStatus>
+    suspend fun triggerSync()
+    suspend fun setOffline(offline: Boolean)
+}
+
+/**
+ * Local outbox queue abstraction for offline delta synchronization.
+ */
+interface SyncRepository {
+    fun getPendingOutboxRecords(): Flow<List<SyncRecord>>
+    suspend fun enqueueRecord(record: SyncRecord)
+    suspend fun removeRecords(recordIds: List<String>)
+    suspend fun getHlcMaxTimestamp(): String?
 }

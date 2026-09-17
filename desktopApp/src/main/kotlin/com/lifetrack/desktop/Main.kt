@@ -38,13 +38,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.lifetrack.core.PlatformIdGenerator
+import com.lifetrack.core.SystemTimeProvider
 import com.lifetrack.data.local.InMemoryTaskLocalDataSource
 import com.lifetrack.data.repository.TaskRepositoryImpl
+import com.lifetrack.domain.usecase.AddSubtaskUseCase
 import com.lifetrack.domain.usecase.CreateTaskUseCase
+import com.lifetrack.domain.usecase.DeleteSubtaskUseCase
 import com.lifetrack.domain.usecase.DeleteTaskUseCase
 import com.lifetrack.domain.usecase.GetTaskMetricsUseCase
 import com.lifetrack.domain.usecase.GetTasksUseCase
 import com.lifetrack.domain.usecase.ParseNaturalLanguageTaskUseCase
+import com.lifetrack.domain.usecase.ToggleSubtaskUseCase
 import com.lifetrack.domain.usecase.ToggleTaskCompletionUseCase
 import com.lifetrack.security.DesktopSecureKeyStorage
 import com.lifetrack.ui.TasksViewModel
@@ -56,16 +61,21 @@ import com.lifetrack.ui.theme.LifeTrackEmeraldPrimary
 import com.lifetrack.ui.theme.LifeTrackTheme
 
 fun main() = application {
+    val timeProvider = remember { SystemTimeProvider() }
+    val idGenerator = remember { PlatformIdGenerator(timeProvider) }
     val secureStorage = remember { DesktopSecureKeyStorage() }
-    val localDataSource = remember { InMemoryTaskLocalDataSource() }
-    val taskRepository = remember { TaskRepositoryImpl(localDataSource) }
+    val localDataSource = remember { InMemoryTaskLocalDataSource(timeProvider) }
+    val taskRepository = remember { TaskRepositoryImpl(localDataSource, timeProvider) }
 
     val viewModel = remember {
         TasksViewModel(
             getTasksUseCase = GetTasksUseCase(taskRepository),
-            createTaskUseCase = CreateTaskUseCase(taskRepository),
+            createTaskUseCase = CreateTaskUseCase(taskRepository, timeProvider, idGenerator),
             toggleTaskCompletionUseCase = ToggleTaskCompletionUseCase(taskRepository),
             deleteTaskUseCase = DeleteTaskUseCase(taskRepository),
+            addSubtaskUseCase = AddSubtaskUseCase(taskRepository, idGenerator, timeProvider),
+            toggleSubtaskUseCase = ToggleSubtaskUseCase(taskRepository),
+            deleteSubtaskUseCase = DeleteSubtaskUseCase(taskRepository),
             getTaskMetricsUseCase = GetTaskMetricsUseCase(taskRepository),
             parseNaturalLanguageTaskUseCase = ParseNaturalLanguageTaskUseCase()
         )
@@ -152,8 +162,8 @@ fun DesktopAppShell(viewModel: TasksViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Phase 1: Multiplatform Core", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Encrypted Local SQLite Ready", color = Color(0xFF64748B), fontSize = 10.sp)
+                    Text("Phase 1B: Architecture Foundation", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("In-Memory Verification Engine", color = Color(0xFF94A3B8), fontSize = 10.sp)
                 }
             }
         }
@@ -200,7 +210,7 @@ fun DesktopAppShell(viewModel: TasksViewModel) {
                 NaturalLanguageTaskInputBar(
                     value = uiState.naturalLanguageInput,
                     onValueChange = viewModel::onNaturalLanguageInputChanged,
-                    onSubmit = viewModel::submitNaturalLanguageTask
+                    onSubmit = { viewModel.submitNaturalLanguageTask() }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -225,7 +235,8 @@ fun DesktopAppShell(viewModel: TasksViewModel) {
                             TaskCardItem(
                                 task = task,
                                 onToggle = { viewModel.toggleTaskCompletion(task.id) },
-                                onDelete = { viewModel.deleteTask(task.id) }
+                                onDelete = { viewModel.deleteTask(task.id) },
+                                onToggleSubtask = { subtaskId -> viewModel.toggleSubtask(task.id, subtaskId) }
                             )
                         }
                     }
@@ -243,7 +254,7 @@ fun DesktopAppShell(viewModel: TasksViewModel) {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Phase 1: Architecture Core & Multiplatform Foundation",
+                            text = "Phase 1B: Architecture Foundation (In-Memory Verification Engine)",
                             color = Color.Gray
                         )
                     }

@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lifetrack.domain.model.Subtask
 import com.lifetrack.domain.model.Task
 import com.lifetrack.domain.model.TaskCategory
 import com.lifetrack.domain.model.TaskMetrics
@@ -104,7 +105,7 @@ fun TaskMetricsBar(
 
 @Composable
 fun CategoryFilterRow(
-    selectedCategory: TaskCategory,
+    selectedCategory: TaskCategory?,
     onSelectCategory: (TaskCategory) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -115,7 +116,7 @@ fun CategoryFilterRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         TaskCategory.values().forEach { category ->
-            val isSelected = category == selectedCategory
+            val isSelected = category == (selectedCategory ?: TaskCategory.ALL)
             Surface(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
@@ -149,7 +150,7 @@ fun NaturalLanguageTaskInputBar(
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            placeholder = { Text("Quick add: 'VTU CN Lab Record urgent 60m'") },
+            placeholder = { Text("Quick add: 'VTU CN Lab Record urgent 60m #vtu'") },
             modifier = Modifier.weight(1f),
             singleLine = true,
             shape = RoundedCornerShape(10.dp)
@@ -173,6 +174,7 @@ fun TaskCardItem(
     task: Task,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
+    onToggleSubtask: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isCompleted = task.status == TaskStatus.COMPLETED
@@ -191,79 +193,132 @@ fun TaskCardItem(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp, 36.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(priorityColor)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Checkbox(
-                checked = isCompleted,
-                onCheckedChange = { onToggle() },
-                colors = CheckboxDefaults.colors(
-                    checkedColor = LifeTrackEmeraldPrimary
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp, 36.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(priorityColor)
                 )
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = task.title,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-                    color = if (isCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface
-                )
-                if (task.description.isNotBlank()) {
-                    Text(
-                        text = task.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray,
-                        maxLines = 1
+                Spacer(modifier = Modifier.width(10.dp))
+                Checkbox(
+                    checked = isCompleted,
+                    onCheckedChange = { onToggle() },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = LifeTrackEmeraldPrimary
                     )
-                }
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFFF1F5F9)
-                    ) {
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = task.category.name,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            color = Color(0xFF475569)
+                            text = task.title,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                            color = if (isCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface
+                        )
+                        if (task.isStarred) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("★", color = Color(0xFFEAB308), fontSize = 14.sp)
+                        }
+                    }
+                    if (task.description.isNotBlank()) {
+                        Text(
+                            text = task.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            maxLines = 2
                         )
                     }
-                    if (task.estimatedMinutes != null) {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
                             color = Color(0xFFF1F5F9)
                         ) {
                             Text(
-                                text = "${task.estimatedMinutes}m",
+                                text = task.category.name,
                                 fontSize = 10.sp,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 color = Color(0xFF475569)
                             )
                         }
+                        if (task.estimatedMinutes != null) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFF1F5F9)
+                            ) {
+                                Text(
+                                    text = "${task.estimatedMinutes}m",
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    color = Color(0xFF475569)
+                                )
+                            }
+                        }
+                        if (task.dueDate != null) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFFEF3C7)
+                            ) {
+                                Text(
+                                    text = "Due: ${task.dueDate}",
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    color = Color(0xFF92400E)
+                                )
+                            }
+                        }
                     }
                 }
+                TextButton(onClick = onDelete) {
+                    Text(
+                        text = "Del",
+                        color = Color.LightGray,
+                        fontSize = 12.sp
+                    )
+                }
             }
-            TextButton(onClick = onDelete) {
-                Text(
-                    text = "Del",
-                    color = Color.LightGray,
-                    fontSize = 12.sp
-                )
+
+            // Render subtasks if present
+            if (task.subtasks.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    task.subtasks.filterNot { it.isDeleted }.forEach { sub ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Checkbox(
+                                checked = sub.completed,
+                                onCheckedChange = { onToggleSubtask?.invoke(sub.id) },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = LifeTrackEmeraldPrimary
+                                ),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = sub.title,
+                                fontSize = 13.sp,
+                                textDecoration = if (sub.completed) TextDecoration.LineThrough else TextDecoration.None,
+                                color = if (sub.completed) Color.Gray else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
             }
         }
     }

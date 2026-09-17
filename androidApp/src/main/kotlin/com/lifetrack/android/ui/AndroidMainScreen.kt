@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -72,7 +71,7 @@ fun AndroidMainScreen(
                             fontSize = 20.sp
                         )
                         Text(
-                            text = "Android Production Core • Offline-First",
+                            text = "Android Production Core • Phase 1B Architecture",
                             fontSize = 11.sp,
                             color = Color(0xFF64748B)
                         )
@@ -131,7 +130,7 @@ fun AndroidMainScreen(
                 NaturalLanguageTaskInputBar(
                     value = uiState.naturalLanguageInput,
                     onValueChange = viewModel::onNaturalLanguageInputChanged,
-                    onSubmit = viewModel::submitNaturalLanguageTask
+                    onSubmit = { viewModel.submitNaturalLanguageTask() }
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -160,7 +159,8 @@ fun AndroidMainScreen(
                             TaskCardItem(
                                 task = task,
                                 onToggle = { viewModel.toggleTaskCompletion(task.id) },
-                                onDelete = { viewModel.deleteTask(task.id) }
+                                onDelete = { viewModel.deleteTask(task.id) },
+                                onToggleSubtask = { subtaskId -> viewModel.toggleSubtask(task.id, subtaskId) }
                             )
                         }
                     }
@@ -185,7 +185,7 @@ fun AndroidMainScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Phase 1: Architecture Core & Multiplatform Foundation",
+                        text = "Phase 1B: Architecture Foundation (In-Memory Verification Engine)",
                         fontSize = 12.sp,
                         color = Color.Gray
                     )

@@ -1,7 +1,10 @@
 package com.lifetrack
 
+import com.lifetrack.core.TestIdGenerator
+import com.lifetrack.core.TestTimeProvider
 import com.lifetrack.data.local.InMemoryTaskLocalDataSource
 import com.lifetrack.data.repository.TaskRepositoryImpl
+import com.lifetrack.domain.model.Subtask
 import com.lifetrack.domain.model.Task
 import com.lifetrack.domain.model.TaskCategory
 import com.lifetrack.domain.model.TaskPriority
@@ -17,27 +20,29 @@ class TaskRepositoryTest {
 
     @Test
     fun testTaskCreationAndToggle() = runTest {
-        val dataSource = InMemoryTaskLocalDataSource()
-        val repository = TaskRepositoryImpl(dataSource)
+        val timeProvider = TestTimeProvider(1710000000000L)
+        val dataSource = InMemoryTaskLocalDataSource(timeProvider)
+        val repository = TaskRepositoryImpl(dataSource, timeProvider)
 
         val newTask = Task(
             id = "test_1",
             title = "Test Task",
             category = TaskCategory.ACADEMIC,
             priority = TaskPriority.HIGH,
-            status = TaskStatus.PENDING
+            status = TaskStatus.TODO
         )
 
-        repository.insertTask(newTask)
+        repository.saveTask(newTask)
 
         val fetched = repository.getTaskById("test_1")
         assertNotNull(fetched)
         assertEquals("Test Task", fetched.title)
-        assertEquals(TaskStatus.PENDING, fetched.status)
+        assertEquals(TaskStatus.TODO, fetched.status)
 
         val toggled = repository.toggleTaskCompletion("test_1")
         assertNotNull(toggled)
         assertEquals(TaskStatus.COMPLETED, toggled.status)
+        assertTrue(toggled.isCompleted)
 
         val metrics = repository.observeTaskMetrics().first()
         assertTrue(metrics.completedCount >= 1)
@@ -45,22 +50,54 @@ class TaskRepositoryTest {
 
     @Test
     fun testTaskDeletion() = runTest {
-        val dataSource = InMemoryTaskLocalDataSource()
-        val repository = TaskRepositoryImpl(dataSource)
+        val timeProvider = TestTimeProvider(1710000000000L)
+        val dataSource = InMemoryTaskLocalDataSource(timeProvider)
+        val repository = TaskRepositoryImpl(dataSource, timeProvider)
 
         val newTask = Task(
             id = "test_del",
             title = "Task To Delete",
             category = TaskCategory.PERSONAL,
             priority = TaskPriority.LOW,
-            status = TaskStatus.PENDING
+            status = TaskStatus.TODO
         )
 
-        repository.insertTask(newTask)
+        repository.saveTask(newTask)
         val deleted = repository.deleteTask("test_del")
         assertTrue(deleted)
 
         val after = repository.getTaskById("test_del")
         assertEquals(null, after)
+    }
+
+    @Test
+    fun testSubtaskOperations() = runTest {
+        val timeProvider = TestTimeProvider(1710000000000L)
+        val dataSource = InMemoryTaskLocalDataSource(timeProvider)
+        val repository = TaskRepositoryImpl(dataSource, timeProvider)
+
+        val parentTask = Task(
+            id = "parent_task",
+            title = "Parent Task with Subtasks",
+            category = TaskCategory.VTU,
+            priority = TaskPriority.URGENT,
+            status = TaskStatus.TODO
+        )
+        repository.saveTask(parentTask)
+
+        val subtask = Subtask(
+            id = "sub_1",
+            taskId = "parent_task",
+            title = "Subtask 1",
+            completed = false
+        )
+        val updatedParent = repository.addSubtask("parent_task", subtask)
+        assertNotNull(updatedParent)
+        assertEquals(1, updatedParent.totalSubtasksCount)
+        assertEquals(0, updatedParent.completedSubtasksCount)
+
+        val toggledParent = repository.toggleSubtask("parent_task", "sub_1")
+        assertNotNull(toggledParent)
+        assertEquals(1, toggledParent.completedSubtasksCount)
     }
 }

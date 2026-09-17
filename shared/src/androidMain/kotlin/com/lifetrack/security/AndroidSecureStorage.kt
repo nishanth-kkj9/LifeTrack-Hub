@@ -1,33 +1,26 @@
 package com.lifetrack.security
 
-import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
 
-class AndroidSecureKeyStorage(
-    private val context: Context
-) : SecureKeyStorage {
+/**
+ * Android Keystore hardware-backed implementation of SecureKeyStorage abstraction.
+ * Master keys reside inside the secure element/TEE and are never written to plain files or preferences.
+ */
+class AndroidSecureKeyStorage : SecureKeyStorage {
 
     private val keyStore: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply {
         load(null)
     }
 
-    override suspend fun getEncryptionKey(alias: String): ByteArray? {
-        val entry = keyStore.getEntry(alias, null) as? KeyStore.SecretKeyEntry
-        return entry?.secretKey?.encoded
-    }
-
-    override suspend fun storeEncryptionKey(alias: String, key: ByteArray) {
-        val prefs = context.getSharedPreferences("lifetrack_secure_keys", Context.MODE_PRIVATE)
-        prefs.edit().putString(alias, android.util.Base64.encodeToString(key, android.util.Base64.NO_WRAP)).apply()
-    }
-
-    override suspend fun generateOrGetDatabaseKey(alias: String): ByteArray {
+    override suspend fun storeKey(alias: String, keyBytes: ByteArray) {
         if (!keyStore.containsAlias(alias)) {
-            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            val keyGenerator = KeyGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES,
+                "AndroidKeyStore"
+            )
             val spec = KeyGenParameterSpec.Builder(
                 alias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
@@ -39,13 +32,20 @@ class AndroidSecureKeyStorage(
             keyGenerator.init(spec)
             keyGenerator.generateKey()
         }
-        val secretKey = (keyStore.getEntry(alias, null) as KeyStore.SecretKeyEntry).secretKey
-        return secretKey.encoded ?: ByteArray(32) { (it * 7).toByte() }
     }
 
-    override suspend fun clearKey(alias: String) {
+    override suspend fun retrieveKey(alias: String): ByteArray? {
+        val entry = keyStore.getEntry(alias, null) as? KeyStore.SecretKeyEntry
+        return entry?.secretKey?.encoded
+    }
+
+    override suspend fun deleteKey(alias: String) {
         if (keyStore.containsAlias(alias)) {
             keyStore.deleteEntry(alias)
         }
+    }
+
+    override suspend fun containsKey(alias: String): Boolean {
+        return keyStore.containsAlias(alias)
     }
 }
