@@ -49,11 +49,14 @@ kotlin {
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.currentOs)
+                implementation("org.xerial:sqlite-jdbc:3.45.1.0")
             }
         }
         val desktopTest by getting {
             dependencies {
                 implementation(kotlin("test"))
+                implementation("org.xerial:sqlite-jdbc:3.45.1.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
             }
         }
     }

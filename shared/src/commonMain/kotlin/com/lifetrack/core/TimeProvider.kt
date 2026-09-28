@@ -25,4 +25,6 @@ class TestTimeProvider(
     var currentEpochMs: Long = 1710000000000L
 ) : TimeProvider {
     override fun nowEpochMs(): Long = currentEpochMs
+    fun advance(ms: Long) { currentEpochMs += ms }
+    fun set(ms: Long) { currentEpochMs = ms }
 }

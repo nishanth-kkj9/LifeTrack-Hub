@@ -39,8 +39,12 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.lifetrack.core.PlatformIdGenerator
+import com.lifetrack.core.StandardHlcClock
+import com.lifetrack.core.StandardSyncEventIdGenerator
 import com.lifetrack.core.SystemTimeProvider
-import com.lifetrack.data.local.createDesktopTaskLocalDataSource
+import com.lifetrack.data.local.DesktopSqlDriver
+import com.lifetrack.data.local.PersistentTaskLocalDataSource
+import com.lifetrack.data.local.getDefaultDesktopDbFile
 import com.lifetrack.data.repository.TaskRepositoryImpl
 import com.lifetrack.domain.usecase.AddSubtaskUseCase
 import com.lifetrack.domain.usecase.CreateTaskUseCase
@@ -52,6 +56,9 @@ import com.lifetrack.domain.usecase.ParseNaturalLanguageTaskUseCase
 import com.lifetrack.domain.usecase.ToggleSubtaskUseCase
 import com.lifetrack.domain.usecase.ToggleTaskCompletionUseCase
 import com.lifetrack.security.DesktopSecureKeyStorage
+import com.lifetrack.sync.PersistentSyncRepository
+import com.lifetrack.sync.SyncEngine
+import com.lifetrack.sync.SyncEngineImpl
 import com.lifetrack.ui.TasksViewModel
 import com.lifetrack.ui.components.CategoryFilterRow
 import com.lifetrack.ui.components.NaturalLanguageTaskInputBar
@@ -59,13 +66,45 @@ import com.lifetrack.ui.components.TaskCardItem
 import com.lifetrack.ui.components.TaskMetricsBar
 import com.lifetrack.ui.theme.LifeTrackEmeraldPrimary
 import com.lifetrack.ui.theme.LifeTrackTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 fun main() = application {
     val timeProvider = remember { SystemTimeProvider() }
     val idGenerator = remember { PlatformIdGenerator(timeProvider) }
     val secureStorage = remember { DesktopSecureKeyStorage() }
-    val localDataSource = remember { createDesktopTaskLocalDataSource(timeProvider = timeProvider) }
-    val taskRepository = remember { TaskRepositoryImpl(localDataSource, timeProvider) }
+
+    // Single coherent production SQLite persistence driver with explicit failure
+    val desktopDbFile = remember { getDefaultDesktopDbFile() }
+    val sqlDriver = remember { DesktopSqlDriver(desktopDbFile) }
+    val localDataSource = remember { PersistentTaskLocalDataSource(sqlDriver, timeProvider) }
+    val syncRepository = remember { PersistentSyncRepository(sqlDriver) }
+
+    val deviceId = remember { "desktop_${System.getProperty("user.name", "user")}" }
+    val hlcClock = remember { StandardHlcClock(deviceId, timeProvider) }
+    val syncEventIdGenerator = remember { StandardSyncEventIdGenerator(idGenerator) }
+
+    val taskRepository = remember {
+        TaskRepositoryImpl(
+            localDataSource = localDataSource,
+            timeProvider = timeProvider,
+            syncRepository = syncRepository,
+            hlcClock = hlcClock,
+            syncEventIdGenerator = syncEventIdGenerator
+        )
+    }
+
+    val syncEngine = remember {
+        SyncEngineImpl(
+            syncRepository = syncRepository,
+            localDataSource = localDataSource,
+            hlcClock = hlcClock,
+            timeProvider = timeProvider,
+            deviceId = deviceId,
+            deviceName = "Windows Desktop"
+        )
+    }
 
     val viewModel = remember {
         TasksViewModel(
@@ -87,13 +126,13 @@ fun main() = application {
         state = rememberWindowState(width = 1100.dp, height = 750.dp)
     ) {
         LifeTrackTheme {
-            DesktopAppShell(viewModel)
+            DesktopAppShell(viewModel, syncEngine)
         }
     }
 }
 
 @Composable
-fun DesktopAppShell(viewModel: TasksViewModel) {
+fun DesktopAppShell(viewModel: TasksViewModel, syncEngine: SyncEngine? = null) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedSection by remember { mutableStateOf("Tasks") }
 
@@ -238,6 +277,69 @@ fun DesktopAppShell(viewModel: TasksViewModel) {
                                 onDelete = { viewModel.deleteTask(task.id) },
                                 onToggleSubtask = { subtaskId -> viewModel.toggleSubtask(task.id, subtaskId) }
                             )
+                        }
+                    }
+                }
+            } else if (selectedSection == "Sync Engine" && syncEngine != null) {
+                val syncStatus by syncEngine.syncStatus.collectAsState()
+                val scope = remember { CoroutineScope(Dispatchers.Default) }
+
+                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    Text(
+                        text = "Distributed Sync Engine",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Phase 2B.1: Durable Outbox, HLC Causality, and Bidirectional SQLite Sync",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Surface(
+                        color = Color(0xFF1E293B),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Text("Engine Status: ${syncStatus.state.name}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Active Node: ${syncStatus.activeDeviceName}", color = Color(0xFF94A3B8), fontSize = 13.sp)
+                            Text("Pending Outbox Records: ${syncStatus.pendingOutboxCount}", color = Color(0xFF94A3B8), fontSize = 13.sp)
+                            Text("Remote Checkpoint HLC: ${syncStatus.lastCheckpointHlc ?: "None"}", color = Color(0xFF94A3B8), fontSize = 13.sp)
+                            if (syncStatus.lastSyncedTimestamp != null) {
+                                Text("Last Synced Time: ${syncStatus.lastSyncedTimestamp}", color = Color(0xFF94A3B8), fontSize = 13.sp)
+                            }
+                            if (syncStatus.errorMessage != null) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Error: ${syncStatus.errorMessage}", color = Color(0xFFEF4444), fontSize = 13.sp)
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Surface(
+                                    color = Color(0xFF0F766E),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.clickable {
+                                        scope.launch { syncEngine.triggerSync() }
+                                    }
+                                ) {
+                                    Text("Trigger Sync Now", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                }
+
+                                Surface(
+                                    color = Color(0xFF334155),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.clickable {
+                                        scope.launch { syncEngine.retryAllFailed() }
+                                    }
+                                ) {
+                                    Text("Retry Failed Records", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
                 }

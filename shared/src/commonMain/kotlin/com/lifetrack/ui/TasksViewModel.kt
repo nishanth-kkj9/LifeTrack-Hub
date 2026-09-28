@@ -7,6 +7,7 @@ import com.lifetrack.domain.model.TaskFilterState
 import com.lifetrack.domain.model.TaskMetrics
 import com.lifetrack.domain.model.TaskPriority
 import com.lifetrack.domain.model.TaskRecurrence
+import com.lifetrack.domain.model.TaskStatus
 import com.lifetrack.domain.usecase.AddSubtaskUseCase
 import com.lifetrack.domain.usecase.CreateTaskUseCase
 import com.lifetrack.domain.usecase.DeleteSubtaskUseCase

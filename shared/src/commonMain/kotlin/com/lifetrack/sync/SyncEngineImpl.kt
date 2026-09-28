@@ -1,8 +1,11 @@
 package com.lifetrack.sync
 
+import com.lifetrack.core.HlcClock
 import com.lifetrack.core.HlcTimestamp
 import com.lifetrack.core.SystemTimeProvider
 import com.lifetrack.core.TimeProvider
+import com.lifetrack.data.local.PersistentTaskLocalDataSource
+import com.lifetrack.data.repository.TaskPayloadSerializer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,20 +14,26 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Concrete implementation of the distributed synchronization engine.
+ * Production implementation of the distributed synchronization engine for Android and Desktop.
  *
- * Provides:
- * 1. Offline-first delta outbox drain with optimistic execution.
- * 2. Deterministic Last-Write-Wins (LWW) conflict resolution using Hybrid Logical Clocks (HLC).
- * 3. StateFlow-driven reactive sync status updates (IDLE, SYNCING, OFFLINE, ERROR, SUCCESS).
- * 4. Error backoff and failure isolation without data corruption.
+ * Guarantees:
+ * 1. Safe in-flight state tracking and automatic crash/lease recovery.
+ * 2. Exponential retry backoff scheduling with persisted retry timestamps.
+ * 3. Atomic outbox drain with failure containment (failed network calls never strand records in IN_FLIGHT).
+ * 4. Durable remote synchronization checkpoint (never derived from outbox max).
+ * 5. Full bidirectional conflict resolution applying remote winners to local persistence.
+ * 6. Durable tombstone retention preventing resurrecting deleted entities.
  */
 class SyncEngineImpl(
     private val syncRepository: SyncRepository,
+    private val localDataSource: PersistentTaskLocalDataSource,
     private val remoteTransport: RemoteSyncTransport = DefaultMockRemoteTransport(),
+    private val hlcClock: HlcClock,
     private val timeProvider: TimeProvider = SystemTimeProvider(),
+    private val deviceId: String = "local-device",
     private val deviceName: String = "Local Device",
-    private val maxRetries: Int = 3
+    private val maxRetries: Int = 5,
+    private val inFlightLeaseMs: Long = 60_000L
 ) : SyncEngine {
 
     private val mutex = Mutex()
@@ -57,8 +66,22 @@ class SyncEngineImpl(
         }
     }
 
+    override suspend fun retryFailedRecord(recordId: String) {
+        syncRepository.retryFailedRecord(recordId)
+        val pending = syncRepository.getPendingOutboxRecords().first().size
+        _syncStatus.value = _syncStatus.value.copy(pendingOutboxCount = pending)
+    }
+
+    override suspend fun retryAllFailed() {
+        syncRepository.retryAllFailed()
+        val pending = syncRepository.getPendingOutboxRecords().first().size
+        _syncStatus.value = _syncStatus.value.copy(pendingOutboxCount = pending)
+    }
+
     override suspend fun triggerSync() {
         mutex.withLock {
+            val now = timeProvider.nowEpochMs()
+
             if (isOfflineMode) {
                 val pending = syncRepository.getPendingOutboxRecords().first().size
                 _syncStatus.value = _syncStatus.value.copy(
@@ -68,96 +91,126 @@ class SyncEngineImpl(
                 return
             }
 
+            // Step 0: Recover any stale IN_FLIGHT records from crashed sessions
+            syncRepository.recoverStaleInFlightRecords(leaseTimeoutMs = inFlightLeaseMs, currentTimeMs = now)
+
             _syncStatus.value = _syncStatus.value.copy(
                 state = SyncState.SYNCING,
                 errorMessage = null
             )
 
-            try {
-                // 1. Drain pending local outbox records
-                val pendingRecords = syncRepository.getPendingOutboxRecords().first()
-                if (pendingRecords.isNotEmpty()) {
-                    for (rec in pendingRecords) {
-                        syncRepository.updateRecordStatus(rec.id, "IN_FLIGHT", rec.retryCount)
-                    }
+            // Step 1: Transmit eligible local outbox records
+            val eligible = syncRepository.getEligibleOutboxRecords(currentTimeMs = now)
+            if (eligible.isNotEmpty()) {
+                val eligibleIds = eligible.map { it.id }
+                syncRepository.markInFlight(eligibleIds, inFlightTimeMs = now)
 
-                    val syncedIds = remoteTransport.pushRecords(pendingRecords)
-                    syncRepository.removeRecords(syncedIds)
+                try {
+                    val ackedIds = remoteTransport.pushRecords(eligible)
+                    syncRepository.recordSuccessAcks(ackedIds)
 
-                    // Mark any un-synced failed records
-                    val failedRecords = pendingRecords.filterNot { syncedIds.contains(it.id) }
-                    for (fail in failedRecords) {
-                        val nextRetry = fail.retryCount + 1
-                        val nextStatus = if (nextRetry >= maxRetries) "FAILED" else "PENDING"
-                        syncRepository.updateRecordStatus(
-                            fail.id,
-                            nextStatus,
-                            nextRetry,
-                            "Transport push unacknowledged"
+                    val unackedIds = eligibleIds.filterNot { ackedIds.contains(it) }
+                    if (unackedIds.isNotEmpty()) {
+                        syncRepository.recordFailures(
+                            failedIds = unackedIds,
+                            error = "Remote transport rejected or dropped records",
+                            currentTimeMs = now,
+                            maxRetries = maxRetries
                         )
                     }
+                } catch (t: Throwable) {
+                    // Critical invariant: failed network requests NEVER strand records in IN_FLIGHT
+                    syncRepository.recordFailures(
+                        failedIds = eligibleIds,
+                        error = t.message ?: "Network transport push failure",
+                        currentTimeMs = now,
+                        maxRetries = maxRetries
+                    )
+
+                    val pending = syncRepository.getPendingOutboxRecords().first().size
+                    _syncStatus.value = _syncStatus.value.copy(
+                        state = SyncState.ERROR,
+                        pendingOutboxCount = pending,
+                        errorMessage = t.message ?: "Sync push failed"
+                    )
+                    return
+                }
+            }
+
+            // Step 2: Pull remote deltas using the durable remote checkpoint
+            val lastCheckpoint = syncRepository.getSyncCheckpoint(deviceId)
+            val remoteDeltas = try {
+                remoteTransport.pullRecords(lastCheckpoint)
+            } catch (t: Throwable) {
+                val pending = syncRepository.getPendingOutboxRecords().first().size
+                _syncStatus.value = _syncStatus.value.copy(
+                    state = SyncState.ERROR,
+                    pendingOutboxCount = pending,
+                    errorMessage = t.message ?: "Sync pull failed"
+                )
+                return
+            }
+
+            // Step 3: Validate, conflict resolve, and apply remote deltas
+            var advancedCheckpoint = lastCheckpoint
+            for (delta in remoteDeltas) {
+                val remoteHlc = HlcTimestamp.fromString(delta.hlcTimestamp) ?: continue
+
+                // Merge causality into local clock
+                hlcClock.receive(remoteHlc)
+
+                // Track highest remote HLC seen to advance checkpoint
+                if (advancedCheckpoint == null || remoteHlc > (HlcTimestamp.fromString(advancedCheckpoint) ?: remoteHlc)) {
+                    advancedCheckpoint = delta.hlcTimestamp
                 }
 
-                // 2. Pull remote updates since max local HLC
-                val maxLocalHlc = syncRepository.getHlcMaxTimestamp()
-                val remoteRecords = remoteTransport.pullRecords(maxLocalHlc)
+                // Locate local entity version metadata
+                val localMetadata = localDataSource.getEntitySyncMetadata(delta.entityType, delta.entityId)
 
-                // 3. Mark success
-                val remainingPending = syncRepository.getPendingOutboxRecords().first().size
-                _syncStatus.value = SyncStatus(
-                    state = SyncState.SUCCESS,
-                    lastSyncedTimestamp = timeProvider.nowEpochMs(),
-                    pendingOutboxCount = remainingPending,
-                    activeDeviceName = deviceName,
-                    errorMessage = null
-                )
-            } catch (e: Throwable) {
-                val remainingPending = syncRepository.getPendingOutboxRecords().first().size
-                _syncStatus.value = SyncStatus(
-                    state = SyncState.ERROR,
-                    lastSyncedTimestamp = _syncStatus.value.lastSyncedTimestamp,
-                    pendingOutboxCount = remainingPending,
-                    activeDeviceName = deviceName,
-                    errorMessage = e.message ?: "Unknown sync failure"
-                )
-            }
-        }
-    }
+                val shouldApplyRemote = if (localMetadata != null) {
+                    val localHlc = HlcTimestamp.fromString(localMetadata.hlcTimestamp)
+                    if (localHlc != null) {
+                        remoteHlc > localHlc
+                    } else {
+                        delta.createdAt > localMetadata.updatedAtEpochMs
+                    }
+                } else {
+                    true // First time entity observed
+                }
 
-    /**
-     * Resolves write conflicts between local and remote records using Hybrid Logical Clock timestamps.
-     * Evaluates LWW (Last-Write-Wins): if remote HLC > local HLC, remote wins; otherwise local wins.
-     */
-    fun resolveConflict(localRecord: SyncRecord, remoteRecord: SyncRecord): ConflictResolutionResult {
-        val localHlc = HlcTimestamp.fromString(localRecord.hlcTimestamp)
-        val remoteHlc = HlcTimestamp.fromString(remoteRecord.hlcTimestamp)
+                if (shouldApplyRemote) {
+                    when (delta.entityType) {
+                        "TASK" -> {
+                            if (delta.operation == "UPSERT") {
+                                val task = TaskPayloadSerializer.deserializeTask(delta.payload)
+                                if (task != null) {
+                                    localDataSource.applyRemoteTaskUpsert(task, delta.hlcTimestamp, now)
+                                }
+                            } else if (delta.operation == "DELETE") {
+                                localDataSource.applyRemoteTaskDelete(delta.entityId, delta.hlcTimestamp, now)
+                            }
+                        }
+                    }
+                }
+            }
 
-        return if (localHlc != null && remoteHlc != null) {
-            if (remoteHlc > localHlc) {
-                ConflictResolutionResult(winner = remoteRecord, winnerType = WinnerType.REMOTE)
-            } else {
-                ConflictResolutionResult(winner = localRecord, winnerType = WinnerType.LOCAL)
+            // Advance durable remote checkpoint if remote updates were processed
+            if (advancedCheckpoint != null && advancedCheckpoint != lastCheckpoint) {
+                syncRepository.updateSyncCheckpoint(deviceId, advancedCheckpoint, now)
             }
-        } else {
-            // Fallback to epoch milliseconds comparison if HLC string is malformed
-            if (remoteRecord.createdAt > localRecord.createdAt) {
-                ConflictResolutionResult(winner = remoteRecord, winnerType = WinnerType.REMOTE)
-            } else {
-                ConflictResolutionResult(winner = localRecord, winnerType = WinnerType.LOCAL)
-            }
+
+            val remainingPending = syncRepository.getPendingOutboxRecords().first().size
+            _syncStatus.value = SyncStatus(
+                state = SyncState.SUCCESS,
+                lastSyncedTimestamp = now,
+                pendingOutboxCount = remainingPending,
+                activeDeviceName = deviceName,
+                lastCheckpointHlc = advancedCheckpoint,
+                errorMessage = null
+            )
         }
     }
 }
-
-enum class WinnerType {
-    LOCAL,
-    REMOTE
-}
-
-data class ConflictResolutionResult(
-    val winner: SyncRecord,
-    val winnerType: WinnerType
-)
 
 /**
  * Built-in mock transport acknowledging all records pushed, used for local tests and offline operation.

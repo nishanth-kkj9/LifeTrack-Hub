@@ -16,54 +16,34 @@ data class SyncStatus(
     val lastSyncedTimestamp: Long? = null,
     val pendingOutboxCount: Int = 0,
     val activeDeviceName: String = "Local Device",
+    val lastCheckpointHlc: String? = null,
     val errorMessage: String? = null
 )
 
+/**
+ * Single sync-outbox mutation event.
+ * Note on encryption: In Phase 2B.1, payload is serialized plaintext representing
+ * task/subtask delta records. Cryptographic payload encryption is explicitly deferred to Phase 3.
+ */
 data class SyncRecord(
     val id: String,
     val entityType: String,
     val entityId: String,
-    val operation: String, // UPSERT or DELETE
-    val payloadEncrypted: ByteArray,
+    val operation: String, // "UPSERT" or "DELETE"
+    val payload: String,
     val hlcTimestamp: String,
     val createdAt: Long,
+    val status: String = "PENDING", // "PENDING", "IN_FLIGHT", "FAILED"
+    val inFlightAt: Long? = null,
     val retryCount: Int = 0,
-    val lastError: String? = null,
-    val status: String = "PENDING"
+    val nextRetryAt: Long = 0L,
+    val lastError: String? = null
 ) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other == null || this::class != other::class) return false
-
-        other as SyncRecord
-
-        if (id != other.id) return false
-        if (entityType != other.entityType) return false
-        if (entityId != other.entityId) return false
-        if (operation != other.operation) return false
-        if (!payloadEncrypted.contentEquals(other.payloadEncrypted)) return false
-        if (hlcTimestamp != other.hlcTimestamp) return false
-        if (createdAt != other.createdAt) return false
-        if (retryCount != other.retryCount) return false
-        if (lastError != other.lastError) return false
-        if (status != other.status) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = id.hashCode()
-        result = 31 * result + entityType.hashCode()
-        result = 31 * result + entityId.hashCode()
-        result = 31 * result + operation.hashCode()
-        result = 31 * result + payloadEncrypted.contentHashCode()
-        result = 31 * result + hlcTimestamp.hashCode()
-        result = 31 * result + createdAt.hashCode()
-        result = 31 * result + retryCount.hashCode()
-        result = 31 * result + (lastError?.hashCode() ?: 0)
-        result = 31 * result + status.hashCode()
-        return result
-    }
+    /**
+     * Backward-compatibility accessor for tests or legacy code expecting byte array.
+     */
+    val payloadEncrypted: ByteArray
+        get() = payload.encodeToByteArray()
 }
 
 /**
@@ -73,24 +53,32 @@ interface SyncEngine {
     val syncStatus: StateFlow<SyncStatus>
     suspend fun triggerSync()
     suspend fun setOffline(offline: Boolean)
+    suspend fun retryFailedRecord(recordId: String)
+    suspend fun retryAllFailed()
 }
 
 /**
  * Remote transport contract for sending and receiving delta sync packets.
  */
 interface RemoteSyncTransport {
-    suspend fun pushRecords(records: List<SyncRecord>): List<String> // Returns IDs of successfully synced records
+    suspend fun pushRecords(records: List<SyncRecord>): List<String>
     suspend fun pullRecords(sinceHlc: String?): List<SyncRecord>
 }
 
 /**
- * Local outbox queue abstraction for offline delta synchronization.
+ * Local outbox queue and durable sync-state abstraction.
  */
 interface SyncRepository {
     fun getPendingOutboxRecords(): Flow<List<SyncRecord>>
+    suspend fun getEligibleOutboxRecords(currentTimeMs: Long): List<SyncRecord>
     suspend fun enqueueRecord(record: SyncRecord)
-    suspend fun removeRecords(recordIds: List<String>)
-    suspend fun getHlcMaxTimestamp(): String?
-    suspend fun updateRecordStatus(recordId: String, status: String, retryCount: Int, errorMessage: String? = null)
+    suspend fun markInFlight(recordIds: List<String>, inFlightTimeMs: Long)
+    suspend fun recoverStaleInFlightRecords(leaseTimeoutMs: Long, currentTimeMs: Long)
+    suspend fun recordSuccessAcks(acknowledgedIds: List<String>)
+    suspend fun recordFailures(failedIds: List<String>, error: String, currentTimeMs: Long, maxRetries: Int = 5)
+    suspend fun retryFailedRecord(recordId: String)
+    suspend fun retryAllFailed()
+    suspend fun getSyncCheckpoint(deviceId: String): String?
+    suspend fun updateSyncCheckpoint(deviceId: String, lastPulledHlc: String, syncTimeMs: Long, error: String? = null)
     suspend fun getAllRecords(): List<SyncRecord>
 }

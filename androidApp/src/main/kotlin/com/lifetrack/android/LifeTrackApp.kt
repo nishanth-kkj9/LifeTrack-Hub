@@ -2,8 +2,11 @@ package com.lifetrack.android
 
 import android.app.Application
 import com.lifetrack.core.PlatformIdGenerator
+import com.lifetrack.core.StandardHlcClock
+import com.lifetrack.core.StandardSyncEventIdGenerator
 import com.lifetrack.core.SystemTimeProvider
-import com.lifetrack.data.local.createAndroidTaskLocalDataSource
+import com.lifetrack.data.local.AndroidSqlDriver
+import com.lifetrack.data.local.PersistentTaskLocalDataSource
 import com.lifetrack.data.repository.TaskRepositoryImpl
 import com.lifetrack.domain.repository.TaskRepository
 import com.lifetrack.domain.usecase.AddSubtaskUseCase
@@ -17,6 +20,10 @@ import com.lifetrack.domain.usecase.ToggleSubtaskUseCase
 import com.lifetrack.domain.usecase.ToggleTaskCompletionUseCase
 import com.lifetrack.security.AndroidSecureKeyStorage
 import com.lifetrack.security.SecureKeyStorage
+import com.lifetrack.sync.PersistentSyncRepository
+import com.lifetrack.sync.SyncEngine
+import com.lifetrack.sync.SyncEngineImpl
+import com.lifetrack.sync.SyncRepository
 import com.lifetrack.ui.TasksViewModel
 
 class LifeTrackApp : Application() {
@@ -25,6 +32,12 @@ class LifeTrackApp : Application() {
         private set
 
     lateinit var taskRepository: TaskRepository
+        private set
+
+    lateinit var syncRepository: SyncRepository
+        private set
+
+    lateinit var syncEngine: SyncEngine
         private set
 
     lateinit var tasksViewModel: TasksViewModel
@@ -38,8 +51,39 @@ class LifeTrackApp : Application() {
         val idGenerator = PlatformIdGenerator(timeProvider)
 
         secureKeyStorage = AndroidSecureKeyStorage()
-        val localDataSource = createAndroidTaskLocalDataSource(this, timeProvider = timeProvider)
-        taskRepository = TaskRepositoryImpl(localDataSource, timeProvider)
+
+        // Single coherent local SQLite driver
+        val driver = AndroidSqlDriver(this)
+        val localDataSource = PersistentTaskLocalDataSource(driver, timeProvider)
+        val syncRepo = PersistentSyncRepository(driver)
+
+        val deviceId = try {
+            android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+                ?: idGenerator.generateId("android")
+        } catch (_: Throwable) {
+            idGenerator.generateId("android")
+        }
+
+        val hlcClock = StandardHlcClock(deviceId, timeProvider)
+        val syncEventIdGenerator = StandardSyncEventIdGenerator(idGenerator)
+
+        taskRepository = TaskRepositoryImpl(
+            localDataSource = localDataSource,
+            timeProvider = timeProvider,
+            syncRepository = syncRepo,
+            hlcClock = hlcClock,
+            syncEventIdGenerator = syncEventIdGenerator
+        )
+
+        syncRepository = syncRepo
+        syncEngine = SyncEngineImpl(
+            syncRepository = syncRepo,
+            localDataSource = localDataSource,
+            hlcClock = hlcClock,
+            timeProvider = timeProvider,
+            deviceId = deviceId,
+            deviceName = "Android Device"
+        )
 
         val getTasksUseCase = GetTasksUseCase(taskRepository)
         val createTaskUseCase = CreateTaskUseCase(taskRepository, timeProvider, idGenerator)

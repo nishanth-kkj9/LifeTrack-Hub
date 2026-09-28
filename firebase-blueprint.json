@@ -2,54 +2,44 @@
   "entities": {
     "UserAppData": {
       "title": "UserAppData",
-      "description": "Root user state encompassing tasks, transactions, budget, exams, habits, notes, and VTU academic profile.",
+      "description": "Legacy monolithic application document for React web frontend",
       "type": "object",
       "properties": {
-        "tasks": {
-          "type": "array",
-          "description": "List of user tasks and subtasks"
-        },
-        "transactions": {
-          "type": "array",
-          "description": "List of income and expense transactions"
-        },
-        "budget": {
-          "type": "object",
-          "description": "Monthly budget and savings target settings"
-        },
-        "exams": {
-          "type": "array",
-          "description": "Exam schedule, study guides, and topics"
-        },
-        "habits": {
-          "type": "array",
-          "description": "Habit trackers with streaks and completed dates"
-        },
-        "notes": {
-          "type": "array",
-          "description": "Quick notes and formula sheets"
-        },
-        "vtuProfile": {
-          "type": "object",
-          "description": "VTU student profile with SGPA, attendance, and scheme details"
-        },
-        "masterPlan": {
-          "type": "string",
-          "description": "Optional AI-generated or custom master study plan",
-          "maxLength": 50000
-        },
-        "lastUpdated": {
-          "type": "number",
-          "description": "Epoch millisecond timestamp of the last modification"
-        }
+        "tasks": { "type": "array", "description": "User tasks list" },
+        "transactions": { "type": "array", "description": "Transactions list" },
+        "budget": { "type": "object", "description": "Budget settings" },
+        "exams": { "type": "array", "description": "Exams list" },
+        "habits": { "type": "array", "description": "Habits list" },
+        "notes": { "type": "array", "description": "Notes list" },
+        "vtuProfile": { "type": "object", "description": "VTU academic record" },
+        "lastUpdated": { "type": "number", "description": "Timestamp" }
       },
       "required": ["tasks", "transactions", "budget", "exams", "habits", "notes"]
+    },
+    "SyncDeltaRecord": {
+      "title": "SyncDeltaRecord",
+      "description": "Entity-based synchronization mutation packet for distributed KMP clients",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique sync event identifier" },
+        "entityType": { "type": "string", "description": "Target entity type (e.g. TASK, SUBTASK)" },
+        "entityId": { "type": "string", "description": "Target entity identifier" },
+        "operation": { "type": "string", "description": "Mutation operation (UPSERT or DELETE)" },
+        "payload": { "type": "string", "description": "Serialized plaintext delta payload" },
+        "hlcTimestamp": { "type": "string", "description": "Hybrid Logical Clock timestamp" },
+        "createdAt": { "type": "number", "description": "Creation timestamp epoch ms" }
+      },
+      "required": ["id", "entityType", "entityId", "operation", "payload", "hlcTimestamp", "createdAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserAppData",
-      "description": "Private user root document holding all application data isolated strictly to the authenticated owner"
+      "description": "Private root document for legacy web state"
+    },
+    "/users/{userId}/deltas/{deltaId}": {
+      "schema": "SyncDeltaRecord",
+      "description": "Entity-based sync delta stream for multiplatform clients"
     }
   }
 }
