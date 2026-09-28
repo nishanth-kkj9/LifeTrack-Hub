@@ -12,12 +12,65 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   onSnapshot,
   Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UserAppData } from '../types/index.ts';
 import { INITIAL_VTU_PROFILE } from './vtuData.ts';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
@@ -28,6 +81,18 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 export const db: Firestore = firebaseConfig.firestoreDatabaseId
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
+
+// Connection verification test on startup
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('Firebase connection: client appears offline.');
+    }
+  }
+}
+testConnection();
 
 const LOCAL_STORAGE_KEY = 'lifetrack_app_data_v1';
 
@@ -318,6 +383,7 @@ export function subscribeToUserDoc(
   onUpdate: (data: UserAppData) => void,
   onError: (err: any) => void
 ) {
+  const path = `users/${userId}`;
   const userRef = doc(db, 'users', userId);
   return onSnapshot(
     userRef,
@@ -328,18 +394,26 @@ export function subscribeToUserDoc(
       } else {
         // First time cloud user: seed with local or initial data
         const local = loadLocalData();
-        setDoc(userRef, { ...local, lastUpdated: Date.now() }).catch(console.error);
+        setDoc(userRef, { ...local, lastUpdated: Date.now() }).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, path);
+        });
         onUpdate(local);
       }
     },
     (err) => {
       console.error('Firestore subscription error:', err);
       onError(err);
+      handleFirestoreError(err, OperationType.GET, path);
     }
   );
 }
 
 export async function saveUserDataToCloud(userId: string, data: UserAppData): Promise<void> {
+  const path = `users/${userId}`;
   const userRef = doc(db, 'users', userId);
-  await setDoc(userRef, { ...data, lastUpdated: Date.now() }, { merge: true });
+  try {
+    await setDoc(userRef, { ...data, lastUpdated: Date.now() }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }

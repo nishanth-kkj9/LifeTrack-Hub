@@ -129,6 +129,50 @@ class MemorySqlDriver : SqlDriver {
                     toRemove.forEach { subtasks.remove(it) }
                 }
             }
+            upper.startsWith("INSERT OR REPLACE INTO SYNC_OUTBOX") || upper.startsWith("INSERT INTO SYNC_OUTBOX") -> {
+                val table = tables.getOrPut("sync_outbox") { mutableMapOf() }
+                val id = bindArgs[0]?.toString() ?: return
+                val row = mutableMapOf<String, Any?>(
+                    "id" to bindArgs.getOrNull(0),
+                    "entity_type" to bindArgs.getOrNull(1),
+                    "entity_id" to bindArgs.getOrNull(2),
+                    "operation" to bindArgs.getOrNull(3),
+                    "payload_encrypted" to bindArgs.getOrNull(4),
+                    "hlc_timestamp" to bindArgs.getOrNull(5),
+                    "created_at" to bindArgs.getOrNull(6),
+                    "retry_count" to (bindArgs.getOrNull(7) ?: 0),
+                    "last_error" to bindArgs.getOrNull(8),
+                    "status" to (bindArgs.getOrNull(9) ?: "PENDING")
+                )
+                table[id] = row
+            }
+            upper.startsWith("UPDATE SYNC_OUTBOX SET") -> {
+                val table = tables.getOrPut("sync_outbox") { mutableMapOf() }
+                if (upper.contains("STATUS = ?")) {
+                    val status = bindArgs.getOrNull(0)?.toString() ?: "PENDING"
+                    val retryCount = bindArgs.getOrNull(1) as? Number ?: 0
+                    val lastError = bindArgs.getOrNull(2)?.toString()
+                    val id = bindArgs.getOrNull(3)?.toString() ?: return
+                    val existing = table[id]
+                    if (existing != null) {
+                        existing["status"] = status
+                        existing["retry_count"] = retryCount
+                        existing["last_error"] = lastError
+                    }
+                }
+            }
+            upper.startsWith("DELETE FROM SYNC_OUTBOX") -> {
+                val table = tables.getOrPut("sync_outbox") { mutableMapOf() }
+                if (upper.contains("WHERE ID = ?")) {
+                    val id = bindArgs.getOrNull(0)?.toString()
+                    if (id != null) table.remove(id)
+                } else {
+                    for (arg in bindArgs) {
+                        val id = arg?.toString()
+                        if (id != null) table.remove(id)
+                    }
+                }
+            }
         }
     }
 
@@ -202,6 +246,37 @@ class MemorySqlDriver : SqlDriver {
                     val cursor = MemoryCursor(listOf(values))
                     while (cursor.next()) {
                         results.add(mapper(cursor))
+                    }
+                }
+            }
+            upper.contains("FROM SYNC_OUTBOX") -> {
+                val outboxTable = tables["sync_outbox"] ?: emptyMap()
+
+                if (upper.contains("MAX(HLC_TIMESTAMP)") || upper.contains("ORDER BY HLC_TIMESTAMP DESC")) {
+                    val maxHlc = outboxTable.values.mapNotNull { it["hlc_timestamp"]?.toString() }.maxOrNull()
+                    val cursor = MemoryCursor(listOf(listOf(maxHlc)))
+                    while (cursor.next()) {
+                        results.add(mapper(cursor))
+                    }
+                } else {
+                    val filterStatus = if (upper.contains("STATUS = ?")) bindArgs.getOrNull(0)?.toString() else null
+                    val rows = outboxTable.values
+                        .filter { row ->
+                            filterStatus == null || row["status"]?.toString() == filterStatus
+                        }
+                        .sortedBy { (it["created_at"] as? Number)?.toLong() ?: 0L }
+
+                    for (row in rows) {
+                        val values = listOf(
+                            row["id"], row["entity_type"], row["entity_id"],
+                            row["operation"], row["payload_encrypted"], row["hlc_timestamp"],
+                            row["created_at"], row["retry_count"], row["last_error"],
+                            row["status"]
+                        )
+                        val cursor = MemoryCursor(listOf(values))
+                        while (cursor.next()) {
+                            results.add(mapper(cursor))
+                        }
                     }
                 }
             }

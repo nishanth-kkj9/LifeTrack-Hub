@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "UserAppData": {
+      "title": "UserAppData",
+      "description": "Root user state encompassing tasks, transactions, budget, exams, habits, notes, and VTU academic profile.",
+      "type": "object",
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "description": "List of user tasks and subtasks"
+        },
+        "transactions": {
+          "type": "array",
+          "description": "List of income and expense transactions"
+        },
+        "budget": {
+          "type": "object",
+          "description": "Monthly budget and savings target settings"
+        },
+        "exams": {
+          "type": "array",
+          "description": "Exam schedule, study guides, and topics"
+        },
+        "habits": {
+          "type": "array",
+          "description": "Habit trackers with streaks and completed dates"
+        },
+        "notes": {
+          "type": "array",
+          "description": "Quick notes and formula sheets"
+        },
+        "vtuProfile": {
+          "type": "object",
+          "description": "VTU student profile with SGPA, attendance, and scheme details"
+        },
+        "masterPlan": {
+          "type": "string",
+          "description": "Optional AI-generated or custom master study plan",
+          "maxLength": 50000
+        },
+        "lastUpdated": {
+          "type": "number",
+          "description": "Epoch millisecond timestamp of the last modification"
+        }
+      },
+      "required": ["tasks", "transactions", "budget", "exams", "habits", "notes"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserAppData",
+      "description": "Private user root document holding all application data isolated strictly to the authenticated owner"
+    }
+  }
+}

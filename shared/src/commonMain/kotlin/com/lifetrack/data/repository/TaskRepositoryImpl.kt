@@ -1,5 +1,6 @@
 package com.lifetrack.data.repository
 
+import com.lifetrack.core.HlcTimestamp
 import com.lifetrack.core.SystemTimeProvider
 import com.lifetrack.core.TimeProvider
 import com.lifetrack.data.local.TaskLocalDataSource
@@ -9,12 +10,16 @@ import com.lifetrack.domain.model.TaskMetrics
 import com.lifetrack.domain.model.TaskPriority
 import com.lifetrack.domain.model.TaskStatus
 import com.lifetrack.domain.repository.TaskRepository
+import com.lifetrack.sync.SyncRecord
+import com.lifetrack.sync.SyncRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class TaskRepositoryImpl(
     private val localDataSource: TaskLocalDataSource,
-    private val timeProvider: TimeProvider = SystemTimeProvider()
+    private val timeProvider: TimeProvider = SystemTimeProvider(),
+    private val syncRepository: SyncRepository? = null,
+    private val nodeId: String = "local-device"
 ) : TaskRepository {
 
     override fun observeAllTasks(): Flow<List<Task>> =
@@ -51,7 +56,9 @@ class TaskRepositoryImpl(
             updatedAtEpochMs = now,
             isSyncPending = true
         )
-        return localDataSource.upsertTask(prepared)
+        val saved = localDataSource.upsertTask(prepared)
+        enqueueTaskSync(saved, "UPSERT")
+        return saved
     }
 
     override suspend fun updateTask(task: Task): Task {
@@ -60,11 +67,29 @@ class TaskRepositoryImpl(
             updatedAtEpochMs = now,
             isSyncPending = true
         )
-        return localDataSource.upsertTask(prepared)
+        val updated = localDataSource.upsertTask(prepared)
+        enqueueTaskSync(updated, "UPSERT")
+        return updated
     }
 
-    override suspend fun deleteTask(id: String): Boolean =
-        localDataSource.deleteTask(id)
+    override suspend fun deleteTask(id: String): Boolean {
+        val deleted = localDataSource.deleteTask(id)
+        if (deleted) {
+            val now = timeProvider.nowEpochMs()
+            syncRepository?.enqueueRecord(
+                SyncRecord(
+                    id = "sync-task-$id-$now",
+                    entityType = "TASK",
+                    entityId = id,
+                    operation = "DELETE",
+                    payloadEncrypted = id.encodeToByteArray(),
+                    hlcTimestamp = HlcTimestamp.now(nodeId, timeProvider).toString(),
+                    createdAt = now
+                )
+            )
+        }
+        return deleted
+    }
 
     override suspend fun toggleTaskCompletion(id: String): Task? {
         val current = localDataSource.getTaskById(id) ?: return null
@@ -76,11 +101,29 @@ class TaskRepositoryImpl(
             updatedAtEpochMs = now,
             isSyncPending = true
         )
-        return localDataSource.upsertTask(updated)
+        val saved = localDataSource.upsertTask(updated)
+        enqueueTaskSync(saved, "UPSERT")
+        return saved
     }
 
-    override suspend fun addSubtask(taskId: String, subtask: Subtask): Task? =
-        localDataSource.upsertSubtask(subtask)
+    override suspend fun addSubtask(taskId: String, subtask: Subtask): Task? {
+        val updated = localDataSource.upsertSubtask(subtask)
+        if (updated != null) {
+            val now = timeProvider.nowEpochMs()
+            syncRepository?.enqueueRecord(
+                SyncRecord(
+                    id = "sync-subtask-${subtask.id}-$now",
+                    entityType = "SUBTASK",
+                    entityId = subtask.id,
+                    operation = "UPSERT",
+                    payloadEncrypted = "${subtask.id}:${subtask.taskId}:${subtask.title}:${subtask.completed}".encodeToByteArray(),
+                    hlcTimestamp = HlcTimestamp.now(nodeId, timeProvider).toString(),
+                    createdAt = now
+                )
+            )
+        }
+        return updated
+    }
 
     override suspend fun toggleSubtask(taskId: String, subtaskId: String): Task? {
         val parent = localDataSource.getTaskById(taskId) ?: return null
@@ -89,9 +132,55 @@ class TaskRepositoryImpl(
             completed = !sub.completed,
             updatedAtEpochMs = timeProvider.nowEpochMs()
         )
-        return localDataSource.upsertSubtask(updatedSub)
+        val updated = localDataSource.upsertSubtask(updatedSub)
+        if (updated != null) {
+            val now = timeProvider.nowEpochMs()
+            syncRepository?.enqueueRecord(
+                SyncRecord(
+                    id = "sync-subtask-$subtaskId-$now",
+                    entityType = "SUBTASK",
+                    entityId = subtaskId,
+                    operation = "UPSERT",
+                    payloadEncrypted = "${updatedSub.id}:${updatedSub.taskId}:${updatedSub.title}:${updatedSub.completed}".encodeToByteArray(),
+                    hlcTimestamp = HlcTimestamp.now(nodeId, timeProvider).toString(),
+                    createdAt = now
+                )
+            )
+        }
+        return updated
     }
 
-    override suspend fun deleteSubtask(taskId: String, subtaskId: String): Task? =
-        localDataSource.deleteSubtask(taskId, subtaskId)
+    override suspend fun deleteSubtask(taskId: String, subtaskId: String): Task? {
+        val updated = localDataSource.deleteSubtask(taskId, subtaskId)
+        if (updated != null) {
+            val now = timeProvider.nowEpochMs()
+            syncRepository?.enqueueRecord(
+                SyncRecord(
+                    id = "sync-subtask-del-$subtaskId-$now",
+                    entityType = "SUBTASK",
+                    entityId = subtaskId,
+                    operation = "DELETE",
+                    payloadEncrypted = subtaskId.encodeToByteArray(),
+                    hlcTimestamp = HlcTimestamp.now(nodeId, timeProvider).toString(),
+                    createdAt = now
+                )
+            )
+        }
+        return updated
+    }
+
+    private suspend fun enqueueTaskSync(task: Task, operation: String) {
+        val now = timeProvider.nowEpochMs()
+        syncRepository?.enqueueRecord(
+            SyncRecord(
+                id = "sync-task-${task.id}-$now",
+                entityType = "TASK",
+                entityId = task.id,
+                operation = operation,
+                payloadEncrypted = "${task.id}:${task.title}:${task.status}:${task.priority}".encodeToByteArray(),
+                hlcTimestamp = HlcTimestamp.now(nodeId, timeProvider).toString(),
+                createdAt = now
+            )
+        )
+    }
 }

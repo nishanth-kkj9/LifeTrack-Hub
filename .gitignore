@@ -15,6 +15,7 @@ bin/
 out/
 local.properties
 .gradle-cache/
+.jdk/
 
 # IDE files
 .idea/

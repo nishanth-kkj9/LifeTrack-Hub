@@ -5,10 +5,34 @@ package com.lifetrack.data.local.db
  */
 object TaskDatabaseSchema {
 
-    const val CURRENT_VERSION: Int = 1
+    const val CURRENT_VERSION: Int = 2
 
     val MIGRATIONS: List<DatabaseMigration> = listOf(
-        // Future migrations (e.g. 1 -> 2, 2 -> 3) will be registered here.
+        object : DatabaseMigration {
+            override val startVersion: Int = 1
+            override val endVersion: Int = 2
+            override fun migrate(driver: SqlDriver) {
+                driver.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS sync_outbox (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        entity_type TEXT NOT NULL,
+                        entity_id TEXT NOT NULL,
+                        operation TEXT NOT NULL,
+                        payload_encrypted TEXT NOT NULL,
+                        hlc_timestamp TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        retry_count INTEGER NOT NULL DEFAULT 0,
+                        last_error TEXT,
+                        status TEXT NOT NULL DEFAULT 'PENDING'
+                    );
+                    """.trimIndent()
+                )
+                driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_status ON sync_outbox(status);")
+                driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_created_at ON sync_outbox(created_at);")
+                driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_entity ON sync_outbox(entity_type, entity_id);")
+            }
+        }
     )
 
     fun initializeSchema(driver: SqlDriver) {
@@ -99,5 +123,25 @@ object TaskDatabaseSchema {
         driver.execute("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);")
         driver.execute("CREATE INDEX IF NOT EXISTS idx_tasks_is_deleted ON tasks(is_deleted);")
         driver.execute("CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id);")
+
+        driver.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_outbox (
+                id TEXT PRIMARY KEY NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                payload_encrypted TEXT NOT NULL,
+                hlc_timestamp TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                status TEXT NOT NULL DEFAULT 'PENDING'
+            );
+            """.trimIndent()
+        )
+        driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_status ON sync_outbox(status);")
+        driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_created_at ON sync_outbox(created_at);")
+        driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_entity ON sync_outbox(entity_type, entity_id);")
     }
 }
