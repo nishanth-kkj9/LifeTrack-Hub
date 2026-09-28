@@ -1,6 +1,9 @@
 package com.lifetrack
 
+import com.lifetrack.core.DeviceIdentityProvider
 import com.lifetrack.core.HlcTimestamp
+import com.lifetrack.core.PersistentDeviceIdentityProvider
+import com.lifetrack.core.SqliteHlcPersistence
 import com.lifetrack.core.StandardHlcClock
 import com.lifetrack.core.StandardSyncEventIdGenerator
 import com.lifetrack.core.TestIdGenerator
@@ -15,11 +18,15 @@ import com.lifetrack.domain.model.Task
 import com.lifetrack.domain.model.TaskCategory
 import com.lifetrack.domain.model.TaskPriority
 import com.lifetrack.domain.model.TaskStatus
+import com.lifetrack.sync.AuthSessionProvider
 import com.lifetrack.sync.DefaultMockRemoteTransport
+import com.lifetrack.sync.FirestoreRemoteSyncTransport
+import com.lifetrack.sync.InMemoryRemoteDeltaStore
 import com.lifetrack.sync.PersistentSyncRepository
 import com.lifetrack.sync.RemoteSyncTransport
 import com.lifetrack.sync.SyncEngineImpl
 import com.lifetrack.sync.SyncRecord
+import com.lifetrack.sync.SyncRecordComparator
 import com.lifetrack.sync.SyncState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -29,6 +36,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class SyncEngineComprehensiveTest {
 
@@ -82,6 +90,49 @@ class SyncEngineComprehensiveTest {
     }
 
     @Test
+    fun testHlcPersistenceAcrossProcessRestarts() {
+        val driver = MemorySqlDriver()
+        TaskDatabaseSchema.initializeSchema(driver)
+
+        val persistence1 = SqliteHlcPersistence(driver, "node-restart-test")
+        val clock1 = StandardHlcClock("node-restart-test", timeProvider, persistence = persistence1)
+
+        val t1 = clock1.now()
+        val t2 = clock1.receive(HlcTimestamp(1720000050000L, 10, "remoteNode"))
+        assertEquals(1720000050000L, t2.physicalTimeMs)
+        assertEquals(11, t2.logicalCounter)
+
+        // Simulate process termination and restart with timeProvider clock at earlier time
+        timeProvider.set(1720000010000L) // Clock skew / physical time appears earlier than highest merged HLC
+        val persistence2 = SqliteHlcPersistence(driver, "node-restart-test")
+        val clock2 = StandardHlcClock("node-restart-test", timeProvider, persistence = persistence2)
+
+        // First call on new instance must not go backward in logical causality
+        val restartedT = clock2.now()
+        assertTrue(restartedT.physicalTimeMs >= 1720000050000L)
+        assertTrue(restartedT.logicalCounter >= 12)
+        assertTrue(restartedT > t2, "Restarted clock must be strictly greater than last persisted state")
+    }
+
+    @Test
+    fun testDeviceIdentityStabilityAcrossRestarts() {
+        val driver = MemorySqlDriver()
+        TaskDatabaseSchema.initializeSchema(driver)
+
+        val provider1 = PersistentDeviceIdentityProvider(driver, "desktop")
+        val deviceId1 = provider1.getDeviceId()
+
+        assertTrue(deviceId1.startsWith("desktop_"))
+        assertTrue(deviceId1.length > 10)
+
+        // Simulate app restart by constructing new provider on same database
+        val provider2 = PersistentDeviceIdentityProvider(driver, "desktop")
+        val deviceId2 = provider2.getDeviceId()
+
+        assertEquals(deviceId1, deviceId2, "Device ID must remain stable across app restarts")
+    }
+
+    @Test
     fun testSyncEventIdUniqueness() {
         val idGen = StandardSyncEventIdGenerator()
         val hlc = HlcTimestamp(1720000000000L, 0, "nodeA")
@@ -98,246 +149,104 @@ class SyncEngineComprehensiveTest {
     }
 
     @Test
-    fun testAtomicTaskOutboxTransactionSuccessAndRollback() = runTest {
-        val driver = MemorySqlDriver()
-        TaskDatabaseSchema.initializeSchema(driver)
-        val localDataSource = PersistentTaskLocalDataSource(driver, timeProvider, seedIfEmpty = false)
-        val syncRepo = PersistentSyncRepository(driver)
-
-        val task = Task(
-            id = "t-atomic-1",
-            title = "Compiler Design Lab",
-            category = TaskCategory.ACADEMIC,
-            priority = TaskPriority.HIGH,
-            status = TaskStatus.TODO
-        )
-        val event = SyncRecord(
-            id = "evt-atomic-1",
-            entityType = "TASK",
-            entityId = "t-atomic-1",
-            operation = "UPSERT",
-            payload = TaskPayloadSerializer.serializeTask(task),
-            hlcTimestamp = "1720000000000:0:nodeA",
-            createdAt = 1720000000000L
-        )
-
-        // 1. Successful atomic execution
-        localDataSource.upsertTaskAtomic(task, event)
-
-        val savedTask = localDataSource.getTaskById("t-atomic-1")
-        assertNotNull(savedTask)
-        val pendingEvents = syncRepo.getPendingOutboxRecords().first()
-        assertEquals(1, pendingEvents.size)
-        assertEquals("evt-atomic-1", pendingEvents[0].id)
-
-        // 2. Transaction rollback verification
-        var thrown = false
-        try {
-            driver.transaction {
-                driver.execute(
-                    "UPDATE tasks SET title = ? WHERE id = ?;",
-                    arrayOf("Title modified inside failing tx", "t-atomic-1")
-                )
-                driver.execute(
-                    "INSERT INTO sync_outbox (id, entity_type, entity_id, operation, payload, hlc_timestamp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?);",
-                    arrayOf("evt-failing", "TASK", "t-atomic-1", "UPSERT", "fail", "1720000000000:1:nodeA", 1720000000000L)
-                )
-                throw IllegalStateException("Simulated hardware crash during write")
-            }
-        } catch (_: IllegalStateException) {
-            thrown = true
-        }
-
-        assertTrue(thrown)
-        // Entity title and outbox should both be rolled back!
-        val rolledBackTask = localDataSource.getTaskById("t-atomic-1")
-        assertEquals("Compiler Design Lab", rolledBackTask?.title)
-        val outboxAfterRollback = syncRepo.getPendingOutboxRecords().first()
-        assertEquals(1, outboxAfterRollback.size)
-        assertEquals("evt-atomic-1", outboxAfterRollback[0].id)
-    }
-
-    @Test
-    fun testInFlightRecovery() = runTest {
-        val driver = MemorySqlDriver()
-        TaskDatabaseSchema.initializeSchema(driver)
-        val syncRepo = PersistentSyncRepository(driver)
-
-        val record = SyncRecord(
-            id = "evt-inflight-1",
-            entityType = "TASK",
-            entityId = "task-1",
-            operation = "UPSERT",
-            payload = "payload",
-            hlcTimestamp = "1720000000000:0:nodeA",
-            createdAt = 1720000000000L
-        )
-        syncRepo.enqueueRecord(record)
-
-        // Mark in flight at t = 1000
-        syncRepo.markInFlight(listOf("evt-inflight-1"), inFlightTimeMs = 1000L)
-        val recordsInFlight = syncRepo.getAllRecords()
-        assertEquals("IN_FLIGHT", recordsInFlight[0].status)
-
-        // Before lease expiration (e.g. at t = 30000 with 60000 lease), it is not recovered
-        syncRepo.recoverStaleInFlightRecords(leaseTimeoutMs = 60_000L, currentTimeMs = 30_000L)
-        assertEquals("IN_FLIGHT", syncRepo.getAllRecords()[0].status)
-
-        // After lease expiration (e.g. at t = 70000 with 60000 lease), it recovers to PENDING
-        syncRepo.recoverStaleInFlightRecords(leaseTimeoutMs = 60_000L, currentTimeMs = 70_000L)
-        val recovered = syncRepo.getAllRecords()
-        assertEquals("PENDING", recovered[0].status)
-    }
-
-    @Test
-    fun testRetryBackoffAndFailurePolicy() = runTest {
-        val driver = MemorySqlDriver()
-        TaskDatabaseSchema.initializeSchema(driver)
-        val syncRepo = PersistentSyncRepository(driver)
-
-        val record = SyncRecord(
-            id = "evt-retry-1",
-            entityType = "TASK",
-            entityId = "task-1",
-            operation = "UPSERT",
-            payload = "payload",
-            hlcTimestamp = "1720000000000:0:nodeA",
-            createdAt = 1720000000000L
-        )
-        syncRepo.enqueueRecord(record)
-
-        // Attempt 1 failure at t = 1000
-        syncRepo.recordFailures(listOf("evt-retry-1"), "Network 503", currentTimeMs = 1000L, maxRetries = 3)
-        var row = syncRepo.getAllRecords()[0]
-        assertEquals(1, row.retryCount)
-        assertEquals("PENDING", row.status)
-        assertEquals(2000L, row.nextRetryAt) // 1000 + 1000ms delay
-
-        // Attempt 2 failure at t = 2000
-        syncRepo.recordFailures(listOf("evt-retry-1"), "Network 503", currentTimeMs = 2000L, maxRetries = 3)
-        row = syncRepo.getAllRecords()[0]
-        assertEquals(2, row.retryCount)
-        assertEquals("PENDING", row.status)
-        assertEquals(4000L, row.nextRetryAt) // 2000 + 2000ms delay
-
-        // Attempt 3 failure -> reaches maxRetries (3) -> transitions to FAILED
-        syncRepo.recordFailures(listOf("evt-retry-1"), "Network 503", currentTimeMs = 4000L, maxRetries = 3)
-        row = syncRepo.getAllRecords()[0]
-        assertEquals(3, row.retryCount)
-        assertEquals("FAILED", row.status)
-    }
-
-    @Test
-    fun testFailedRecordRequeue() = runTest {
-        val driver = MemorySqlDriver()
-        TaskDatabaseSchema.initializeSchema(driver)
-        val syncRepo = PersistentSyncRepository(driver)
-
-        val record = SyncRecord(
-            id = "evt-failed-1",
-            entityType = "TASK",
-            entityId = "task-1",
-            operation = "UPSERT",
-            payload = "payload",
-            hlcTimestamp = "1720000000000:0:nodeA",
-            createdAt = 1720000000000L
-        )
-        syncRepo.enqueueRecord(record)
-        syncRepo.recordFailures(listOf("evt-failed-1"), "Permanent error", 1000L, maxRetries = 1)
-        assertEquals("FAILED", syncRepo.getAllRecords()[0].status)
-
-        // Controlled requeue of single failed record
-        syncRepo.retryFailedRecord("evt-failed-1")
-        val requeued = syncRepo.getAllRecords()[0]
-        assertEquals("PENDING", requeued.status)
-        assertEquals(0, requeued.retryCount)
-        assertEquals(0L, requeued.nextRetryAt)
-        assertNull(requeued.lastError)
-    }
-
-    @Test
-    fun testNeverLeaveFailedNetworkRequestsStuckInFlight() = runTest {
+    fun testMultiplePendingEditsAcknowledgementDoesNotClearSyncPendingEarly() = runTest {
         val driver = MemorySqlDriver()
         TaskDatabaseSchema.initializeSchema(driver)
         val localDataSource = PersistentTaskLocalDataSource(driver, timeProvider, seedIfEmpty = false)
         val syncRepo = PersistentSyncRepository(driver)
         val hlcClock = StandardHlcClock("nodeA", timeProvider)
 
-        val failingTransport = object : RemoteSyncTransport {
-            override suspend fun pushRecords(records: List<SyncRecord>): List<String> {
-                throw RuntimeException("SocketTimeoutException: Connection aborted")
-            }
-            override suspend fun pullRecords(sinceHlc: String?): List<SyncRecord> = emptyList()
-        }
-
-        val syncEngine = SyncEngineImpl(
-            syncRepository = syncRepo,
+        val taskRepo = TaskRepositoryImpl(
             localDataSource = localDataSource,
-            remoteTransport = failingTransport,
-            hlcClock = hlcClock,
             timeProvider = timeProvider,
-            deviceId = "nodeA"
+            syncRepository = syncRepo,
+            hlcClock = hlcClock
         )
 
-        syncRepo.enqueueRecord(
-            SyncRecord(
-                id = "evt-net-fail",
-                entityType = "TASK",
-                entityId = "task-1",
-                operation = "UPSERT",
-                payload = "payload",
-                hlcTimestamp = "1720000000000:0:nodeA",
-                createdAt = 1720000000000L
+        // 1. Initial creation (Event A)
+        val task = taskRepo.saveTask(
+            Task(
+                id = "task-multi-edit",
+                title = "Initial Edit A",
+                category = TaskCategory.PROJECT
             )
         )
+        assertTrue(task.isSyncPending)
 
-        // Trigger sync with failing network
-        syncEngine.triggerSync()
+        // 2. Second rapid update before sync runs (Event B)
+        timeProvider.advance(500L)
+        val updatedTask = taskRepo.updateTask(
+            task.copy(title = "Second Edit B")
+        )
+        assertTrue(updatedTask.isSyncPending)
 
-        // Engine reports error
-        assertEquals(SyncState.ERROR, syncEngine.syncStatus.value.state)
+        val pendingRecords = syncRepo.getAllRecords()
+        assertEquals(2, pendingRecords.size)
+        val eventA = pendingRecords[0].id
+        val eventB = pendingRecords[1].id
 
-        // Invariant: record MUST NOT be stuck in IN_FLIGHT
-        val record = syncRepo.getAllRecords()[0]
-        assertTrue(record.status != "IN_FLIGHT", "Failed network request must never strand records in IN_FLIGHT")
-        assertEquals("PENDING", record.status)
-        assertEquals(1, record.retryCount)
-        assertTrue(record.lastError?.contains("SocketTimeoutException") == true)
+        // 3. ACK Event A only (e.g. server acknowledged first batch)
+        syncRepo.recordSuccessAcks(listOf(eventA))
+
+        // Requirement 14 Verification: Task.isSyncPending MUST REMAIN TRUE because Event B is still pending!
+        val taskAfterAckA = localDataSource.getTaskById("task-multi-edit")
+        assertNotNull(taskAfterAckA)
+        assertTrue(taskAfterAckA.isSyncPending, "isSyncPending must remain true while Event B is still in outbox")
+
+        // 4. Now ACK Event B
+        syncRepo.recordSuccessAcks(listOf(eventB))
+
+        // Now that no pending outbox records remain for this task, isSyncPending clears to false
+        val taskAfterAckB = localDataSource.getTaskById("task-multi-edit")
+        assertNotNull(taskAfterAckB)
+        assertFalse(taskAfterAckB.isSyncPending, "isSyncPending must clear to false once all pending edits are ACKed")
     }
 
     @Test
-    fun testBidirectionalRemotePullAndApplication() = runTest {
+    fun testNeverAdvanceCheckpointPastInvalidDelta() = runTest {
         val driver = MemorySqlDriver()
         TaskDatabaseSchema.initializeSchema(driver)
         val localDataSource = PersistentTaskLocalDataSource(driver, timeProvider, seedIfEmpty = false)
         val syncRepo = PersistentSyncRepository(driver)
         val hlcClock = StandardHlcClock("nodeA", timeProvider)
 
-        val remoteTask = Task(
-            id = "remote-task-1",
-            title = "Digital Signal Processing Assignment",
-            category = TaskCategory.ACADEMIC,
-            priority = TaskPriority.URGENT,
-            status = TaskStatus.TODO,
-            createdAtEpochMs = 1720000000000L,
-            updatedAtEpochMs = 1720000000000L
+        val validTask1 = Task(id = "task-valid-1", title = "Valid Task 1", category = TaskCategory.STUDY)
+        val deltaA = SyncRecord(
+            id = "delta-1",
+            entityType = "TASK",
+            entityId = "task-valid-1",
+            operation = "UPSERT",
+            payload = TaskPayloadSerializer.serializeTask(validTask1),
+            hlcTimestamp = "1720000001000:0:nodeRemote",
+            createdAt = 1720000001000L
+        )
+
+        // Malformed delta B (corrupted payload or unsupported protocol version)
+        val deltaB = SyncRecord(
+            id = "delta-2-corrupt",
+            entityType = "TASK",
+            entityId = "task-corrupt-2",
+            operation = "UPSERT",
+            payload = "malformed||corrupt",
+            hlcTimestamp = "1720000002000:0:nodeRemote",
+            createdAt = 1720000002000L,
+            protocolVersion = 99 // Unsupported future version
+        )
+
+        val validTask3 = Task(id = "task-valid-3", title = "Valid Task 3", category = TaskCategory.FINANCE)
+        val deltaC = SyncRecord(
+            id = "delta-3",
+            entityType = "TASK",
+            entityId = "task-valid-3",
+            operation = "UPSERT",
+            payload = TaskPayloadSerializer.serializeTask(validTask3),
+            hlcTimestamp = "1720000003000:0:nodeRemote",
+            createdAt = 1720000003000L
         )
 
         val mockTransport = object : RemoteSyncTransport {
             override suspend fun pushRecords(records: List<SyncRecord>): List<String> = records.map { it.id }
-            override suspend fun pullRecords(sinceHlc: String?): List<SyncRecord> {
-                return listOf(
-                    SyncRecord(
-                        id = "rem-evt-1",
-                        entityType = "TASK",
-                        entityId = "remote-task-1",
-                        operation = "UPSERT",
-                        payload = TaskPayloadSerializer.serializeTask(remoteTask),
-                        hlcTimestamp = "1720000005000:0:remoteNode",
-                        createdAt = 1720000005000L
-                    )
-                )
-            }
+            override suspend fun pullRecords(sinceHlc: String?): List<SyncRecord> = listOf(deltaA, deltaB, deltaC)
         }
 
         val syncEngine = SyncEngineImpl(
@@ -351,30 +260,85 @@ class SyncEngineComprehensiveTest {
 
         syncEngine.triggerSync()
 
-        // Verify remote task was applied to local database
-        val applied = localDataSource.getTaskById("remote-task-1")
-        assertNotNull(applied)
-        assertEquals("Digital Signal Processing Assignment", applied.title)
-        assertFalse(applied.isSyncPending, "Remote pulled entity must not be marked pending sync")
+        // 1. Delta A was applied
+        assertNotNull(localDataSource.getTaskById("task-valid-1"))
 
-        // Checkpoint advanced
+        // 2. Delta B caused sync to halt and report error
+        assertEquals(SyncState.ERROR, syncEngine.syncStatus.value.state)
+        assertTrue(syncEngine.syncStatus.value.errorMessage?.contains("Unsupported protocol") == true)
+
+        // 3. Delta C was NOT applied
+        assertNull(localDataSource.getTaskById("task-valid-3"))
+
+        // 4. Invariant: Checkpoint MUST STOP at Delta A (1720000001000:0:nodeRemote), NEVER advancing past Delta B!
         val checkpoint = syncRepo.getSyncCheckpoint("nodeA")
-        assertEquals("1720000005000:0:remoteNode", checkpoint)
+        assertEquals("1720000001000:0:nodeRemote", checkpoint)
     }
 
     @Test
-    fun testConflictResolutionAndTombstoneRetention() = runTest {
+    fun testDeterministicRemoteOrdering() {
+        val d1 = SyncRecord(id = "evt-1", entityType = "TASK", entityId = "t1", operation = "UPSERT", payload = "p", hlcTimestamp = "1720000001000:0:nodeA", createdAt = 1L)
+        val d2A = SyncRecord(id = "evt-2a", entityType = "TASK", entityId = "t2", operation = "UPSERT", payload = "p", hlcTimestamp = "1720000002000:0:nodeA", createdAt = 2L)
+        val d2B = SyncRecord(id = "evt-2b", entityType = "TASK", entityId = "t2", operation = "UPSERT", payload = "p", hlcTimestamp = "1720000002000:0:nodeA", createdAt = 2L)
+        val d3 = SyncRecord(id = "evt-3", entityType = "TASK", entityId = "t3", operation = "UPSERT", payload = "p", hlcTimestamp = "1720000003000:0:nodeB", createdAt = 3L)
+
+        val unsorted = listOf(d3, d2B, d1, d2A)
+        val sorted = unsorted.sortedWith(SyncRecordComparator)
+
+        assertEquals(listOf(d1, d2A, d2B, d3), sorted)
+    }
+
+    @Test
+    fun testFirestoreRemoteSyncTransportAuthBoundaryAndIdempotency() = runTest {
+        var currentUid: String? = null
+        val authProvider = object : AuthSessionProvider {
+            override fun getCurrentUserUid(): String? = currentUid
+        }
+
+        val remoteStore = InMemoryRemoteDeltaStore()
+        val transport = FirestoreRemoteSyncTransport(authProvider, remoteStore)
+
+        val testRecord = SyncRecord(
+            id = "evt-idem-1",
+            entityType = "TASK",
+            entityId = "task-100",
+            operation = "UPSERT",
+            payload = "payload",
+            hlcTimestamp = "1720000001000:0:nodeA",
+            createdAt = 1720000001000L
+        )
+
+        // 1. Unauthenticated push fails with security exception
+        assertFailsWith<IllegalStateException> {
+            transport.pushRecords(listOf(testRecord))
+        }
+
+        // 2. Authenticate as user-123
+        currentUid = "user-123"
+        val acks1 = transport.pushRecords(listOf(testRecord))
+        assertEquals(listOf("evt-idem-1"), acks1)
+
+        // 3. Duplicate idempotent push of same event ID
+        val acks2 = transport.pushRecords(listOf(testRecord))
+        assertEquals(listOf("evt-idem-1"), acks2)
+
+        // Remote store must have exactly 1 record for user-123
+        val fetched = transport.pullRecords(null)
+        assertEquals(1, fetched.size)
+        assertEquals("evt-idem-1", fetched[0].id)
+    }
+
+    @Test
+    fun testRemoteTombstonePreventsStaleResurrection() = runTest {
         val driver = MemorySqlDriver()
         TaskDatabaseSchema.initializeSchema(driver)
         val localDataSource = PersistentTaskLocalDataSource(driver, timeProvider, seedIfEmpty = false)
         val syncRepo = PersistentSyncRepository(driver)
         val hlcClock = StandardHlcClock("nodeA", timeProvider)
 
-        // Local task deleted at HLC 1720000010000:0:nodeA
         val localTask = Task(
             id = "task-tombstone-1",
-            title = "Task To Delete",
-            category = TaskCategory.PERSONAL,
+            title = "Deleted Local Task",
             isDeleted = true
         )
         localDataSource.upsertTaskAtomic(

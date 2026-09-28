@@ -81,8 +81,10 @@ fun main() = application {
     val localDataSource = remember { PersistentTaskLocalDataSource(sqlDriver, timeProvider) }
     val syncRepository = remember { PersistentSyncRepository(sqlDriver) }
 
-    val deviceId = remember { "desktop_${System.getProperty("user.name", "user")}" }
-    val hlcClock = remember { StandardHlcClock(deviceId, timeProvider) }
+    val deviceIdentityProvider = remember { com.lifetrack.core.PersistentDeviceIdentityProvider(sqlDriver, "desktop", idGenerator) }
+    val deviceId = remember { deviceIdentityProvider.getDeviceId() }
+    val hlcPersistence = remember { com.lifetrack.core.SqliteHlcPersistence(sqlDriver, deviceId) }
+    val hlcClock = remember { StandardHlcClock(deviceId, timeProvider, persistence = hlcPersistence) }
     val syncEventIdGenerator = remember { StandardSyncEventIdGenerator(idGenerator) }
 
     val taskRepository = remember {

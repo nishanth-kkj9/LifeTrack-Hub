@@ -19,17 +19,49 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Isolated user document space
+    function isValidSyncDelta(data, deltaId) {
+      return data.keys().hasAll(['id', 'entityType', 'entityId', 'operation', 'payload', 'hlcTimestamp', 'createdAt', 'originDeviceId', 'protocolVersion', 'schemaVersion'])
+        && data.id is string && data.id == deltaId && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.entityType is string && data.entityType in ['TASK', 'SUBTASK']
+        && data.entityId is string && data.entityId.size() <= 128 && data.entityId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.operation is string && data.operation in ['UPSERT', 'DELETE']
+        && data.payload is string && data.payload.size() <= 65536
+        && data.hlcTimestamp is string && data.hlcTimestamp.size() <= 128
+        && data.originDeviceId is string && data.originDeviceId.size() <= 128
+        && data.protocolVersion is number && data.protocolVersion >= 1
+        && data.schemaVersion is number && data.schemaVersion >= 1
+        && data.createdAt is number;
+    }
+
+    function isValidSyncState(data, deviceId) {
+      return data.keys().hasAll(['deviceId', 'lastPulledHlc', 'lastSuccessfulSyncTime'])
+        && data.deviceId is string && data.deviceId == deviceId && data.deviceId.size() <= 128 && data.deviceId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.lastPulledHlc is string && data.lastPulledHlc.size() <= 128
+        && data.lastSuccessfulSyncTime is number
+        && (!('lastError' in data) || (data.lastError is string && data.lastError.size() <= 1024));
+    }
+
+    // Canonical User Root Document (Legacy Web Compatibility)
     match /users/{userId} {
       allow get: if isValidId(userId) && isOwner(userId);
       allow list: if false;
       allow create, update, delete: if isValidId(userId) && isOwner(userId);
 
-      // Any nested subcollections strictly bound to the authenticated owner
-      match /{allSubcollections=**} {
-        allow read, write: if isValidId(userId) && isOwner(userId);
+      // Canonical KMP Remote Sync Delta Stream
+      match /deltas/{deltaId} {
+        allow get, list: if isValidId(userId) && isOwner(userId);
+        allow create: if isValidId(userId) && isOwner(userId) && isValidId(deltaId) && isValidSyncDelta(request.resource.data, deltaId);
+        // Event sourcing immutability guarantee: deltas can never be mutated or silently deleted
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Per-Device Sync Checkpoint State
+      match /syncState/{deviceId} {
+        allow get, list: if isValidId(userId) && isOwner(userId);
+        allow create, update: if isValidId(userId) && isOwner(userId) && isValidId(deviceId) && isValidSyncState(request.resource.data, deviceId);
+        allow delete: if isValidId(userId) && isOwner(userId);
       }
     }
   }
 }
-

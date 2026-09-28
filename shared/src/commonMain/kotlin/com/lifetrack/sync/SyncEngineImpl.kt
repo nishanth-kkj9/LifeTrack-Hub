@@ -14,15 +14,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Production implementation of the distributed synchronization engine for Android and Desktop.
+ * Production implementation of the distributed synchronization engine for Android, Desktop, and Web.
  *
  * Guarantees:
  * 1. Safe in-flight state tracking and automatic crash/lease recovery.
  * 2. Exponential retry backoff scheduling with persisted retry timestamps.
  * 3. Atomic outbox drain with failure containment (failed network calls never strand records in IN_FLIGHT).
  * 4. Durable remote synchronization checkpoint (never derived from outbox max).
- * 5. Full bidirectional conflict resolution applying remote winners to local persistence.
- * 6. Durable tombstone retention preventing resurrecting deleted entities.
+ * 5. Checkpoint safety: NEVER advances the checkpoint past malformed, invalid, or unsupported remote deltas.
+ * 6. Deterministic ordering: Deltas applied strictly in (HLC, event ID) order.
+ * 7. Idempotent push and pull: Duplicate events are safely handled without data corruption.
+ * 8. Full bidirectional Last-Write-Wins (LWW) conflict resolution using HLC causality.
+ * 9. Durable tombstones preventing resurrecting deleted entities.
  */
 class SyncEngineImpl(
     private val syncRepository: SyncRepository,
@@ -35,6 +38,11 @@ class SyncEngineImpl(
     private val maxRetries: Int = 5,
     private val inFlightLeaseMs: Long = 60_000L
 ) : SyncEngine {
+
+    companion object {
+        const val CURRENT_PROTOCOL_VERSION: Int = 1
+        const val CURRENT_SCHEMA_VERSION: Int = 1
+    }
 
     private val mutex = Mutex()
     private var isOfflineMode = false
@@ -140,7 +148,7 @@ class SyncEngineImpl(
             // Step 2: Pull remote deltas using the durable remote checkpoint
             val lastCheckpoint = syncRepository.getSyncCheckpoint(deviceId)
             val remoteDeltas = try {
-                remoteTransport.pullRecords(lastCheckpoint)
+                remoteTransport.pullRecords(lastCheckpoint).sortedWith(SyncRecordComparator)
             } catch (t: Throwable) {
                 val pending = syncRepository.getPendingOutboxRecords().first().size
                 _syncStatus.value = _syncStatus.value.copy(
@@ -152,19 +160,59 @@ class SyncEngineImpl(
             }
 
             // Step 3: Validate, conflict resolve, and apply remote deltas
+            // Invariant: The checkpoint must NEVER advance past invalid or unsupported deltas.
             var advancedCheckpoint = lastCheckpoint
+            var deltaProcessingError: String? = null
+
             for (delta in remoteDeltas) {
-                val remoteHlc = HlcTimestamp.fromString(delta.hlcTimestamp) ?: continue
-
-                // Merge causality into local clock
-                hlcClock.receive(remoteHlc)
-
-                // Track highest remote HLC seen to advance checkpoint
-                if (advancedCheckpoint == null || remoteHlc > (HlcTimestamp.fromString(advancedCheckpoint) ?: remoteHlc)) {
-                    advancedCheckpoint = delta.hlcTimestamp
+                // Validation 1: Protocol & Schema version compatibility
+                if (delta.protocolVersion > CURRENT_PROTOCOL_VERSION) {
+                    deltaProcessingError = "Unsupported protocol version ${delta.protocolVersion} on event ${delta.id}"
+                    break
+                }
+                if (delta.schemaVersion > CURRENT_SCHEMA_VERSION) {
+                    deltaProcessingError = "Unsupported schema version ${delta.schemaVersion} on event ${delta.id}"
+                    break
                 }
 
-                // Locate local entity version metadata
+                // Validation 2: Valid HLC format
+                val remoteHlc = HlcTimestamp.fromString(delta.hlcTimestamp)
+                if (remoteHlc == null) {
+                    deltaProcessingError = "Malformed HLC timestamp '${delta.hlcTimestamp}' on event ${delta.id}"
+                    break
+                }
+
+                // Validation 3: Known operation and entity types
+                if (delta.operation != "UPSERT" && delta.operation != "DELETE") {
+                    deltaProcessingError = "Unknown sync operation '${delta.operation}' on event ${delta.id}"
+                    break
+                }
+                if (delta.entityType != "TASK" && delta.entityType != "SUBTASK") {
+                    deltaProcessingError = "Unknown sync entity type '${delta.entityType}' on event ${delta.id}"
+                    break
+                }
+
+                // Validation 4: Payload deserialization correctness
+                if (delta.operation == "UPSERT") {
+                    if (delta.entityType == "TASK") {
+                        val parsedTask = TaskPayloadSerializer.deserializeTask(delta.payload)
+                        if (parsedTask == null) {
+                            deltaProcessingError = "Malformed task payload on event ${delta.id}"
+                            break
+                        }
+                    } else if (delta.entityType == "SUBTASK") {
+                        val parsedSubtask = TaskPayloadSerializer.deserializeSubtask(delta.payload)
+                        if (parsedSubtask == null) {
+                            deltaProcessingError = "Malformed subtask payload on event ${delta.id}"
+                            break
+                        }
+                    }
+                }
+
+                // Merge causality into local logical clock
+                hlcClock.receive(remoteHlc)
+
+                // Locate local entity version metadata for LWW evaluation
                 val localMetadata = localDataSource.getEntitySyncMetadata(delta.entityType, delta.entityId)
 
                 val shouldApplyRemote = if (localMetadata != null) {
@@ -192,22 +240,37 @@ class SyncEngineImpl(
                         }
                     }
                 }
+
+                // Safely advance checkpoint up to this successfully validated and processed delta
+                advancedCheckpoint = delta.hlcTimestamp
             }
 
-            // Advance durable remote checkpoint if remote updates were processed
+            // Step 4: Persist updated checkpoint
             if (advancedCheckpoint != null && advancedCheckpoint != lastCheckpoint) {
-                syncRepository.updateSyncCheckpoint(deviceId, advancedCheckpoint, now)
+                syncRepository.updateSyncCheckpoint(deviceId, advancedCheckpoint, now, deltaProcessingError)
             }
 
             val remainingPending = syncRepository.getPendingOutboxRecords().first().size
-            _syncStatus.value = SyncStatus(
-                state = SyncState.SUCCESS,
-                lastSyncedTimestamp = now,
-                pendingOutboxCount = remainingPending,
-                activeDeviceName = deviceName,
-                lastCheckpointHlc = advancedCheckpoint,
-                errorMessage = null
-            )
+
+            if (deltaProcessingError != null) {
+                _syncStatus.value = SyncStatus(
+                    state = SyncState.ERROR,
+                    lastSyncedTimestamp = now,
+                    pendingOutboxCount = remainingPending,
+                    activeDeviceName = deviceName,
+                    lastCheckpointHlc = advancedCheckpoint,
+                    errorMessage = deltaProcessingError
+                )
+            } else {
+                _syncStatus.value = SyncStatus(
+                    state = SyncState.SUCCESS,
+                    lastSyncedTimestamp = now,
+                    pendingOutboxCount = remainingPending,
+                    activeDeviceName = deviceName,
+                    lastCheckpointHlc = advancedCheckpoint,
+                    errorMessage = null
+                )
+            }
         }
     }
 }
@@ -219,16 +282,37 @@ class DefaultMockRemoteTransport : RemoteSyncTransport {
     private val remoteRecords = mutableListOf<SyncRecord>()
 
     override suspend fun pushRecords(records: List<SyncRecord>): List<String> {
-        remoteRecords.addAll(records)
+        for (record in records) {
+            // Idempotent replace by event ID
+            remoteRecords.removeAll { it.id == record.id }
+            remoteRecords.add(record)
+        }
         return records.map { it.id }
     }
 
     override suspend fun pullRecords(sinceHlc: String?): List<SyncRecord> {
-        if (sinceHlc == null) return remoteRecords.toList()
-        val since = HlcTimestamp.fromString(sinceHlc) ?: return remoteRecords.toList()
-        return remoteRecords.filter {
-            val recHlc = HlcTimestamp.fromString(it.hlcTimestamp)
-            recHlc != null && recHlc > since
+        val list = if (sinceHlc == null) {
+            remoteRecords.toList()
+        } else {
+            val since = HlcTimestamp.fromString(sinceHlc)
+            if (since != null) {
+                remoteRecords.filter {
+                    val recHlc = HlcTimestamp.fromString(it.hlcTimestamp)
+                    recHlc != null && recHlc > since
+                }
+            } else {
+                remoteRecords.toList()
+            }
         }
+        return list.sortedWith(SyncRecordComparator)
+    }
+
+    fun addRemoteRecord(record: SyncRecord) {
+        remoteRecords.removeAll { it.id == record.id }
+        remoteRecords.add(record)
+    }
+
+    fun clear() {
+        remoteRecords.clear()
     }
 }

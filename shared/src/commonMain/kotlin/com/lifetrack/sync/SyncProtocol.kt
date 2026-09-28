@@ -21,9 +21,19 @@ data class SyncStatus(
 )
 
 /**
- * Single sync-outbox mutation event.
- * Note on encryption: In Phase 2B.1, payload is serialized plaintext representing
- * task/subtask delta records. Cryptographic payload encryption is explicitly deferred to Phase 3.
+ * Single sync-outbox mutation event adhering to the Phase 2C canonical delta contract.
+ *
+ * Contract fields:
+ * - id: Deterministic event ID / idempotency key.
+ * - entityType: Target entity type (e.g. "TASK", "SUBTASK").
+ * - entityId: Target entity identifier.
+ * - operation: "UPSERT" or "DELETE".
+ * - payload: Serialized delta payload.
+ * - hlcTimestamp: Hybrid Logical Clock timestamp.
+ * - createdAt: Epoch timestamp in milliseconds.
+ * - originDeviceId: Stable unique identifier of the originating device.
+ * - protocolVersion: Protocol wire version (currently 1).
+ * - schemaVersion: Entity payload schema version (currently 1).
  */
 data class SyncRecord(
     val id: String,
@@ -33,6 +43,9 @@ data class SyncRecord(
     val payload: String,
     val hlcTimestamp: String,
     val createdAt: Long,
+    val originDeviceId: String = "unknown-device",
+    val protocolVersion: Int = 1,
+    val schemaVersion: Int = 1,
     val status: String = "PENDING", // "PENDING", "IN_FLIGHT", "FAILED"
     val inFlightAt: Long? = null,
     val retryCount: Int = 0,
@@ -44,6 +57,14 @@ data class SyncRecord(
      */
     val payloadEncrypted: ByteArray
         get() = payload.encodeToByteArray()
+}
+
+/**
+ * Boundary contract supplying the authenticated user session for remote cloud transport.
+ */
+interface AuthSessionProvider {
+    fun getCurrentUserUid(): String?
+    fun getIdToken(): String? = null
 }
 
 /**

@@ -1,9 +1,9 @@
 package com.lifetrack.sync
 
+import com.lifetrack.data.local.db.SqlCursor
 import com.lifetrack.data.local.db.SqlDriver
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -15,7 +15,8 @@ import kotlinx.coroutines.sync.withLock
  * 1. Safe in-flight state tracking and crash recovery.
  * 2. Bounded exponential retry backoff.
  * 3. Manual and batch failed-record requeueing.
- * 4. Automatic entity `is_sync_pending` clearing upon remote ACK.
+ * 4. Automatic entity `is_sync_pending` clearing upon remote ACK ONLY when no other pending
+ *    edits remain for the same entity.
  * 5. Durable remote sync checkpoint persistence.
  */
 class PersistentSyncRepository(
@@ -40,8 +41,8 @@ class PersistentSyncRepository(
         driver.query(
             """
             SELECT id, entity_type, entity_id, operation, payload,
-                   hlc_timestamp, created_at, status, in_flight_at,
-                   retry_count, next_retry_at, last_error
+                   hlc_timestamp, created_at, origin_device_id, protocol_version, schema_version,
+                   status, in_flight_at, retry_count, next_retry_at, last_error
             FROM sync_outbox
             WHERE status = 'PENDING' AND next_retry_at <= ?
             ORDER BY created_at ASC;
@@ -57,9 +58,9 @@ class PersistentSyncRepository(
             """
             INSERT OR REPLACE INTO sync_outbox (
                 id, entity_type, entity_id, operation, payload,
-                hlc_timestamp, created_at, status, in_flight_at,
-                retry_count, next_retry_at, last_error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                hlc_timestamp, created_at, origin_device_id, protocol_version, schema_version,
+                status, in_flight_at, retry_count, next_retry_at, last_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """.trimIndent(),
             arrayOf(
                 record.id,
@@ -69,6 +70,9 @@ class PersistentSyncRepository(
                 record.payload,
                 record.hlcTimestamp,
                 record.createdAt,
+                record.originDeviceId,
+                record.protocolVersion,
+                record.schemaVersion,
                 record.status,
                 record.inFlightAt,
                 record.retryCount,
@@ -109,7 +113,7 @@ class PersistentSyncRepository(
         if (acknowledgedIds.isEmpty()) return
         driver.transaction {
             for (id in acknowledgedIds) {
-                // Find entity to clear is_sync_pending on tasks
+                // Find entity info
                 val entityInfo = driver.query(
                     "SELECT entity_type, entity_id FROM sync_outbox WHERE id = ? LIMIT 1;",
                     arrayOf(id)
@@ -117,17 +121,28 @@ class PersistentSyncRepository(
                     cursor.getString(0) to cursor.getString(1)
                 }.firstOrNull()
 
-                if (entityInfo != null && entityInfo.first == "TASK" && entityInfo.second != null) {
-                    driver.execute(
-                        "UPDATE tasks SET is_sync_pending = 0 WHERE id = ?;",
-                        arrayOf(entityInfo.second)
-                    )
-                }
-
+                // Delete acknowledged record first
                 driver.execute(
                     "DELETE FROM sync_outbox WHERE id = ?;",
                     arrayOf(id)
                 )
+
+                // Critical fix (Requirement 14): Only clear is_sync_pending if NO other outbox events remain for this entity
+                if (entityInfo != null && entityInfo.first == "TASK" && entityInfo.second != null) {
+                    val remainingCount = driver.query(
+                        "SELECT COUNT(*) FROM sync_outbox WHERE entity_type = ? AND entity_id = ?;",
+                        arrayOf(entityInfo.first, entityInfo.second)
+                    ) { cursor ->
+                        cursor.getInt(0) ?: 0
+                    }.firstOrNull() ?: 0
+
+                    if (remainingCount == 0) {
+                        driver.execute(
+                            "UPDATE tasks SET is_sync_pending = 0 WHERE id = ?;",
+                            arrayOf(entityInfo.second)
+                        )
+                    }
+                }
             }
         }
         refreshFlow()
@@ -219,8 +234,8 @@ class PersistentSyncRepository(
         driver.query(
             """
             SELECT id, entity_type, entity_id, operation, payload,
-                   hlc_timestamp, created_at, status, in_flight_at,
-                   retry_count, next_retry_at, last_error
+                   hlc_timestamp, created_at, origin_device_id, protocol_version, schema_version,
+                   status, in_flight_at, retry_count, next_retry_at, last_error
             FROM sync_outbox
             ORDER BY created_at ASC;
             """.trimIndent()
@@ -237,8 +252,8 @@ class PersistentSyncRepository(
         return driver.query(
             """
             SELECT id, entity_type, entity_id, operation, payload,
-                   hlc_timestamp, created_at, status, in_flight_at,
-                   retry_count, next_retry_at, last_error
+                   hlc_timestamp, created_at, origin_device_id, protocol_version, schema_version,
+                   status, in_flight_at, retry_count, next_retry_at, last_error
             FROM sync_outbox
             WHERE status = 'PENDING'
             ORDER BY created_at ASC;
@@ -248,7 +263,7 @@ class PersistentSyncRepository(
         }
     }
 
-    private fun mapCursorToRecord(cursor: com.lifetrack.data.local.db.SqlCursor): SyncRecord {
+    private fun mapCursorToRecord(cursor: SqlCursor): SyncRecord {
         return SyncRecord(
             id = cursor.getString(0) ?: "",
             entityType = cursor.getString(1) ?: "",
@@ -257,11 +272,14 @@ class PersistentSyncRepository(
             payload = cursor.getString(4) ?: "",
             hlcTimestamp = cursor.getString(5) ?: "",
             createdAt = cursor.getLong(6) ?: 0L,
-            status = cursor.getString(7) ?: "PENDING",
-            inFlightAt = cursor.getLong(8),
-            retryCount = cursor.getInt(9) ?: 0,
-            nextRetryAt = cursor.getLong(10) ?: 0L,
-            lastError = cursor.getString(11)
+            originDeviceId = cursor.getString(7) ?: "unknown-device",
+            protocolVersion = cursor.getInt(8) ?: 1,
+            schemaVersion = cursor.getInt(9) ?: 1,
+            status = cursor.getString(10) ?: "PENDING",
+            inFlightAt = cursor.getLong(11),
+            retryCount = cursor.getInt(12) ?: 0,
+            nextRetryAt = cursor.getLong(13) ?: 0L,
+            lastError = cursor.getString(14)
         )
     }
 }

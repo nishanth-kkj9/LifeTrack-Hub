@@ -403,9 +403,9 @@ class PersistentTaskLocalDataSource(
             """
             INSERT OR REPLACE INTO sync_outbox (
                 id, entity_type, entity_id, operation, payload,
-                hlc_timestamp, created_at, status, in_flight_at,
-                retry_count, next_retry_at, last_error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                hlc_timestamp, created_at, origin_device_id, protocol_version, schema_version,
+                status, in_flight_at, retry_count, next_retry_at, last_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """.trimIndent(),
             arrayOf(
                 syncRecord.id,
@@ -415,6 +415,9 @@ class PersistentTaskLocalDataSource(
                 syncRecord.payload,
                 syncRecord.hlcTimestamp,
                 syncRecord.createdAt,
+                syncRecord.originDeviceId,
+                syncRecord.protocolVersion,
+                syncRecord.schemaVersion,
                 syncRecord.status,
                 syncRecord.inFlightAt,
                 syncRecord.retryCount,

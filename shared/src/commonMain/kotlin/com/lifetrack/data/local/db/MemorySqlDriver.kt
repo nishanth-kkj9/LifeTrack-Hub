@@ -163,11 +163,14 @@ class MemorySqlDriver : SqlDriver {
                     "payload" to bindArgs.getOrNull(4),
                     "hlc_timestamp" to bindArgs.getOrNull(5),
                     "created_at" to bindArgs.getOrNull(6),
-                    "status" to (bindArgs.getOrNull(7) ?: "PENDING"),
-                    "in_flight_at" to bindArgs.getOrNull(8),
-                    "retry_count" to (bindArgs.getOrNull(9) ?: 0),
-                    "next_retry_at" to (bindArgs.getOrNull(10) ?: 0L),
-                    "last_error" to bindArgs.getOrNull(11)
+                    "origin_device_id" to (bindArgs.getOrNull(7) ?: "local-device"),
+                    "protocol_version" to (bindArgs.getOrNull(8) ?: 1),
+                    "schema_version" to (bindArgs.getOrNull(9) ?: 1),
+                    "status" to (bindArgs.getOrNull(10) ?: "PENDING"),
+                    "in_flight_at" to bindArgs.getOrNull(11),
+                    "retry_count" to (bindArgs.getOrNull(12) ?: 0),
+                    "next_retry_at" to (bindArgs.getOrNull(13) ?: 0L),
+                    "last_error" to bindArgs.getOrNull(14)
                 )
                 table[id] = row
             }
@@ -258,6 +261,24 @@ class MemorySqlDriver : SqlDriver {
                     "updated_at" to bindArgs.getOrNull(4)
                 )
             }
+            upper.startsWith("INSERT OR REPLACE INTO DEVICE_CONFIG") || upper.startsWith("INSERT INTO DEVICE_CONFIG") -> {
+                val table = tables.getOrPut("device_config") { mutableMapOf() }
+                val key = bindArgs[0]?.toString() ?: return
+                table[key] = mutableMapOf(
+                    "config_key" to bindArgs.getOrNull(0),
+                    "config_value" to bindArgs.getOrNull(1)
+                )
+            }
+            upper.startsWith("INSERT OR REPLACE INTO HLC_CLOCK_STATE") || upper.startsWith("INSERT INTO HLC_CLOCK_STATE") -> {
+                val table = tables.getOrPut("hlc_clock_state") { mutableMapOf() }
+                val nodeId = bindArgs[0]?.toString() ?: return
+                table[nodeId] = mutableMapOf(
+                    "node_id" to bindArgs.getOrNull(0),
+                    "physical_time_ms" to bindArgs.getOrNull(1),
+                    "logical_counter" to bindArgs.getOrNull(2),
+                    "hlc_string" to bindArgs.getOrNull(3)
+                )
+            }
         }
     }
 
@@ -274,6 +295,28 @@ class MemorySqlDriver : SqlDriver {
                 val cursor = MemoryCursor(listOf(listOf(ver)))
                 while (cursor.next()) {
                     results.add(mapper(cursor))
+                }
+            }
+            upper.contains("FROM DEVICE_CONFIG") -> {
+                val table = tables["device_config"] ?: emptyMap()
+                val key = if (upper.contains("CONFIG_KEY = 'INSTALLATION_DEVICE_ID'")) "installation_device_id" else bindArgs.getOrNull(0)?.toString()
+                val row = if (key != null) table[key] else table.values.firstOrNull()
+                if (row != null) {
+                    val cursor = MemoryCursor(listOf(listOf(row["config_value"])))
+                    while (cursor.next()) {
+                        results.add(mapper(cursor))
+                    }
+                }
+            }
+            upper.contains("FROM HLC_CLOCK_STATE") -> {
+                val table = tables["hlc_clock_state"] ?: emptyMap()
+                val nodeId = bindArgs.getOrNull(0)?.toString()
+                val row = if (nodeId != null) table[nodeId] else table.values.firstOrNull()
+                if (row != null) {
+                    val cursor = MemoryCursor(listOf(listOf(row["physical_time_ms"], row["logical_counter"], row["node_id"])))
+                    while (cursor.next()) {
+                        results.add(mapper(cursor))
+                    }
                 }
             }
             upper.contains("FROM TASKS") -> {
@@ -336,7 +379,18 @@ class MemorySqlDriver : SqlDriver {
             }
             upper.contains("FROM SYNC_OUTBOX") -> {
                 val outboxTable = tables["sync_outbox"] ?: emptyMap()
-                if (upper.contains("SELECT RETRY_COUNT FROM SYNC_OUTBOX")) {
+                if (upper.contains("SELECT COUNT(*) FROM SYNC_OUTBOX")) {
+                    val entityType = if (upper.contains("ENTITY_TYPE = 'TASK'")) "TASK" else bindArgs.getOrNull(0)?.toString()
+                    val entityId = if (upper.contains("ENTITY_TYPE = 'TASK'")) bindArgs.getOrNull(0)?.toString() else bindArgs.getOrNull(1)?.toString()
+                    val count = outboxTable.values.count {
+                        (entityType == null || it["entity_type"]?.toString() == entityType) &&
+                        (entityId == null || it["entity_id"]?.toString() == entityId)
+                    }
+                    val cursor = MemoryCursor(listOf(listOf(count)))
+                    while (cursor.next()) {
+                        results.add(mapper(cursor))
+                    }
+                } else if (upper.contains("SELECT RETRY_COUNT FROM SYNC_OUTBOX")) {
                     val id = bindArgs.getOrNull(0)?.toString()
                     val row = if (id != null) outboxTable[id] else outboxTable.values.firstOrNull()
                     if (row != null) {
@@ -374,7 +428,11 @@ class MemorySqlDriver : SqlDriver {
                         val values = listOf(
                             row["id"], row["entity_type"], row["entity_id"],
                             row["operation"], row["payload"], row["hlc_timestamp"],
-                            row["created_at"], row["status"], row["in_flight_at"],
+                            row["created_at"],
+                            row["origin_device_id"] ?: "local-device",
+                            row["protocol_version"] ?: 1,
+                            row["schema_version"] ?: 1,
+                            row["status"], row["in_flight_at"],
                             row["retry_count"], row["next_retry_at"], row["last_error"]
                         )
                         val cursor = MemoryCursor(listOf(values))

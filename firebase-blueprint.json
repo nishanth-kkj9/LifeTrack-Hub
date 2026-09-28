@@ -21,15 +21,30 @@
       "description": "Entity-based synchronization mutation packet for distributed KMP clients",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique sync event identifier" },
-        "entityType": { "type": "string", "description": "Target entity type (e.g. TASK, SUBTASK)" },
-        "entityId": { "type": "string", "description": "Target entity identifier" },
-        "operation": { "type": "string", "description": "Mutation operation (UPSERT or DELETE)" },
-        "payload": { "type": "string", "description": "Serialized plaintext delta payload" },
-        "hlcTimestamp": { "type": "string", "description": "Hybrid Logical Clock timestamp" },
-        "createdAt": { "type": "number", "description": "Creation timestamp epoch ms" }
+        "id": { "type": "string", "description": "Unique sync event identifier (idempotency key)", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "entityType": { "type": "string", "description": "Target entity type (TASK or SUBTASK)", "enum": ["TASK", "SUBTASK"] },
+        "entityId": { "type": "string", "description": "Target entity identifier", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "operation": { "type": "string", "description": "Mutation operation (UPSERT or DELETE)", "enum": ["UPSERT", "DELETE"] },
+        "payload": { "type": "string", "description": "Serialized plaintext delta payload", "maxLength": 65536 },
+        "hlcTimestamp": { "type": "string", "description": "Hybrid Logical Clock timestamp (physical-counter-node)", "maxLength": 128 },
+        "createdAt": { "type": "number", "description": "Creation timestamp epoch ms" },
+        "originDeviceId": { "type": "string", "description": "Originating client device identifier", "maxLength": 128 },
+        "protocolVersion": { "type": "number", "description": "Sync protocol version integer (>= 1)" },
+        "schemaVersion": { "type": "number", "description": "Payload schema version integer (>= 1)" }
       },
-      "required": ["id", "entityType", "entityId", "operation", "payload", "hlcTimestamp", "createdAt"]
+      "required": ["id", "entityType", "entityId", "operation", "payload", "hlcTimestamp", "createdAt", "originDeviceId", "protocolVersion", "schemaVersion"]
+    },
+    "DeviceSyncState": {
+      "title": "DeviceSyncState",
+      "description": "Per-device synchronization checkpoint stored in remote Firestore",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string", "description": "Device identifier", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "lastPulledHlc": { "type": "string", "description": "Last successfully processed remote HLC timestamp", "maxLength": 128 },
+        "lastSuccessfulSyncTime": { "type": "number", "description": "Epoch ms of last completed sync" },
+        "lastError": { "type": "string", "description": "Optional last error message", "maxLength": 1024 }
+      },
+      "required": ["deviceId", "lastPulledHlc", "lastSuccessfulSyncTime"]
     }
   },
   "firestore": {
@@ -39,7 +54,11 @@
     },
     "/users/{userId}/deltas/{deltaId}": {
       "schema": "SyncDeltaRecord",
-      "description": "Entity-based sync delta stream for multiplatform clients"
+      "description": "Canonical immutable entity-based sync delta stream for multiplatform clients"
+    },
+    "/users/{userId}/syncState/{deviceId}": {
+      "schema": "DeviceSyncState",
+      "description": "Remote per-device checkpoint state"
     }
   }
 }

@@ -78,7 +78,10 @@ class TaskRepositoryImpl(
                 operation = "UPSERT",
                 payload = TaskPayloadSerializer.serializeTask(prepared),
                 hlcTimestamp = hlc.toString(),
-                createdAt = now
+                createdAt = now,
+                originDeviceId = hlc.nodeId,
+                protocolVersion = 1,
+                schemaVersion = 1
             )
             localDataSource.upsertTaskAtomic(prepared, syncRecord)
         } else {
@@ -103,7 +106,10 @@ class TaskRepositoryImpl(
                 operation = "UPSERT",
                 payload = TaskPayloadSerializer.serializeTask(prepared),
                 hlcTimestamp = hlc.toString(),
-                createdAt = now
+                createdAt = now,
+                originDeviceId = hlc.nodeId,
+                protocolVersion = 1,
+                schemaVersion = 1
             )
             localDataSource.upsertTaskAtomic(prepared, syncRecord)
         } else {
@@ -123,7 +129,10 @@ class TaskRepositoryImpl(
                 operation = "DELETE",
                 payload = id,
                 hlcTimestamp = hlc.toString(),
-                createdAt = now
+                createdAt = now,
+                originDeviceId = hlc.nodeId,
+                protocolVersion = 1,
+                schemaVersion = 1
             )
             localDataSource.deleteTaskAtomic(id, syncRecord)
         } else {
@@ -152,7 +161,10 @@ class TaskRepositoryImpl(
                 operation = "UPSERT",
                 payload = TaskPayloadSerializer.serializeTask(updated),
                 hlcTimestamp = hlc.toString(),
-                createdAt = now
+                createdAt = now,
+                originDeviceId = hlc.nodeId,
+                protocolVersion = 1,
+                schemaVersion = 1
             )
             localDataSource.upsertTaskAtomic(updated, syncRecord)
         } else {
@@ -174,7 +186,10 @@ class TaskRepositoryImpl(
                 operation = "UPSERT",
                 payload = TaskPayloadSerializer.serializeSubtask(prepared),
                 hlcTimestamp = hlc.toString(),
-                createdAt = now
+                createdAt = now,
+                originDeviceId = hlc.nodeId,
+                protocolVersion = 1,
+                schemaVersion = 1
             )
             localDataSource.upsertSubtaskAtomic(prepared, syncRecord)
         } else {
@@ -201,7 +216,10 @@ class TaskRepositoryImpl(
                 operation = "UPSERT",
                 payload = TaskPayloadSerializer.serializeSubtask(updatedSub),
                 hlcTimestamp = hlc.toString(),
-                createdAt = now
+                createdAt = now,
+                originDeviceId = hlc.nodeId,
+                protocolVersion = 1,
+                schemaVersion = 1
             )
             localDataSource.upsertSubtaskAtomic(updatedSub, syncRecord)
         } else {
@@ -221,7 +239,10 @@ class TaskRepositoryImpl(
                 operation = "DELETE",
                 payload = subtaskId,
                 hlcTimestamp = hlc.toString(),
-                createdAt = now
+                createdAt = now,
+                originDeviceId = hlc.nodeId,
+                protocolVersion = 1,
+                schemaVersion = 1
             )
             localDataSource.deleteSubtaskAtomic(taskId, subtaskId, syncRecord)
         } else {

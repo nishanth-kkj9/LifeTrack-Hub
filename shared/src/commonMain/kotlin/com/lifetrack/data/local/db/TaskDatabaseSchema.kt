@@ -5,7 +5,7 @@ package com.lifetrack.data.local.db
  */
 object TaskDatabaseSchema {
 
-    const val CURRENT_VERSION: Int = 3
+    const val CURRENT_VERSION: Int = 4
 
     val MIGRATIONS: List<DatabaseMigration> = listOf(
         object : DatabaseMigration {
@@ -22,6 +22,9 @@ object TaskDatabaseSchema {
                         payload TEXT NOT NULL,
                         hlc_timestamp TEXT NOT NULL,
                         created_at INTEGER NOT NULL,
+                        origin_device_id TEXT NOT NULL DEFAULT 'local-device',
+                        protocol_version INTEGER NOT NULL DEFAULT 1,
+                        schema_version INTEGER NOT NULL DEFAULT 1,
                         status TEXT NOT NULL DEFAULT 'PENDING',
                         in_flight_at INTEGER,
                         retry_count INTEGER NOT NULL DEFAULT 0,
@@ -62,6 +65,30 @@ object TaskDatabaseSchema {
                 )
                 driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_next_retry ON sync_outbox(status, next_retry_at);")
                 driver.execute("CREATE INDEX IF NOT EXISTS idx_entity_sync_hlc ON entity_sync_metadata(entity_type, entity_id, hlc_timestamp);")
+            }
+        },
+        object : DatabaseMigration {
+            override val startVersion: Int = 3
+            override val endVersion: Int = 4
+            override fun migrate(driver: SqlDriver) {
+                driver.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS device_config (
+                        config_key TEXT PRIMARY KEY NOT NULL,
+                        config_value TEXT NOT NULL
+                    );
+                    """.trimIndent()
+                )
+                driver.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS hlc_clock_state (
+                        node_id TEXT PRIMARY KEY NOT NULL,
+                        physical_time_ms INTEGER NOT NULL,
+                        logical_counter INTEGER NOT NULL,
+                        hlc_string TEXT NOT NULL
+                    );
+                    """.trimIndent()
+                )
             }
         }
     )
@@ -159,6 +186,9 @@ object TaskDatabaseSchema {
                 payload TEXT NOT NULL,
                 hlc_timestamp TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
+                origin_device_id TEXT NOT NULL DEFAULT 'local-device',
+                protocol_version INTEGER NOT NULL DEFAULT 1,
+                schema_version INTEGER NOT NULL DEFAULT 1,
                 status TEXT NOT NULL DEFAULT 'PENDING',
                 in_flight_at INTEGER,
                 retry_count INTEGER NOT NULL DEFAULT 0,
@@ -188,6 +218,26 @@ object TaskDatabaseSchema {
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY (entity_type, entity_id)
+            );
+            """.trimIndent()
+        )
+
+        driver.execute(
+            """
+            CREATE TABLE IF NOT EXISTS device_config (
+                config_key TEXT PRIMARY KEY NOT NULL,
+                config_value TEXT NOT NULL
+            );
+            """.trimIndent()
+        )
+
+        driver.execute(
+            """
+            CREATE TABLE IF NOT EXISTS hlc_clock_state (
+                node_id TEXT PRIMARY KEY NOT NULL,
+                physical_time_ms INTEGER NOT NULL,
+                logical_counter INTEGER NOT NULL,
+                hlc_string TEXT NOT NULL
             );
             """.trimIndent()
         )
