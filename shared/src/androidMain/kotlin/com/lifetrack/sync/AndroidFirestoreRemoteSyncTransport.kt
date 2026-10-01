@@ -23,11 +23,14 @@ class AndroidFirestoreRemoteSyncTransport(
 ) : RemoteSyncTransport {
 
     val firestore: FirebaseFirestore = customFirestore ?: run {
-        try {
-            val app = FirebaseApp.getInstance()
-            FirebaseFirestore.getInstance(app, databaseId)
-        } catch (_: Throwable) {
-            FirebaseFirestore.getInstance()
+        val app = FirebaseApp.getInstance()
+        // Section 1: Explicitly bind named database without falling back to (default)
+        FirebaseFirestore.getInstance(app, databaseId)
+    }
+
+    init {
+        require(databaseId.isNotBlank() && databaseId == "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd") {
+            "AndroidFirestoreRemoteSyncTransport must be bound to canonical database 'ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd', got: '$databaseId'"
         }
     }
 
@@ -133,16 +136,28 @@ class AndroidFirestoreRemoteSyncTransport(
 
     private fun mapDocumentToSyncRecord(data: Map<String, Any?>?, docId: String): SyncRecord? {
         if (data == null) return null
-        val id = data["id"] as? String ?: docId
+        val id = data["id"] as? String ?: return null
+        if (id != docId) return null
         val entityType = data["entityType"] as? String ?: return null
         val entityId = data["entityId"] as? String ?: return null
         val operation = data["operation"] as? String ?: return null
-        val payload = data["payload"] as? String ?: ""
+        val payload = data["payload"] as? String ?: return null
         val hlcTimestamp = data["hlcTimestamp"] as? String ?: return null
-        val createdAt = (data["createdAt"] as? Number)?.toLong() ?: 0L
-        val originDeviceId = data["originDeviceId"] as? String ?: "unknown"
-        val protocolVersion = (data["protocolVersion"] as? Number)?.toInt() ?: 1
-        val schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 1
+        val createdAt = (data["createdAt"] as? Number)?.toLong() ?: return null
+        val originDeviceId = data["originDeviceId"] as? String ?: return null
+        val protocolVersion = (data["protocolVersion"] as? Number)?.toInt() ?: return null
+        val schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: return null
+        val hlcPhysicalTimeMs = (data["hlcPhysicalTimeMs"] as? Number)?.toLong() ?: return null
+        val hlcLogicalCounter = (data["hlcLogicalCounter"] as? Number)?.toInt() ?: return null
+        val hlcNodeId = data["hlcNodeId"] as? String ?: return null
+
+        // Validate redundant HLC fields against parsed hlcTimestamp
+        val parsedHlc = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp) ?: return null
+        if (parsedHlc.physicalTimeMs != hlcPhysicalTimeMs ||
+            parsedHlc.logicalCounter != hlcLogicalCounter ||
+            parsedHlc.nodeId != hlcNodeId) {
+            return null
+        }
 
         return SyncRecord(
             id = id,
@@ -154,7 +169,10 @@ class AndroidFirestoreRemoteSyncTransport(
             createdAt = createdAt,
             originDeviceId = originDeviceId,
             protocolVersion = protocolVersion,
-            schemaVersion = schemaVersion
+            schemaVersion = schemaVersion,
+            hlcPhysicalTimeMs = hlcPhysicalTimeMs,
+            hlcLogicalCounter = hlcLogicalCounter,
+            hlcNodeId = hlcNodeId
         )
     }
 }

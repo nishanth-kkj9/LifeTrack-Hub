@@ -57,6 +57,22 @@ class SyncEngineImpl(
     )
     override val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
 
+    fun refreshAuthenticationState() {
+        val uid = authSessionProvider?.getCurrentUserUid()
+        if (authSessionProvider != null && uid == null) {
+            _syncStatus.value = _syncStatus.value.copy(
+                state = SyncState.UNAUTHENTICATED,
+                authenticatedUser = null
+            )
+        } else if (_syncStatus.value.state == SyncState.UNAUTHENTICATED && uid != null) {
+            _syncStatus.value = _syncStatus.value.copy(
+                state = SyncState.IDLE,
+                authenticatedUser = uid,
+                errorMessage = null
+            )
+        }
+    }
+
     override suspend fun setOffline(offline: Boolean) {
         mutex.withLock {
             isOfflineMode = offline
@@ -195,10 +211,16 @@ class SyncEngineImpl(
                     break
                 }
 
-                // Validation 2: Valid HLC format
+                // Validation 2: Valid HLC format & Redundant Field Verification (Section 9)
                 val remoteHlc = HlcTimestamp.fromString(delta.hlcTimestamp)
                 if (remoteHlc == null) {
                     deltaProcessingError = "Malformed HLC timestamp '${delta.hlcTimestamp}' on event ${delta.id}"
+                    break
+                }
+                if (remoteHlc.physicalTimeMs != delta.hlcPhysicalTimeMs ||
+                    remoteHlc.logicalCounter != delta.hlcLogicalCounter ||
+                    remoteHlc.nodeId != delta.hlcNodeId) {
+                    deltaProcessingError = "HLC redundant field mismatch on event ${delta.id}: hlcTimestamp='${delta.hlcTimestamp}' vs fields=(${delta.hlcPhysicalTimeMs}, ${delta.hlcLogicalCounter}, '${delta.hlcNodeId}')"
                     break
                 }
 

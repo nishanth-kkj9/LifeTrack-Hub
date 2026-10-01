@@ -246,15 +246,26 @@ class DesktopFirestoreRestTransport(
     private fun parseFirestoreDocument(docJson: JsonObject): SyncRecord? {
         val fields = docJson.getObject("fields") ?: return null
         val id = fields.getObject("id")?.getString("stringValue") ?: return null
-        val entityType = fields.getObject("entityType")?.getString("stringValue") ?: "TASK"
-        val entityId = fields.getObject("entityId")?.getString("stringValue") ?: ""
-        val operation = fields.getObject("operation")?.getString("stringValue") ?: "UPSERT"
-        val payload = fields.getObject("payload")?.getString("stringValue") ?: ""
-        val hlcTimestamp = fields.getObject("hlcTimestamp")?.getString("stringValue") ?: ""
-        val createdAt = fields.getObject("createdAt")?.getString("integerValue")?.toLongOrNull() ?: 0L
-        val originDeviceId = fields.getObject("originDeviceId")?.getString("stringValue") ?: "unknown"
-        val protocolVersion = fields.getObject("protocolVersion")?.getString("integerValue")?.toIntOrNull() ?: 1
-        val schemaVersion = fields.getObject("schemaVersion")?.getString("integerValue")?.toIntOrNull() ?: 1
+        val entityType = fields.getObject("entityType")?.getString("stringValue") ?: return null
+        val entityId = fields.getObject("entityId")?.getString("stringValue") ?: return null
+        val operation = fields.getObject("operation")?.getString("stringValue") ?: return null
+        val payload = fields.getObject("payload")?.getString("stringValue") ?: return null
+        val hlcTimestamp = fields.getObject("hlcTimestamp")?.getString("stringValue") ?: return null
+        val createdAt = fields.getObject("createdAt")?.getString("integerValue")?.toLongOrNull() ?: return null
+        val originDeviceId = fields.getObject("originDeviceId")?.getString("stringValue") ?: return null
+        val protocolVersion = fields.getObject("protocolVersion")?.getString("integerValue")?.toIntOrNull() ?: return null
+        val schemaVersion = fields.getObject("schemaVersion")?.getString("integerValue")?.toIntOrNull() ?: return null
+        val hlcPhysicalTimeMs = fields.getObject("hlcPhysicalTimeMs")?.getString("integerValue")?.toLongOrNull() ?: return null
+        val hlcLogicalCounter = fields.getObject("hlcLogicalCounter")?.getString("integerValue")?.toIntOrNull() ?: return null
+        val hlcNodeId = fields.getObject("hlcNodeId")?.getString("stringValue") ?: return null
+
+        // Validate redundant HLC fields against parsed hlcTimestamp
+        val parsedHlc = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp) ?: return null
+        if (parsedHlc.physicalTimeMs != hlcPhysicalTimeMs ||
+            parsedHlc.logicalCounter != hlcLogicalCounter ||
+            parsedHlc.nodeId != hlcNodeId) {
+            return null
+        }
 
         return SyncRecord(
             id = id,
@@ -266,7 +277,10 @@ class DesktopFirestoreRestTransport(
             createdAt = createdAt,
             originDeviceId = originDeviceId,
             protocolVersion = protocolVersion,
-            schemaVersion = schemaVersion
+            schemaVersion = schemaVersion,
+            hlcPhysicalTimeMs = hlcPhysicalTimeMs,
+            hlcLogicalCounter = hlcLogicalCounter,
+            hlcNodeId = hlcNodeId
         )
     }
 }

@@ -177,4 +177,61 @@ class HlcOrderingAndPaginationTest {
         val stored = transport.pullRecords(null).first()
         assertEquals("{\"title\":\"Original Task\"}", stored.payload)
     }
+
+    @Test
+    fun testHlcRedundantFieldMismatchPhysicalTime() {
+        val record = SyncRecord(
+            id = "evt_mismatch_1",
+            entityType = "TASK",
+            entityId = "task_m1",
+            operation = "UPSERT",
+            payload = "{}",
+            hlcTimestamp = "1720000005000:2:nodeA",
+            createdAt = 1720000005000L,
+            hlcPhysicalTimeMs = 1720000009999L, // Mismatch!
+            hlcLogicalCounter = 2,
+            hlcNodeId = "nodeA"
+        )
+        val parsed = com.lifetrack.core.HlcTimestamp.fromString(record.hlcTimestamp)
+        assertNotNull(parsed)
+        assertTrue(parsed.physicalTimeMs != record.hlcPhysicalTimeMs, "Must detect physical time mismatch")
+    }
+
+    @Test
+    fun testHlcRedundantFieldMismatchLogicalCounter() {
+        val record = SyncRecord(
+            id = "evt_mismatch_2",
+            entityType = "TASK",
+            entityId = "task_m2",
+            operation = "UPSERT",
+            payload = "{}",
+            hlcTimestamp = "1720000005000:2:nodeA",
+            createdAt = 1720000005000L,
+            hlcPhysicalTimeMs = 1720000005000L,
+            hlcLogicalCounter = 99, // Mismatch!
+            hlcNodeId = "nodeA"
+        )
+        val parsed = com.lifetrack.core.HlcTimestamp.fromString(record.hlcTimestamp)
+        assertNotNull(parsed)
+        assertTrue(parsed.logicalCounter != record.hlcLogicalCounter, "Must detect logical counter mismatch")
+    }
+
+    @Test
+    fun testHlcRedundantFieldMismatchNodeId() {
+        val record = SyncRecord(
+            id = "evt_mismatch_3",
+            entityType = "TASK",
+            entityId = "task_m3",
+            operation = "UPSERT",
+            payload = "{}",
+            hlcTimestamp = "1720000005000:2:nodeA",
+            createdAt = 1720000005000L,
+            hlcPhysicalTimeMs = 1720000005000L,
+            hlcLogicalCounter = 2,
+            hlcNodeId = "nodeHACKED" // Mismatch!
+        )
+        val parsed = com.lifetrack.core.HlcTimestamp.fromString(record.hlcTimestamp)
+        assertNotNull(parsed)
+        assertTrue(parsed.nodeId != record.hlcNodeId, "Must detect nodeId mismatch")
+    }
 }

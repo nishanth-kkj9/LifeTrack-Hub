@@ -47,7 +47,8 @@ class LifeTrackApp : Application() {
         super.onCreate()
         instance = this
 
-        // Safe Firebase initialization: handles both google-services.json auto-init and explicit options
+        // Section 3 & 4: Authoritative Firebase Options initialization failing closed safely
+        var firebaseAvailable = false
         try {
             if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
                 val options = com.google.firebase.FirebaseOptions.Builder()
@@ -58,8 +59,10 @@ class LifeTrackApp : Application() {
                     .build()
                 com.google.firebase.FirebaseApp.initializeApp(this, options)
             }
-        } catch (_: Throwable) {
-            // Handled safely
+            firebaseAvailable = com.google.firebase.FirebaseApp.getApps(this).isNotEmpty()
+        } catch (e: Throwable) {
+            android.util.Log.e("LifeTrackApp", "Firebase initialization could not complete: ${e.javaClass.simpleName}. Local-first SQLite mode active.")
+            firebaseAvailable = false
         }
 
         val timeProvider = SystemTimeProvider()
@@ -90,18 +93,28 @@ class LifeTrackApp : Application() {
         syncRepository = syncRepo
 
         val authSessionProvider = com.lifetrack.auth.AndroidFirebaseAuthSessionProvider()
-        val remoteTransport = com.lifetrack.sync.AndroidFirestoreRemoteSyncTransport(
-            authSessionProvider = authSessionProvider,
-            projectId = "galvanic-oarlock-43skh",
-            databaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
-        )
+        val remoteTransport: com.lifetrack.sync.RemoteSyncTransport = if (firebaseAvailable) {
+            com.lifetrack.sync.AndroidFirestoreRemoteSyncTransport(
+                authSessionProvider = authSessionProvider,
+                projectId = "galvanic-oarlock-43skh",
+                databaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+            )
+        } else {
+            // Local fallback remote transport if Firebase initialization fails
+            com.lifetrack.sync.FirestoreRemoteSyncTransport(
+                authSessionProvider = authSessionProvider,
+                remoteDeltaStore = com.lifetrack.sync.InMemoryRemoteDeltaStore()
+            )
+        }
 
+        // Section 2: Inject authSessionProvider into SyncEngineImpl
         syncEngine = SyncEngineImpl(
             syncRepository = syncRepo,
             localDataSource = localDataSource,
             remoteTransport = remoteTransport,
             hlcClock = hlcClock,
             timeProvider = timeProvider,
+            authSessionProvider = authSessionProvider,
             deviceId = deviceId,
             deviceName = "Android Device"
         )

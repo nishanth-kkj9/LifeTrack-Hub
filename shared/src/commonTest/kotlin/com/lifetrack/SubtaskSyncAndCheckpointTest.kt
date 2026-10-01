@@ -229,6 +229,14 @@ class SubtaskSyncAndCheckpointTest {
             deviceId = "nodeBatchTest"
         )
 
+        // 0. Seed initial successful sync state with lastSuccessfulSyncTime = 100000L (Requirement 11)
+        syncRepo.updateSyncCheckpoint(
+            deviceId = "nodeBatchTest",
+            lastPulledHlc = "1720000000000:0:genesis",
+            syncTimeMs = 100000L,
+            error = null
+        )
+
         // Generate 50 valid tasks
         for (i in 1..50) {
             val t = Task(id = "task-batch-$i", title = "Batch Task $i", category = TaskCategory.PROJECT)
@@ -240,7 +248,13 @@ class SubtaskSyncAndCheckpointTest {
                 operation = "UPSERT",
                 payload = TaskPayloadSerializer.serializeTask(t),
                 hlcTimestamp = hlc,
-                createdAt = 1720000000000L + i
+                createdAt = 1720000000000L + i,
+                originDeviceId = "nodeRemote",
+                protocolVersion = 1,
+                schemaVersion = 1,
+                hlcPhysicalTimeMs = 1720000000000L + 1000 + i,
+                hlcLogicalCounter = 0,
+                hlcNodeId = "nodeRemote"
             )
             deltaStore.saveDelta("test-user-subtask", record)
         }
@@ -253,7 +267,13 @@ class SubtaskSyncAndCheckpointTest {
             operation = "UPSERT",
             payload = "{corrupt-invalid-json-payload",
             hlcTimestamp = "1720000001051:0:nodeRemote",
-            createdAt = 1720000000051L
+            createdAt = 1720000000051L,
+            originDeviceId = "nodeRemote",
+            protocolVersion = 1,
+            schemaVersion = 1,
+            hlcPhysicalTimeMs = 1720000001051L,
+            hlcLogicalCounter = 0,
+            hlcNodeId = "nodeRemote"
         )
         deltaStore.saveDelta("test-user-subtask", badRecord51)
 
@@ -272,10 +292,7 @@ class SubtaskSyncAndCheckpointTest {
         assertTrue(persistedCheckpoint.contains("evt_batch_50"), "Checkpoint must be stopped at event 50")
         assertFalse(persistedCheckpoint.contains("evt_batch_51"), "Checkpoint must not include event 51")
 
-        // lastSuccessfulSyncTime must NOT be updated because overall sync ended in ERROR
-        assertNull(status.lastSyncedTimestamp, "lastSuccessfulSyncTime must not be updated on error")
-
-        // Direct SQLite persistence row verification (Requirement 9)
+        // Direct SQLite persistence row verification (Requirement 11)
         driver.query(
             "SELECT last_pulled_hlc, last_successful_sync_time, last_error FROM sync_state WHERE device_id = ? LIMIT 1;",
             arrayOf("nodeBatchTest")
@@ -286,7 +303,7 @@ class SubtaskSyncAndCheckpointTest {
 
             assertNotNull(checkpointHlc)
             assertTrue(checkpointHlc.contains("evt_batch_50"))
-            assertEquals(0L, syncTime ?: 0L, "Direct SQLite sync_state table must preserve previous 0 ms timestamp")
+            assertEquals(100000L, syncTime ?: 0L, "Direct SQLite sync_state table must preserve previous 100000 ms timestamp")
             assertNotNull(err)
             assertTrue(err.contains("Malformed"))
         }

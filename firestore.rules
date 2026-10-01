@@ -20,7 +20,7 @@ service cloud.firestore {
     }
 
     function isValidSyncDelta(data, deltaId) {
-      return data.keys().hasAll(['id', 'entityType', 'entityId', 'operation', 'payload', 'hlcTimestamp', 'createdAt', 'originDeviceId', 'protocolVersion', 'schemaVersion'])
+      return data.keys().hasAll(['id', 'entityType', 'entityId', 'operation', 'payload', 'hlcTimestamp', 'createdAt', 'originDeviceId', 'protocolVersion', 'schemaVersion', 'hlcPhysicalTimeMs', 'hlcLogicalCounter', 'hlcNodeId'])
         && data.id is string && data.id == deltaId && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
         && data.entityType is string && data.entityType in ['TASK', 'SUBTASK']
         && data.entityId is string && data.entityId.size() <= 128 && data.entityId.matches('^[a-zA-Z0-9_\\-]+$')
@@ -30,10 +30,10 @@ service cloud.firestore {
         && data.originDeviceId is string && data.originDeviceId.size() <= 128
         && data.protocolVersion is number && data.protocolVersion >= 1
         && data.schemaVersion is number && data.schemaVersion >= 1
-        && data.createdAt is number
-        && (!('hlcPhysicalTimeMs' in data) || data.hlcPhysicalTimeMs is number)
-        && (!('hlcLogicalCounter' in data) || data.hlcLogicalCounter is number)
-        && (!('hlcNodeId' in data) || (data.hlcNodeId is string && data.hlcNodeId.size() <= 128));
+        && data.createdAt is number && data.createdAt > 0
+        && data.hlcPhysicalTimeMs is number && data.hlcPhysicalTimeMs > 0
+        && data.hlcLogicalCounter is number && data.hlcLogicalCounter >= 0
+        && data.hlcNodeId is string && data.hlcNodeId.size() > 0 && data.hlcNodeId.size() <= 128;
     }
 
     function isValidSyncState(data, deviceId) {

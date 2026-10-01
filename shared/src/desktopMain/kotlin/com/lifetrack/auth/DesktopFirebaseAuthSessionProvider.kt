@@ -25,11 +25,15 @@ enum class DesktopAuthState {
 /**
  * Production Firebase Authentication provider for Windows Desktop clients.
  *
- * Operates strictly in user client space (NO Admin SDK, NO service account keys).
- * Implements:
- * 1. Email/Password sign-in via Google Identity Toolkit REST API.
- * 2. Token refresh via securetoken.googleapis.com when expired or force-refreshed.
- * 3. Session state observation (UID, email, authState).
+ * Security & Session Lifecycle Specification:
+ * - Operates strictly in user client space (NO Admin SDK, NO service account keys).
+ * - Implements Email/Password sign-in via Google Identity Toolkit REST API.
+ * - In-Memory Session Model: Tokens (idToken, refreshToken) are retained in process memory only.
+ *   Plaintext SQLite persistence of refresh tokens is strictly prohibited to prevent credential leaks.
+ *   On application restart, the desktop application cleanly initializes in SIGNED_OUT state until
+ *   the user explicitly authenticates.
+ * - Token refresh via securetoken.googleapis.com when expired or force-refreshed.
+ * - Session state observation (UID, email, authState).
  */
 class DesktopFirebaseAuthSessionProvider(
     private val apiKey: String,
