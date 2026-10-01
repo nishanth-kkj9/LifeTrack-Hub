@@ -46,7 +46,8 @@ import com.lifetrack.ui.theme.LifeTrackEmeraldPrimary
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AndroidMainScreen(
-    viewModel: TasksViewModel
+    viewModel: TasksViewModel,
+    syncEngine: com.lifetrack.sync.SyncEngine = com.lifetrack.android.LifeTrackApp.instance.syncEngine
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -166,30 +167,17 @@ fun AndroidMainScreen(
                     }
                 }
             }
+        } else if (selectedNavIndex == 1) {
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                com.lifetrack.ui.components.VtuAcademicsView()
+            }
+        } else if (selectedNavIndex == 2) {
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                com.lifetrack.ui.components.FinanceLedgerView()
+            }
         } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = when (selectedNavIndex) {
-                            1 -> "VTU Academic Module"
-                            2 -> "Finance & Ledger Tracker"
-                            else -> "Hardware Vault & Sync Status"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Phase 1B: Architecture Foundation (In-Memory Verification Engine)",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                }
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                com.lifetrack.ui.components.SyncEnginePanel(syncEngine = syncEngine)
             }
         }
     }

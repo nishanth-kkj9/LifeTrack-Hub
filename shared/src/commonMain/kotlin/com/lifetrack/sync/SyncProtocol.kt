@@ -64,7 +64,7 @@ data class SyncRecord(
  */
 interface AuthSessionProvider {
     fun getCurrentUserUid(): String?
-    fun getIdToken(): String? = null
+    suspend fun getIdToken(forceRefresh: Boolean = false): String?
 }
 
 /**

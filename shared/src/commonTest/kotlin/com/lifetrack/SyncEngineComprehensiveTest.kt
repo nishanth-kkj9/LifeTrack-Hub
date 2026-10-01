@@ -293,6 +293,7 @@ class SyncEngineComprehensiveTest {
         var currentUid: String? = null
         val authProvider = object : AuthSessionProvider {
             override fun getCurrentUserUid(): String? = currentUid
+            override suspend fun getIdToken(forceRefresh: Boolean): String? = if (currentUid != null) "test_token" else null
         }
 
         val remoteStore = InMemoryRemoteDeltaStore()

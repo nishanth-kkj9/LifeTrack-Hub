@@ -64,17 +64,21 @@ class MemorySqlDriver : SqlDriver {
             }
             upper.startsWith("UPDATE TASKS SET") -> {
                 val table = tables.getOrPut("tasks") { mutableMapOf() }
-                if (upper.contains("IS_SYNC_PENDING = 0")) {
-                    val id = bindArgs.lastOrNull()?.toString() ?: return
-                    table[id]?.put("is_sync_pending", 0)
-                } else if (upper.contains("IS_DELETED = 1")) {
+                if (upper.contains("IS_DELETED = 1")) {
                     val id = bindArgs.lastOrNull()?.toString() ?: return
                     val existing = table[id]
                     if (existing != null) {
                         existing["is_deleted"] = 1
                         existing["updated_at_epoch_ms"] = bindArgs.getOrNull(0) ?: bindArgs.getOrNull(1)
-                        existing["is_sync_pending"] = 1
+                        if (upper.contains("IS_SYNC_PENDING = 0")) {
+                            existing["is_sync_pending"] = 0
+                        } else if (upper.contains("IS_SYNC_PENDING = 1")) {
+                            existing["is_sync_pending"] = 1
+                        }
                     }
+                } else if (upper.contains("IS_SYNC_PENDING = 0")) {
+                    val id = bindArgs.lastOrNull()?.toString() ?: return
+                    table[id]?.put("is_sync_pending", 0)
                 } else if (upper.contains("TITLE = ?")) {
                     val title = bindArgs[0]?.toString()
                     val id = bindArgs.lastOrNull()?.toString() ?: return

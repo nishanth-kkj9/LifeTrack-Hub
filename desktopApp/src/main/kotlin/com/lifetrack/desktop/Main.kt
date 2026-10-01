@@ -282,69 +282,12 @@ fun DesktopAppShell(viewModel: TasksViewModel, syncEngine: SyncEngine? = null) {
                         }
                     }
                 }
+            } else if (selectedSection == "VTU Academics") {
+                com.lifetrack.ui.components.VtuAcademicsView()
+            } else if (selectedSection == "Finances & Ledger") {
+                com.lifetrack.ui.components.FinanceLedgerView()
             } else if (selectedSection == "Sync Engine" && syncEngine != null) {
-                val syncStatus by syncEngine.syncStatus.collectAsState()
-                val scope = remember { CoroutineScope(Dispatchers.Default) }
-
-                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    Text(
-                        text = "Distributed Sync Engine",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Phase 2B.1: Durable Outbox, HLC Causality, and Bidirectional SQLite Sync",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Surface(
-                        color = Color(0xFF1E293B),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Text("Engine Status: ${syncStatus.state.name}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Active Node: ${syncStatus.activeDeviceName}", color = Color(0xFF94A3B8), fontSize = 13.sp)
-                            Text("Pending Outbox Records: ${syncStatus.pendingOutboxCount}", color = Color(0xFF94A3B8), fontSize = 13.sp)
-                            Text("Remote Checkpoint HLC: ${syncStatus.lastCheckpointHlc ?: "None"}", color = Color(0xFF94A3B8), fontSize = 13.sp)
-                            if (syncStatus.lastSyncedTimestamp != null) {
-                                Text("Last Synced Time: ${syncStatus.lastSyncedTimestamp}", color = Color(0xFF94A3B8), fontSize = 13.sp)
-                            }
-                            if (syncStatus.errorMessage != null) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("Error: ${syncStatus.errorMessage}", color = Color(0xFFEF4444), fontSize = 13.sp)
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Surface(
-                                    color = Color(0xFF0F766E),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        scope.launch { syncEngine.triggerSync() }
-                                    }
-                                ) {
-                                    Text("Trigger Sync Now", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                }
-
-                                Surface(
-                                    color = Color(0xFF334155),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.clickable {
-                                        scope.launch { syncEngine.retryAllFailed() }
-                                    }
-                                ) {
-                                    Text("Retry Failed Records", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                }
-                            }
-                        }
-                    }
-                }
+                com.lifetrack.ui.components.SyncEnginePanel(syncEngine = syncEngine)
             } else {
                 Box(
                     modifier = Modifier.fillMaxSize(),

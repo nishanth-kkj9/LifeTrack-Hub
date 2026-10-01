@@ -57,14 +57,11 @@ class LifeTrackApp : Application() {
         val localDataSource = PersistentTaskLocalDataSource(driver, timeProvider)
         val syncRepo = PersistentSyncRepository(driver)
 
-        val deviceId = try {
-            android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)
-                ?: idGenerator.generateId("android")
-        } catch (_: Throwable) {
-            idGenerator.generateId("android")
-        }
+        val deviceIdentityProvider = com.lifetrack.core.PersistentDeviceIdentityProvider(driver, "android", idGenerator)
+        val deviceId = deviceIdentityProvider.getDeviceId()
 
-        val hlcClock = StandardHlcClock(deviceId, timeProvider)
+        val hlcPersistence = com.lifetrack.core.SqliteHlcPersistence(driver, deviceId)
+        val hlcClock = StandardHlcClock(deviceId, timeProvider, persistence = hlcPersistence)
         val syncEventIdGenerator = StandardSyncEventIdGenerator(idGenerator)
 
         taskRepository = TaskRepositoryImpl(
