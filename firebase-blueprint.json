@@ -30,7 +30,10 @@
         "createdAt": { "type": "number", "description": "Creation timestamp epoch ms" },
         "originDeviceId": { "type": "string", "description": "Originating client device identifier", "maxLength": 128 },
         "protocolVersion": { "type": "number", "description": "Sync protocol version integer (>= 1)" },
-        "schemaVersion": { "type": "number", "description": "Payload schema version integer (>= 1)" }
+        "schemaVersion": { "type": "number", "description": "Payload schema version integer (>= 1)" },
+        "hlcPhysicalTimeMs": { "type": "number", "description": "Physical time in ms for indexing" },
+        "hlcLogicalCounter": { "type": "number", "description": "Logical counter for indexing" },
+        "hlcNodeId": { "type": "string", "description": "Originating node ID for indexing", "maxLength": 128 }
       },
       "required": ["id", "entityType", "entityId", "operation", "payload", "hlcTimestamp", "createdAt", "originDeviceId", "protocolVersion", "schemaVersion"]
     },

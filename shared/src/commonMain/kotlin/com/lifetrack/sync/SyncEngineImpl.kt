@@ -30,7 +30,7 @@ import kotlinx.coroutines.sync.withLock
 class SyncEngineImpl(
     private val syncRepository: SyncRepository,
     private val localDataSource: PersistentTaskLocalDataSource,
-    private val remoteTransport: RemoteSyncTransport = DefaultMockRemoteTransport(),
+    private val remoteTransport: RemoteSyncTransport, // Mandatory parameter: no default mock fallback
     private val hlcClock: HlcClock,
     private val timeProvider: TimeProvider = SystemTimeProvider(),
     private val deviceId: String = "local-device",
@@ -145,10 +145,11 @@ class SyncEngineImpl(
                 }
             }
 
-            // Step 2: Pull remote deltas using the durable remote checkpoint
+            // Step 2: Pull remote deltas using the durable remote checkpoint cursor
             val lastCheckpoint = syncRepository.getSyncCheckpoint(deviceId)
+            val cursor = SyncCursor.fromCheckpointString(lastCheckpoint)
             val remoteDeltas = try {
-                remoteTransport.pullRecords(lastCheckpoint).sortedWith(SyncRecordComparator)
+                remoteTransport.pullRecordsWithCursor(cursor, pageSize = 100).sortedWith(SyncRecordComparator)
             } catch (t: Throwable) {
                 val pending = syncRepository.getPendingOutboxRecords().first().size
                 _syncStatus.value = _syncStatus.value.copy(
@@ -233,16 +234,34 @@ class SyncEngineImpl(
                                 val task = TaskPayloadSerializer.deserializeTask(delta.payload)
                                 if (task != null) {
                                     localDataSource.applyRemoteTaskUpsert(task, delta.hlcTimestamp, now)
+                                } else {
+                                    deltaProcessingError = "Malformed task payload on event ${delta.id}"
+                                    break
                                 }
                             } else if (delta.operation == "DELETE") {
                                 localDataSource.applyRemoteTaskDelete(delta.entityId, delta.hlcTimestamp, now)
                             }
                         }
+                        "SUBTASK" -> {
+                            // Section 7: Correct SUBTASK UPSERT and DELETE application
+                            if (delta.operation == "UPSERT") {
+                                val subtask = TaskPayloadSerializer.deserializeSubtask(delta.payload)
+                                if (subtask != null) {
+                                    localDataSource.applyRemoteSubtaskUpsert(subtask, delta.hlcTimestamp, now)
+                                } else {
+                                    deltaProcessingError = "Malformed subtask payload on event ${delta.id}"
+                                    break
+                                }
+                            } else if (delta.operation == "DELETE") {
+                                localDataSource.applyRemoteSubtaskDelete(delta.entityId, delta.hlcTimestamp, now)
+                            }
+                        }
                     }
                 }
 
-                // Safely advance checkpoint up to this successfully validated and processed delta
-                advancedCheckpoint = delta.hlcTimestamp
+                // Section 9 & 12: Advance checkpoint cursor using (lastHlc, lastEventId)
+                val newCursor = SyncCursor(delta.hlcTimestamp, delta.id)
+                advancedCheckpoint = newCursor.toCheckpointString()
             }
 
             // Step 4: Persist updated checkpoint
@@ -251,11 +270,12 @@ class SyncEngineImpl(
             }
 
             val remainingPending = syncRepository.getPendingOutboxRecords().first().size
+            val previousSuccessTime = _syncStatus.value.lastSyncedTimestamp
 
             if (deltaProcessingError != null) {
                 _syncStatus.value = SyncStatus(
                     state = SyncState.ERROR,
-                    lastSyncedTimestamp = now,
+                    lastSyncedTimestamp = previousSuccessTime, // Retain previous success time; do not update on error
                     pendingOutboxCount = remainingPending,
                     activeDeviceName = deviceName,
                     lastCheckpointHlc = advancedCheckpoint,

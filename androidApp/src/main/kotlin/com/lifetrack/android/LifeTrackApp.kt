@@ -73,9 +73,18 @@ class LifeTrackApp : Application() {
         )
 
         syncRepository = syncRepo
+
+        val authSessionProvider = com.lifetrack.auth.AndroidFirebaseAuthSessionProvider()
+        val remoteTransport = com.lifetrack.sync.AndroidFirestoreRemoteSyncTransport(
+            authSessionProvider = authSessionProvider,
+            projectId = "galvanic-oarlock-43skh",
+            databaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+        )
+
         syncEngine = SyncEngineImpl(
             syncRepository = syncRepo,
             localDataSource = localDataSource,
+            remoteTransport = remoteTransport,
             hlcClock = hlcClock,
             timeProvider = timeProvider,
             deviceId = deviceId,

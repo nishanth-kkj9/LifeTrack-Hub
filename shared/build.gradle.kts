@@ -44,6 +44,10 @@ kotlin {
             dependencies {
                 implementation("androidx.core:core-ktx:1.12.0")
                 implementation("androidx.security:security-crypto:1.1.0-alpha06")
+                implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
+                implementation("com.google.firebase:firebase-auth")
+                implementation("com.google.firebase:firebase-firestore")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.0")
             }
         }
         val desktopMain by getting {

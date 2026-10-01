@@ -5,5 +5,6 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.23" apply false
     id("org.jetbrains.kotlin.jvm") version "1.9.23" apply false
     id("org.jetbrains.compose") version "1.6.10" apply false
+    id("com.google.gms.google-services") version "4.4.2" apply false
 }
 

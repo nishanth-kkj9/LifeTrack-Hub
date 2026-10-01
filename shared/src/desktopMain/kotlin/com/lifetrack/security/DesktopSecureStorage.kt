@@ -4,7 +4,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Windows Desktop development implementation of SecureKeyStorage abstraction.
- * Holds keys in-memory during Phase 1B architecture verification without writing plaintext secrets to disk.
+ * Holds keys securely in-memory without writing plaintext secrets to disk.
  * Production DPAPI (CryptProtectData) integration is wired in Phase 3.
  */
 class DesktopSecureKeyStorage : SecureKeyStorage {

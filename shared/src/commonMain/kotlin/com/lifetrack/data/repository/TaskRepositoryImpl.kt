@@ -252,38 +252,101 @@ class TaskRepositoryImpl(
 }
 
 /**
- * Normalized field serializer for sync delta transport.
+ * Normalized field serializer for sync delta transport using robust JSON encoding.
  */
 object TaskPayloadSerializer {
 
     fun serializeTask(task: Task): String {
-        return listOf(
-            task.id,
-            task.title.replace("|", "&#124;"),
-            task.description.replace("|", "&#124;"),
-            task.category.name,
-            task.priority.name,
-            task.status.name,
-            task.dueDate ?: "",
-            task.dueTime ?: "",
-            task.dueDateEpochMs?.toString() ?: "",
-            task.completedAtEpochMs?.toString() ?: "",
-            task.estimatedMinutes?.toString() ?: "",
-            task.actualMinutes?.toString() ?: "",
-            if (task.isStarred) "1" else "0",
-            task.recurrence.name,
-            task.tags.joinToString(","),
-            task.createdAtEpochMs.toString(),
-            task.updatedAtEpochMs.toString(),
-            task.subjectId ?: "",
-            task.examId ?: "",
-            task.notes?.replace("|", "&#124;") ?: "",
-            if (task.isDeleted) "1" else "0"
-        ).joinToString("|")
+        val map = mutableMapOf<String, com.lifetrack.core.json.JsonElement>(
+            "id" to com.lifetrack.core.json.JsonPrimitive(task.id),
+            "title" to com.lifetrack.core.json.JsonPrimitive(task.title),
+            "description" to com.lifetrack.core.json.JsonPrimitive(task.description),
+            "category" to com.lifetrack.core.json.JsonPrimitive(task.category.name),
+            "priority" to com.lifetrack.core.json.JsonPrimitive(task.priority.name),
+            "status" to com.lifetrack.core.json.JsonPrimitive(task.status.name),
+            "isStarred" to com.lifetrack.core.json.JsonPrimitive(task.isStarred),
+            "recurrence" to com.lifetrack.core.json.JsonPrimitive(task.recurrence.name),
+            "tags" to com.lifetrack.core.json.JsonArray(task.tags.map { com.lifetrack.core.json.JsonPrimitive(it) }),
+            "createdAtEpochMs" to com.lifetrack.core.json.JsonPrimitive(task.createdAtEpochMs),
+            "updatedAtEpochMs" to com.lifetrack.core.json.JsonPrimitive(task.updatedAtEpochMs),
+            "isDeleted" to com.lifetrack.core.json.JsonPrimitive(task.isDeleted)
+        )
+        task.dueDate?.let { map["dueDate"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.dueTime?.let { map["dueTime"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.dueDateEpochMs?.let { map["dueDateEpochMs"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.completedAtEpochMs?.let { map["completedAtEpochMs"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.estimatedMinutes?.let { map["estimatedMinutes"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.actualMinutes?.let { map["actualMinutes"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.subjectId?.let { map["subjectId"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.examId?.let { map["examId"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        task.notes?.let { map["notes"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        return com.lifetrack.core.json.JsonObject(map).toJsonString()
     }
 
     fun deserializeTask(payload: String): Task? {
-        val parts = payload.split("|")
+        val trimmed = payload.trim()
+        if (trimmed.startsWith("{")) {
+            return try {
+                val obj = com.lifetrack.core.json.JsonParser.parseObject(trimmed)
+                val id = obj.getString("id") ?: return null
+                val title = obj.getString("title") ?: ""
+                val description = obj.getString("description") ?: ""
+                val categoryStr = obj.getString("category") ?: TaskCategory.PERSONAL.name
+                val priorityStr = obj.getString("priority") ?: TaskPriority.MEDIUM.name
+                val statusStr = obj.getString("status") ?: TaskStatus.TODO.name
+                val dueDate = obj.getString("dueDate")
+                val dueTime = obj.getString("dueTime")
+                val dueDateEpochMs = obj.getLong("dueDateEpochMs")
+                val completedAtEpochMs = obj.getLong("completedAtEpochMs")
+                val estimatedMinutes = obj.getInt("estimatedMinutes")
+                val actualMinutes = obj.getInt("actualMinutes")
+                val isStarred = obj.getBoolean("isStarred") ?: false
+                val recurrenceStr = obj.getString("recurrence") ?: TaskRecurrence.NONE.name
+                val tagsArray = obj.getArray("tags")
+                val tags = tagsArray?.elements?.mapNotNull { it.stringOrNull } ?: emptyList()
+                val createdAt = obj.getLong("createdAtEpochMs") ?: 0L
+                val updatedAt = obj.getLong("updatedAtEpochMs") ?: 0L
+                val subjectId = obj.getString("subjectId")
+                val examId = obj.getString("examId")
+                val notes = obj.getString("notes")
+                val isDeleted = obj.getBoolean("isDeleted") ?: false
+
+                val category = try { TaskCategory.valueOf(categoryStr) } catch (_: Throwable) { TaskCategory.PERSONAL }
+                val priority = try { TaskPriority.valueOf(priorityStr) } catch (_: Throwable) { TaskPriority.MEDIUM }
+                val status = try { TaskStatus.valueOf(statusStr) } catch (_: Throwable) { TaskStatus.TODO }
+                val recurrence = try { TaskRecurrence.valueOf(recurrenceStr) } catch (_: Throwable) { TaskRecurrence.NONE }
+
+                Task(
+                    id = id,
+                    title = title,
+                    description = description,
+                    category = category,
+                    priority = priority,
+                    status = status,
+                    dueDate = dueDate,
+                    dueTime = dueTime,
+                    dueDateEpochMs = dueDateEpochMs,
+                    completedAtEpochMs = completedAtEpochMs,
+                    estimatedMinutes = estimatedMinutes,
+                    actualMinutes = actualMinutes,
+                    isStarred = isStarred,
+                    recurrence = recurrence,
+                    tags = tags,
+                    isSyncPending = false,
+                    isDeleted = isDeleted,
+                    createdAtEpochMs = createdAt,
+                    updatedAtEpochMs = updatedAt,
+                    subjectId = subjectId,
+                    examId = examId,
+                    notes = notes
+                )
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        // Backward compatibility: legacy pipe-separated encoding
+        val parts = trimmed.split("|")
         if (parts.size < 6) return null
         val id = parts[0]
         val title = parts.getOrNull(1)?.replace("&#124;", "|") ?: ""
@@ -340,20 +403,50 @@ object TaskPayloadSerializer {
     }
 
     fun serializeSubtask(subtask: Subtask): String {
-        return listOf(
-            subtask.id,
-            subtask.taskId,
-            subtask.title.replace("|", "&#124;"),
-            if (subtask.completed) "1" else "0",
-            subtask.sortOrder.toString(),
-            subtask.estimatedMinutes?.toString() ?: "",
-            subtask.updatedAtEpochMs.toString(),
-            if (subtask.isDeleted) "1" else "0"
-        ).joinToString("|")
+        val map = mutableMapOf<String, com.lifetrack.core.json.JsonElement>(
+            "id" to com.lifetrack.core.json.JsonPrimitive(subtask.id),
+            "taskId" to com.lifetrack.core.json.JsonPrimitive(subtask.taskId),
+            "title" to com.lifetrack.core.json.JsonPrimitive(subtask.title),
+            "completed" to com.lifetrack.core.json.JsonPrimitive(subtask.completed),
+            "sortOrder" to com.lifetrack.core.json.JsonPrimitive(subtask.sortOrder),
+            "updatedAtEpochMs" to com.lifetrack.core.json.JsonPrimitive(subtask.updatedAtEpochMs),
+            "isDeleted" to com.lifetrack.core.json.JsonPrimitive(subtask.isDeleted)
+        )
+        subtask.estimatedMinutes?.let { map["estimatedMinutes"] = com.lifetrack.core.json.JsonPrimitive(it) }
+        return com.lifetrack.core.json.JsonObject(map).toJsonString()
     }
 
     fun deserializeSubtask(payload: String): Subtask? {
-        val parts = payload.split("|")
+        val trimmed = payload.trim()
+        if (trimmed.startsWith("{")) {
+            return try {
+                val obj = com.lifetrack.core.json.JsonParser.parseObject(trimmed)
+                val id = obj.getString("id") ?: return null
+                val taskId = obj.getString("taskId") ?: return null
+                val title = obj.getString("title") ?: ""
+                val completed = obj.getBoolean("completed") ?: false
+                val sortOrder = obj.getInt("sortOrder") ?: 0
+                val estimatedMinutes = obj.getInt("estimatedMinutes")
+                val updatedAtEpochMs = obj.getLong("updatedAtEpochMs") ?: 0L
+                val isDeleted = obj.getBoolean("isDeleted") ?: false
+
+                Subtask(
+                    id = id,
+                    taskId = taskId,
+                    title = title,
+                    completed = completed,
+                    sortOrder = sortOrder,
+                    estimatedMinutes = estimatedMinutes,
+                    updatedAtEpochMs = updatedAtEpochMs,
+                    isDeleted = isDeleted
+                )
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        // Backward compatibility: legacy pipe-separated encoding
+        val parts = trimmed.split("|")
         if (parts.size < 4) return null
         return Subtask(
             id = parts[0],

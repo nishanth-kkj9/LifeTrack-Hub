@@ -97,10 +97,26 @@ fun main() = application {
         )
     }
 
+    val authSessionProvider = remember {
+        com.lifetrack.auth.DesktopFirebaseAuthSessionProvider(
+            apiKey = "AIzaSyA3Qd0EdAPWUslmC75YI_mga4KD9Df9eAs",
+            projectId = "galvanic-oarlock-43skh"
+        )
+    }
+
+    val remoteTransport = remember {
+        com.lifetrack.sync.DesktopFirestoreRestTransport(
+            authSessionProvider = authSessionProvider,
+            projectId = "galvanic-oarlock-43skh",
+            databaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+        )
+    }
+
     val syncEngine = remember {
         SyncEngineImpl(
             syncRepository = syncRepository,
             localDataSource = localDataSource,
+            remoteTransport = remoteTransport,
             hlcClock = hlcClock,
             timeProvider = timeProvider,
             deviceId = deviceId,
@@ -203,8 +219,8 @@ fun DesktopAppShell(viewModel: TasksViewModel, syncEngine: SyncEngine? = null) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Phase 1B: Architecture Foundation", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text("In-Memory Verification Engine", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                    Text("Phase 2C.2: Production Sync Core", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Real Firestore REST Transport", color = Color(0xFF94A3B8), fontSize = 10.sp)
                 }
             }
         }

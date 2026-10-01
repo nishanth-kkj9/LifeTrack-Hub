@@ -57,6 +57,44 @@ data class SyncRecord(
      */
     val payloadEncrypted: ByteArray
         get() = payload.encodeToByteArray()
+
+    val hlcPhysicalTimeMs: Long
+        get() = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.physicalTimeMs ?: createdAt
+
+    val hlcLogicalCounter: Int
+        get() = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.logicalCounter ?: 0
+
+    val hlcNodeId: String
+        get() = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.nodeId ?: originDeviceId
+}
+
+/**
+ * Hard protocol data integrity violation error, e.g. when a duplicate event ID
+ * is encountered remotely with a differing immutable payload.
+ */
+class SyncDataIntegrityException(message: String) : Exception(message)
+
+/**
+ * Deterministic remote sync cursor based on (lastHlc, lastEventId) to avoid pagination
+ * ambiguity when multiple records share the exact same HLC timestamp.
+ */
+data class SyncCursor(
+    val lastHlc: String,
+    val lastEventId: String = ""
+) {
+    fun toCheckpointString(): String = if (lastEventId.isNotBlank()) "$lastHlc|$lastEventId" else lastHlc
+
+    companion object {
+        fun fromCheckpointString(str: String?): SyncCursor? {
+            if (str.isNullOrBlank()) return null
+            val parts = str.split("|")
+            return if (parts.size >= 2) {
+                SyncCursor(parts[0], parts[1])
+            } else {
+                SyncCursor(parts[0], "")
+            }
+        }
+    }
 }
 
 /**
@@ -64,7 +102,8 @@ data class SyncRecord(
  */
 interface AuthSessionProvider {
     fun getCurrentUserUid(): String?
-    suspend fun getIdToken(forceRefresh: Boolean = false): String?
+    suspend fun getIdToken(forceRefresh: Boolean = false): String? = null
+    fun getIdTokenSync(): String? = null
 }
 
 /**
@@ -84,6 +123,9 @@ interface SyncEngine {
 interface RemoteSyncTransport {
     suspend fun pushRecords(records: List<SyncRecord>): List<String>
     suspend fun pullRecords(sinceHlc: String?): List<SyncRecord>
+    suspend fun pullRecordsWithCursor(cursor: SyncCursor?, pageSize: Int = 100): List<SyncRecord> {
+        return pullRecords(cursor?.lastHlc)
+    }
 }
 
 /**

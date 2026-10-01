@@ -51,7 +51,7 @@ fun SyncEnginePanel(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Phase 2C: Production Outbox, HLC Monotonic Causality & Firestore Deltas",
+            text = "Phase 2C.2: Production Firestore REST & Android SDK Transport • Zero-Trust Rules",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray
         )
@@ -71,7 +71,7 @@ fun SyncEnginePanel(
                 ) {
                     Column {
                         Text(
-                            text = "Engine Status: ${syncStatus.state.name}",
+                            text = "Engine State: ${syncStatus.state.name}",
                             color = when (syncStatus.state) {
                                 SyncState.SUCCESS -> Color(0xFF34D399)
                                 SyncState.SYNCING -> Color(0xFF38BDF8)
@@ -83,7 +83,7 @@ fun SyncEnginePanel(
                             fontSize = 16.sp
                         )
                         Text(
-                            text = "Active Node: ${syncStatus.activeDeviceName}",
+                            text = "Active Node: ${syncStatus.activeDeviceName} • ${if (isOffline) "Offline Mode" else "Connected / Online"}",
                             color = Color(0xFF94A3B8),
                             fontSize = 12.sp
                         )
@@ -105,13 +105,15 @@ fun SyncEnginePanel(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Text("Remote Checkpoint: ${syncStatus.lastCheckpointHlc ?: "Genesis (None)"}", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                if (syncStatus.lastSyncedTimestamp != null) {
-                    Text("Last Synced Time: ${syncStatus.lastSyncedTimestamp}", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                }
+                Text("Remote Checkpoint Cursor: ${syncStatus.lastCheckpointHlc ?: "Genesis (None)"}", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                Text(
+                    text = "Last Successful Sync: ${if (syncStatus.lastSyncedTimestamp != null) "${syncStatus.lastSyncedTimestamp} ms" else "Never"}",
+                    color = if (syncStatus.lastSyncedTimestamp != null) Color(0xFF34D399) else Color(0xFF94A3B8),
+                    fontSize = 12.sp
+                )
                 if (syncStatus.errorMessage != null) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text("Error: ${syncStatus.errorMessage}", color = Color(0xFFEF4444), fontSize = 12.sp)
+                    Text("Last Error: ${syncStatus.errorMessage}", color = Color(0xFFEF4444), fontSize = 12.sp)
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))

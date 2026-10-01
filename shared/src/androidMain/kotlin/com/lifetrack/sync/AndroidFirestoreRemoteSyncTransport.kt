@@ -1,88 +1,64 @@
 package com.lifetrack.sync
 
-import com.lifetrack.core.HlcTimestamp
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URI
-import java.net.URL
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
+import kotlinx.coroutines.tasks.await
 
 /**
- * Production Android Firestore Remote Sync Transport communicating with
- * Google Cloud Firestore REST API using Firebase Authentication ID tokens.
+ * Production Android RemoteSyncTransport backed by the official Firebase Firestore Android SDK.
+ *
+ * Guarantees:
+ * 1. Scoped strictly to authenticated user: `/users/{uid}/deltas/{eventId}`.
+ * 2. Idempotent push: Compares all 10 immutable fields on existing document before acknowledging.
+ * 3. Never overwrites existing deltas.
+ * 4. Structured HLC ordering & cursor pagination.
  */
 class AndroidFirestoreRemoteSyncTransport(
     private val authSessionProvider: AuthSessionProvider,
-    private val config: FirebaseConfig = FirebaseConfig(),
-    private val pageSize: Int = 100
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val projectId: String = "galvanic-oarlock-43skh",
+    private val databaseId: String = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
 ) : RemoteSyncTransport {
 
     override suspend fun pushRecords(records: List<SyncRecord>): List<String> {
         val uid = authSessionProvider.getCurrentUserUid()
-            ?: throw IllegalStateException("Cannot push deltas: No Android user authenticated")
+            ?: throw IllegalStateException("Cannot push deltas: User is not authenticated")
 
-        var idToken = authSessionProvider.getIdToken(forceRefresh = false)
-            ?: throw IllegalStateException("Cannot push deltas: Missing Firebase ID token")
-
+        val deltasCollection = firestore.collection("users").document(uid).collection("deltas")
         val ackedIds = mutableListOf<String>()
 
         for (record in records) {
-            val docUrl = "${config.restBaseUrl}/users/$uid/deltas?documentId=${URLEncoder.encode(record.id, "UTF-8")}"
-            val payloadJson = serializeRecordToFirestoreJson(record)
+            val docRef = deltasCollection.document(record.id)
+            val snapshot = docRef.get().await()
 
-            var response = executeHttpRequest(
-                urlString = docUrl,
-                method = "POST",
-                idToken = idToken,
-                body = payloadJson
-            )
-
-            // Handle token expiration retry
-            if (response.statusCode == 401 || response.statusCode == 403) {
-                idToken = authSessionProvider.getIdToken(forceRefresh = true)
-                    ?: throw SecurityException("Authentication token expired and refresh failed")
-                response = executeHttpRequest(
-                    urlString = docUrl,
-                    method = "POST",
-                    idToken = idToken,
-                    body = payloadJson
-                )
-            }
-
-            if (response.statusCode in 200..299) {
-                ackedIds.add(record.id)
-            } else if (response.statusCode == 409) {
-                // Event already exists in Firestore: Verify content immutability
-                val existingDocUrl = "${config.restBaseUrl}/users/$uid/deltas/${URLEncoder.encode(record.id, "UTF-8")}"
-                val existingResponse = executeHttpRequest(
-                    urlString = existingDocUrl,
-                    method = "GET",
-                    idToken = idToken
-                )
-
-                if (existingResponse.statusCode in 200..299) {
-                    val existingRecord = parseFirestoreDocumentJson(existingResponse.body)
-                    if (existingRecord != null &&
-                        existingRecord.payload == record.payload &&
-                        existingRecord.entityType == record.entityType &&
-                        existingRecord.entityId == record.entityId &&
-                        existingRecord.operation == record.operation
-                    ) {
-                        // Idempotent duplicate acknowledgment
-                        ackedIds.add(record.id)
-                    } else {
-                        throw IllegalStateException(
-                            "Data integrity violation: Event ${record.id} already exists with conflicting content."
-                        )
-                    }
+            if (snapshot.exists()) {
+                // Read and verify complete immutable event contract
+                val existing = mapDocumentToSyncRecord(snapshot.data, record.id)
+                if (existing != null) {
+                    verifyImmutableDeltaContract(existing, record)
+                    // Verified duplicate ACK
+                    ackedIds.add(record.id)
                 } else {
-                    throw IllegalStateException("Failed to verify existing delta document: HTTP ${existingResponse.statusCode}")
+                    throw SyncDataIntegrityException("Malformed existing remote delta document for event ${record.id}")
                 }
             } else {
-                throw java.io.IOException("Firestore REST push error HTTP ${response.statusCode}: ${response.body}")
+                val data = mapOf(
+                    "id" to record.id,
+                    "entityType" to record.entityType,
+                    "entityId" to record.entityId,
+                    "operation" to record.operation,
+                    "payload" to record.payload,
+                    "hlcTimestamp" to record.hlcTimestamp,
+                    "hlcPhysicalTimeMs" to record.hlcPhysicalTimeMs,
+                    "hlcLogicalCounter" to record.hlcLogicalCounter,
+                    "hlcNodeId" to record.hlcNodeId,
+                    "createdAt" to record.createdAt,
+                    "originDeviceId" to record.originDeviceId,
+                    "protocolVersion" to record.protocolVersion,
+                    "schemaVersion" to record.schemaVersion
+                )
+                docRef.set(data).await()
+                ackedIds.add(record.id)
             }
         }
 
@@ -90,119 +66,71 @@ class AndroidFirestoreRemoteSyncTransport(
     }
 
     override suspend fun pullRecords(sinceHlc: String?): List<SyncRecord> {
+        val cursor = if (sinceHlc != null) SyncCursor(sinceHlc, "") else null
+        return pullRecordsWithCursor(cursor, pageSize = 100)
+    }
+
+    override suspend fun pullRecordsWithCursor(cursor: SyncCursor?, pageSize: Int): List<SyncRecord> {
         val uid = authSessionProvider.getCurrentUserUid()
-            ?: throw IllegalStateException("Cannot pull deltas: No user authenticated")
+            ?: throw IllegalStateException("Cannot pull deltas: User is not authenticated")
 
-        var idToken = authSessionProvider.getIdToken(forceRefresh = false)
-            ?: throw IllegalStateException("Cannot pull deltas: Missing Firebase ID token")
+        val deltasCollection = firestore.collection("users").document(uid).collection("deltas")
+        val allRecords = mutableListOf<SyncRecord>()
+        var currentCursor = cursor
 
-        val queryUrl = "https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId}/documents/users/$uid:runQuery"
-        val queryJson = buildStructuredQueryJson(sinceHlc, pageSize)
+        while (true) {
+            var query: Query = deltasCollection
+                .orderBy("hlcPhysicalTimeMs", Query.Direction.ASCENDING)
+                .orderBy("hlcLogicalCounter", Query.Direction.ASCENDING)
+                .orderBy("hlcNodeId", Query.Direction.ASCENDING)
+                .orderBy("id", Query.Direction.ASCENDING)
 
-        var response = executeHttpRequest(
-            urlString = queryUrl,
-            method = "POST",
-            idToken = idToken,
-            body = queryJson
-        )
-
-        if (response.statusCode == 401 || response.statusCode == 403) {
-            idToken = authSessionProvider.getIdToken(forceRefresh = true)
-                ?: throw SecurityException("Authentication token expired and refresh failed")
-            response = executeHttpRequest(
-                urlString = queryUrl,
-                method = "POST",
-                idToken = idToken,
-                body = queryJson
-            )
-        }
-
-        if (response.statusCode !in 200..299) {
-            throw java.io.IOException("Firestore REST pull error HTTP ${response.statusCode}: ${response.body}")
-        }
-
-        val records = parseRunQueryResponse(response.body)
-        return records.sortedWith(SyncRecordComparator)
-    }
-
-    private fun serializeRecordToFirestoreJson(record: SyncRecord): String {
-        return """
-        {
-          "fields": {
-            "id": { "stringValue": "${escapeJson(record.id)}" },
-            "entityType": { "stringValue": "${escapeJson(record.entityType)}" },
-            "entityId": { "stringValue": "${escapeJson(record.entityId)}" },
-            "operation": { "stringValue": "${escapeJson(record.operation)}" },
-            "payload": { "stringValue": "${escapeJson(record.payload)}" },
-            "hlcTimestamp": { "stringValue": "${escapeJson(record.hlcTimestamp)}" },
-            "createdAt": { "integerValue": "${record.createdAt}" },
-            "originDeviceId": { "stringValue": "${escapeJson(record.originDeviceId)}" },
-            "protocolVersion": { "integerValue": "${record.protocolVersion}" },
-            "schemaVersion": { "integerValue": "${record.schemaVersion}" }
-          }
-        }
-        """.trimIndent()
-    }
-
-    private fun buildStructuredQueryJson(sinceHlc: String?, limit: Int): String {
-        return if (sinceHlc != null && sinceHlc.isNotBlank()) {
-            """
-            {
-              "structuredQuery": {
-                "from": [{ "collectionId": "deltas" }],
-                "where": {
-                  "fieldFilter": {
-                    "field": { "fieldPath": "hlcTimestamp" },
-                    "op": "GREATER_THAN",
-                    "value": { "stringValue": "${escapeJson(sinceHlc)}" }
-                  }
-                },
-                "orderBy": [
-                  { "field": { "fieldPath": "hlcTimestamp" }, "direction": "ASCENDING" }
-                ],
-                "limit": $limit
-              }
+            if (currentCursor != null && currentCursor.lastHlc.isNotBlank()) {
+                val hlc = com.lifetrack.core.HlcTimestamp.fromString(currentCursor.lastHlc)
+                if (hlc != null) {
+                    query = query.startAfter(hlc.physicalTimeMs, hlc.logicalCounter, hlc.nodeId, currentCursor.lastEventId)
+                }
             }
-            """.trimIndent()
-        } else {
-            """
-            {
-              "structuredQuery": {
-                "from": [{ "collectionId": "deltas" }],
-                "orderBy": [
-                  { "field": { "fieldPath": "hlcTimestamp" }, "direction": "ASCENDING" }
-                ],
-                "limit": $limit
-              }
+
+            query = query.limit(pageSize.toLong())
+
+            val snapshot = query.get().await()
+            val documents = snapshot.documents
+            if (documents.isEmpty()) {
+                break
             }
-            """.trimIndent()
+
+            for (doc in documents) {
+                val record = mapDocumentToSyncRecord(doc.data, doc.id)
+                if (record != null) {
+                    allRecords.add(record)
+                }
+            }
+
+            if (documents.size < pageSize) {
+                break
+            }
+
+            val lastDoc = documents.last()
+            val lastHlc = lastDoc.getString("hlcTimestamp") ?: ""
+            currentCursor = SyncCursor(lastHlc, lastDoc.id)
         }
+
+        return allRecords.sortedWith(SyncRecordComparator)
     }
 
-    private fun parseRunQueryResponse(json: String): List<SyncRecord> {
-        val records = mutableListOf<SyncRecord>()
-        val docSplit = json.split(""""document":""")
-        for (i in 1 until docSplit.size) {
-            val chunk = docSplit[i]
-            val record = parseFirestoreDocumentJson(chunk)
-            if (record != null) {
-                records.add(record)
-            }
-        }
-        return records
-    }
-
-    private fun parseFirestoreDocumentJson(chunk: String): SyncRecord? {
-        val id = extractJsonField(chunk, "id") ?: return null
-        val entityType = extractJsonField(chunk, "entityType") ?: "TASK"
-        val entityId = extractJsonField(chunk, "entityId") ?: id
-        val operation = extractJsonField(chunk, "operation") ?: "UPSERT"
-        val payload = extractJsonField(chunk, "payload") ?: ""
-        val hlcTimestamp = extractJsonField(chunk, "hlcTimestamp") ?: return null
-        val createdAt = extractJsonLongField(chunk, "createdAt") ?: 0L
-        val originDeviceId = extractJsonField(chunk, "originDeviceId") ?: "unknown"
-        val protocolVersion = extractJsonIntField(chunk, "protocolVersion") ?: 1
-        val schemaVersion = extractJsonIntField(chunk, "schemaVersion") ?: 1
+    private fun mapDocumentToSyncRecord(data: Map<String, Any?>?, docId: String): SyncRecord? {
+        if (data == null) return null
+        val id = data["id"] as? String ?: docId
+        val entityType = data["entityType"] as? String ?: return null
+        val entityId = data["entityId"] as? String ?: return null
+        val operation = data["operation"] as? String ?: return null
+        val payload = data["payload"] as? String ?: ""
+        val hlcTimestamp = data["hlcTimestamp"] as? String ?: return null
+        val createdAt = (data["createdAt"] as? Number)?.toLong() ?: 0L
+        val originDeviceId = data["originDeviceId"] as? String ?: "unknown"
+        val protocolVersion = (data["protocolVersion"] as? Number)?.toInt() ?: 1
+        val schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 1
 
         return SyncRecord(
             id = id,
@@ -216,97 +144,5 @@ class AndroidFirestoreRemoteSyncTransport(
             protocolVersion = protocolVersion,
             schemaVersion = schemaVersion
         )
-    }
-
-    private fun extractJsonField(json: String, fieldName: String): String? {
-        val key = "\"$fieldName\":\\s*\\{\\s*\"stringValue\":\\s*\"(.*?)\"".toRegex()
-        return key.find(json)?.groupValues?.getOrNull(1)?.let { unescapeJson(it) }
-    }
-
-    private fun extractJsonLongField(json: String, fieldName: String): Long? {
-        val key = "\"$fieldName\":\\s*\\{\\s*\"integerValue\":\\s*\"?(\\d+)\"?".toRegex()
-        return key.find(json)?.groupValues?.getOrNull(1)?.toLongOrNull()
-    }
-
-    private fun extractJsonIntField(json: String, fieldName: String): Int? {
-        val key = "\"$fieldName\":\\s*\\{\\s*\"integerValue\":\\s*\"?(\\d+)\"?".toRegex()
-        return key.find(json)?.groupValues?.getOrNull(1)?.toIntOrNull()
-    }
-
-    private fun escapeJson(str: String): String {
-        return str
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-    }
-
-    private fun unescapeJson(str: String): String {
-        return str
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\")
-            .replace("\\n", "\n")
-            .replace("\\r", "\r")
-            .replace("\\t", "\t")
-    }
-
-    private fun executeHttpRequest(
-        urlString: String,
-        method: String,
-        idToken: String,
-        body: String? = null
-    ): HttpResponseResult {
-        val url = URI.create(urlString).toURL()
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = method
-        connection.setRequestProperty("Authorization", "Bearer $idToken")
-        connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-        connection.setRequestProperty("Accept", "application/json")
-        connection.connectTimeout = 15000
-        connection.readTimeout = 15000
-
-        if (body != null && (method == "POST" || method == "PATCH" || method == "PUT")) {
-            connection.doOutput = true
-            OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use { writer ->
-                writer.write(body)
-                writer.flush()
-            }
-        }
-
-        val statusCode = connection.responseCode
-        val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
-        val responseBody = stream?.use {
-            BufferedReader(InputStreamReader(it, StandardCharsets.UTF_8)).readText()
-        } ?: ""
-
-        connection.disconnect()
-        return HttpResponseResult(statusCode, responseBody)
-    }
-
-    private data class HttpResponseResult(val statusCode: Int, val body: String)
-}
-
-/**
- * Standard Android Firebase authentication provider holding user session credentials.
- */
-class AndroidFirebaseAuthSessionProvider(
-    private var currentUserUid: String? = null,
-    private var currentIdToken: String? = null,
-    private val tokenRefresher: (suspend (forceRefresh: Boolean) -> String?)? = null
-) : AuthSessionProvider {
-
-    override fun getCurrentUserUid(): String? = currentUserUid
-
-    override suspend fun getIdToken(forceRefresh: Boolean): String? {
-        if (forceRefresh && tokenRefresher != null) {
-            currentIdToken = tokenRefresher.invoke(true)
-        }
-        return currentIdToken
-    }
-
-    fun setSession(uid: String?, token: String?) {
-        currentUserUid = uid
-        currentIdToken = token
     }
 }

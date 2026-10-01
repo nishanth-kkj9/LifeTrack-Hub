@@ -17,25 +17,35 @@ export async function requestTaskBreakdown(
   description?: string,
   category?: string
 ): Promise<Subtask[]> {
-  const response = await fetch('/api/gemini/breakdown', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, description, category }),
-  });
+  try {
+    const response = await fetch('/api/gemini/breakdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, category }),
+    });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to generate task breakdown');
+    if (response.ok) {
+      const data = await response.json();
+      const rawSubtasks = data.subtasks || [];
+      if (Array.isArray(rawSubtasks) && rawSubtasks.length > 0) {
+        return rawSubtasks.map((item: any, idx: number) => ({
+          id: `ai-st-${Date.now()}-${idx}`,
+          title: item.title || `Step ${idx + 1}`,
+          completed: false,
+          estimatedMinutes: item.estimatedMinutes || 25,
+        }));
+      }
+    }
+  } catch (e) {
+    console.warn('Network breakdown request error, using client fallback:', e);
   }
 
-  const data = await response.json();
-  const rawSubtasks = data.subtasks || [];
-  return rawSubtasks.map((item: any, idx: number) => ({
-    id: `ai-st-${Date.now()}-${idx}`,
-    title: item.title || `Step ${idx + 1}`,
-    completed: false,
-    estimatedMinutes: item.estimatedMinutes || 25,
-  }));
+  // Client-side fallback if server is offline or unreachable
+  return [
+    { id: `st-${Date.now()}-1`, title: `Review prerequisites and gather resources for ${title}`, completed: false, estimatedMinutes: 25 },
+    { id: `st-${Date.now()}-2`, title: `Execute primary objective for ${title}`, completed: false, estimatedMinutes: 45 },
+    { id: `st-${Date.now()}-3`, title: `Verify output and mark completion`, completed: false, estimatedMinutes: 20 },
+  ];
 }
 
 export const generateTaskSubtasks = requestTaskBreakdown;

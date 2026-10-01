@@ -30,7 +30,10 @@ service cloud.firestore {
         && data.originDeviceId is string && data.originDeviceId.size() <= 128
         && data.protocolVersion is number && data.protocolVersion >= 1
         && data.schemaVersion is number && data.schemaVersion >= 1
-        && data.createdAt is number;
+        && data.createdAt is number
+        && (!('hlcPhysicalTimeMs' in data) || data.hlcPhysicalTimeMs is number)
+        && (!('hlcLogicalCounter' in data) || data.hlcLogicalCounter is number)
+        && (!('hlcNodeId' in data) || (data.hlcNodeId is string && data.hlcNodeId.size() <= 128));
     }
 
     function isValidSyncState(data, deviceId) {

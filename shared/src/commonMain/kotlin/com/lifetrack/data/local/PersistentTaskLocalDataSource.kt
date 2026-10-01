@@ -375,6 +375,71 @@ class PersistentTaskLocalDataSource(
         refreshTasksFlow()
     }
 
+    /**
+     * Applies remote subtask UPSERT without re-enqueueing outbox events.
+     * Guarantees transactional subtask persistence and entity sync metadata tracking.
+     */
+    suspend fun applyRemoteSubtaskUpsert(subtask: Subtask, hlcTimestamp: String, updatedAtMs: Long): Boolean = mutex.withLock {
+        var applied = false
+        driver.transaction {
+            driver.execute(
+                """
+                INSERT OR REPLACE INTO subtasks (
+                    id, task_id, title, completed, sort_order,
+                    estimated_minutes, updated_at_epoch_ms, is_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                """.trimIndent(),
+                arrayOf(
+                    subtask.id,
+                    subtask.taskId,
+                    subtask.title,
+                    if (subtask.completed) 1 else 0,
+                    subtask.sortOrder,
+                    subtask.estimatedMinutes,
+                    updatedAtMs,
+                    if (subtask.isDeleted) 1 else 0
+                )
+            )
+            upsertEntitySyncMetadata(
+                entityType = "SUBTASK",
+                entityId = subtask.id,
+                hlcTimestamp = hlcTimestamp,
+                isDeleted = subtask.isDeleted,
+                updatedAt = updatedAtMs
+            )
+            applied = true
+        }
+        if (applied) {
+            refreshTasksFlow()
+        }
+        applied
+    }
+
+    /**
+     * Applies remote subtask DELETE (tombstone) without re-enqueueing outbox events.
+     */
+    suspend fun applyRemoteSubtaskDelete(subtaskId: String, hlcTimestamp: String, updatedAtMs: Long): Boolean = mutex.withLock {
+        var applied = false
+        driver.transaction {
+            driver.execute(
+                "UPDATE subtasks SET is_deleted = 1, updated_at_epoch_ms = ? WHERE id = ?;",
+                arrayOf(updatedAtMs, subtaskId)
+            )
+            upsertEntitySyncMetadata(
+                entityType = "SUBTASK",
+                entityId = subtaskId,
+                hlcTimestamp = hlcTimestamp,
+                isDeleted = true,
+                updatedAt = updatedAtMs
+            )
+            applied = true
+        }
+        if (applied) {
+            refreshTasksFlow()
+        }
+        applied
+    }
+
     suspend fun getEntitySyncMetadata(entityType: String, entityId: String): EntitySyncMetadata? = mutex.withLock {
         driver.query(
             "SELECT entity_type, entity_id, hlc_timestamp, is_deleted, updated_at FROM entity_sync_metadata WHERE entity_type = ? AND entity_id = ? LIMIT 1;",

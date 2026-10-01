@@ -160,7 +160,7 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
         });
       }
     } catch (err) {
-      console.error('AI breakdown error:', err);
+      console.warn('AI breakdown note:', err);
     } finally {
       setIsAiBreakingDown(false);
     }

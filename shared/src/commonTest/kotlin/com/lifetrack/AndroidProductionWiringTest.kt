@@ -30,9 +30,18 @@ class AndroidProductionWiringTest {
             syncEventIdGenerator = idGen
         )
 
+        val authProvider = object : com.lifetrack.sync.AuthSessionProvider {
+            override fun getCurrentUserUid(): String = "android-test-node"
+        }
+        val remoteTransport = com.lifetrack.sync.FirestoreRemoteSyncTransport(
+            authSessionProvider = authProvider,
+            remoteDeltaStore = com.lifetrack.sync.InMemoryRemoteDeltaStore()
+        )
+
         val syncEngine = SyncEngineImpl(
             syncRepository = syncRepo,
             localDataSource = localDataSource,
+            remoteTransport = remoteTransport,
             hlcClock = hlcClock,
             timeProvider = timeProvider,
             deviceId = "android-test-node",

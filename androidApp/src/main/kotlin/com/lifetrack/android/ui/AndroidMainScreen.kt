@@ -72,7 +72,7 @@ fun AndroidMainScreen(
                             fontSize = 20.sp
                         )
                         Text(
-                            text = "Android Production Core • Phase 1B Architecture",
+                            text = "Android Production Core • Phase 2C.2 Firestore Sync",
                             fontSize = 11.sp,
                             color = Color(0xFF64748B)
                         )
