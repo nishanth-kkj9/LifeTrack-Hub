@@ -53,12 +53,12 @@ class HlcOrderingAndPaginationTest {
         val auth = createAuthSession()
         val transport = FirestoreRemoteSyncTransport(auth, deltaStore)
 
-        val testSizes = listOf(0, 1, 99, 100, 101, 500)
+        val testSizes = listOf(0, 1, 99, 100, 101, 500, 1000)
 
         for (size in testSizes) {
             deltaStore.clear()
             val records = (1..size).map { i ->
-                val pad = i.toString().padStart(4, '0')
+                val pad = i.toString().padStart(5, '0')
                 SyncRecord(
                     id = "evt_page_$pad",
                     entityType = "TASK",

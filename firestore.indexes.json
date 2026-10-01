@@ -1,0 +1,27 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "deltas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hlcPhysicalTimeMs",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "hlcLogicalCounter",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "hlcNodeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "id",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

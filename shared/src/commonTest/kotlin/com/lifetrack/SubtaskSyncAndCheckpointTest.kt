@@ -274,5 +274,21 @@ class SubtaskSyncAndCheckpointTest {
 
         // lastSuccessfulSyncTime must NOT be updated because overall sync ended in ERROR
         assertNull(status.lastSyncedTimestamp, "lastSuccessfulSyncTime must not be updated on error")
+
+        // Direct SQLite persistence row verification (Requirement 9)
+        driver.query(
+            "SELECT last_pulled_hlc, last_successful_sync_time, last_error FROM sync_state WHERE device_id = ? LIMIT 1;",
+            arrayOf("nodeBatchTest")
+        ) { cursor ->
+            val checkpointHlc = cursor.getString(0)
+            val syncTime = cursor.getLong(1)
+            val err = cursor.getString(2)
+
+            assertNotNull(checkpointHlc)
+            assertTrue(checkpointHlc.contains("evt_batch_50"))
+            assertEquals(0L, syncTime ?: 0L, "Direct SQLite sync_state table must preserve previous 0 ms timestamp")
+            assertNotNull(err)
+            assertTrue(err.contains("Malformed"))
+        }
     }
 }

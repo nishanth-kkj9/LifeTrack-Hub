@@ -51,7 +51,7 @@ fun SyncEnginePanel(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Phase 2C.2: Production Firestore REST & Android SDK Transport • Zero-Trust Rules",
+            text = "Production Firestore Multi-Device Sync • Zero-Trust Firestore Security Rules",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray
         )
@@ -71,19 +71,20 @@ fun SyncEnginePanel(
                 ) {
                     Column {
                         Text(
-                            text = "Engine State: ${syncStatus.state.name}",
+                            text = "Engine State: ${if (syncStatus.state == SyncState.UNAUTHENTICATED) "NOT AUTHENTICATED" else syncStatus.state.name}",
                             color = when (syncStatus.state) {
                                 SyncState.SUCCESS -> Color(0xFF34D399)
                                 SyncState.SYNCING -> Color(0xFF38BDF8)
                                 SyncState.ERROR -> Color(0xFFF87171)
                                 SyncState.OFFLINE -> Color(0xFFFBBF24)
+                                SyncState.UNAUTHENTICATED -> Color(0xFFFB923C)
                                 SyncState.IDLE -> Color.White
                             },
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
                         Text(
-                            text = "Active Node: ${syncStatus.activeDeviceName} • ${if (isOffline) "Offline Mode" else "Connected / Online"}",
+                            text = "Active Node: ${syncStatus.activeDeviceName} • ${if (syncStatus.state == SyncState.UNAUTHENTICATED) "Signed Out" else if (isOffline) "Offline Mode" else "Connected / Online"}",
                             color = Color(0xFF94A3B8),
                             fontSize = 12.sp
                         )

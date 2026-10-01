@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 enum class SyncState {
+    UNAUTHENTICATED,
     IDLE,
     SYNCING,
     OFFLINE,
@@ -17,7 +18,8 @@ data class SyncStatus(
     val pendingOutboxCount: Int = 0,
     val activeDeviceName: String = "Local Device",
     val lastCheckpointHlc: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val authenticatedUser: String? = null
 )
 
 /**

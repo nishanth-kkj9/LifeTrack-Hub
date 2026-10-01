@@ -33,6 +33,7 @@ class SyncEngineImpl(
     private val remoteTransport: RemoteSyncTransport, // Mandatory parameter: no default mock fallback
     private val hlcClock: HlcClock,
     private val timeProvider: TimeProvider = SystemTimeProvider(),
+    private val authSessionProvider: AuthSessionProvider? = null,
     private val deviceId: String = "local-device",
     private val deviceName: String = "Local Device",
     private val maxRetries: Int = 5,
@@ -49,8 +50,9 @@ class SyncEngineImpl(
 
     private val _syncStatus = MutableStateFlow(
         SyncStatus(
-            state = SyncState.IDLE,
-            activeDeviceName = deviceName
+            state = if (authSessionProvider != null && authSessionProvider.getCurrentUserUid() == null) SyncState.UNAUTHENTICATED else SyncState.IDLE,
+            activeDeviceName = deviceName,
+            authenticatedUser = authSessionProvider?.getCurrentUserUid()
         )
     )
     override val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
@@ -66,9 +68,11 @@ class SyncEngineImpl(
                     errorMessage = null
                 )
             } else {
+                val uid = authSessionProvider?.getCurrentUserUid()
                 _syncStatus.value = _syncStatus.value.copy(
-                    state = SyncState.IDLE,
-                    errorMessage = null
+                    state = if (authSessionProvider != null && uid == null) SyncState.UNAUTHENTICATED else SyncState.IDLE,
+                    errorMessage = null,
+                    authenticatedUser = uid
                 )
             }
         }
@@ -89,12 +93,26 @@ class SyncEngineImpl(
     override suspend fun triggerSync() {
         mutex.withLock {
             val now = timeProvider.nowEpochMs()
+            val pendingCount = syncRepository.getPendingOutboxRecords().first().size
+
+            // Section 5: Verify authenticated session before cloud synchronization
+            val uid = authSessionProvider?.getCurrentUserUid()
+            if (authSessionProvider != null && uid.isNullOrBlank()) {
+                _syncStatus.value = SyncStatus(
+                    state = SyncState.UNAUTHENTICATED,
+                    activeDeviceName = deviceName,
+                    pendingOutboxCount = pendingCount,
+                    errorMessage = "User is not signed in. Please sign in to enable remote synchronization.",
+                    authenticatedUser = null
+                )
+                return
+            }
 
             if (isOfflineMode) {
-                val pending = syncRepository.getPendingOutboxRecords().first().size
                 _syncStatus.value = _syncStatus.value.copy(
                     state = SyncState.OFFLINE,
-                    pendingOutboxCount = pending
+                    pendingOutboxCount = pendingCount,
+                    authenticatedUser = uid
                 )
                 return
             }
@@ -104,7 +122,8 @@ class SyncEngineImpl(
 
             _syncStatus.value = _syncStatus.value.copy(
                 state = SyncState.SYNCING,
-                errorMessage = null
+                errorMessage = null,
+                authenticatedUser = uid
             )
 
             // Step 1: Transmit eligible local outbox records

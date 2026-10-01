@@ -47,6 +47,21 @@ class LifeTrackApp : Application() {
         super.onCreate()
         instance = this
 
+        // Safe Firebase initialization: handles both google-services.json auto-init and explicit options
+        try {
+            if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
+                val options = com.google.firebase.FirebaseOptions.Builder()
+                    .setProjectId("galvanic-oarlock-43skh")
+                    .setApplicationId("1:1076639107192:android:8c221e4caff37ff375858d")
+                    .setApiKey("AIzaSyA3Qd0EdAPWUslmC75YI_mga4KD9Df9eAs")
+                    .setStorageBucket("galvanic-oarlock-43skh.firebasestorage.app")
+                    .build()
+                com.google.firebase.FirebaseApp.initializeApp(this, options)
+            }
+        } catch (_: Throwable) {
+            // Handled safely
+        }
+
         val timeProvider = SystemTimeProvider()
         val idGenerator = PlatformIdGenerator(timeProvider)
 

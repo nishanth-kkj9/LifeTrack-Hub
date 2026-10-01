@@ -119,6 +119,7 @@ fun main() = application {
             remoteTransport = remoteTransport,
             hlcClock = hlcClock,
             timeProvider = timeProvider,
+            authSessionProvider = authSessionProvider,
             deviceId = deviceId,
             deviceName = "Windows Desktop"
         )
@@ -144,15 +145,29 @@ fun main() = application {
         state = rememberWindowState(width = 1100.dp, height = 750.dp)
     ) {
         LifeTrackTheme {
-            DesktopAppShell(viewModel, syncEngine)
+            DesktopAppShell(viewModel, syncEngine, authSessionProvider)
         }
     }
 }
 
 @Composable
-fun DesktopAppShell(viewModel: TasksViewModel, syncEngine: SyncEngine? = null) {
+fun DesktopAppShell(
+    viewModel: TasksViewModel,
+    syncEngine: SyncEngine? = null,
+    authSessionProvider: com.lifetrack.auth.DesktopFirebaseAuthSessionProvider? = null
+) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedSection by remember { mutableStateOf("Tasks") }
+
+    val authState by (authSessionProvider?.authState ?: remember { MutableStateFlow(com.lifetrack.auth.DesktopAuthState.AUTHENTICATED) }).collectAsState()
+    val currentUserEmail by (authSessionProvider?.currentUserEmail ?: remember { MutableStateFlow<String?>(null) }).collectAsState()
+
+    var showAuthModal by remember { mutableStateOf(false) }
+    var emailInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
+    var authError by remember { mutableStateOf<String?>(null) }
+    var isSubmittingAuth by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Desktop Left Navigation Rail
@@ -213,14 +228,37 @@ fun DesktopAppShell(viewModel: TasksViewModel, syncEngine: SyncEngine? = null) {
 
             Spacer(modifier = Modifier.weight(1f))
 
+            // User Profile / Auth Status Panel
             Surface(
                 color = Color(0xFF1E293B),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Phase 2C.2: Production Sync Core", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Real Firestore REST Transport", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                    if (authState == com.lifetrack.auth.DesktopAuthState.AUTHENTICATED && currentUserEmail != null) {
+                        Text("Signed In", color = Color(0xFF34D399), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text(currentUserEmail ?: "", color = Color.White, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Sign Out",
+                            color = Color(0xFFF87171),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { authSessionProvider?.signOut() }
+                        )
+                    } else {
+                        Text("Cloud Sync: Signed Out", color = Color(0xFFFBBF24), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Local SQLite active", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(
+                            onClick = { showAuthModal = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Text("Sign In to Sync", fontSize = 10.sp, color = Color.White)
+                        }
+                    }
                 }
             }
         }
@@ -238,6 +276,75 @@ fun DesktopAppShell(viewModel: TasksViewModel, syncEngine: SyncEngine? = null) {
                 .fillMaxHeight()
                 .padding(28.dp)
         ) {
+            if (showAuthModal && authSessionProvider != null) {
+                // Inline Sign-In Form Overlay
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text("Firebase Account Authentication", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Sign in with your Firebase account to enable real-time bidirectional synchronization.", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = emailInput,
+                            onValueChange = { emailInput = it },
+                            label = { Text("Email Address") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = passwordInput,
+                            onValueChange = { passwordInput = it },
+                            label = { Text("Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (authError != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(authError ?: "", color = Color(0xFFEF4444), fontSize = 12.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    if (emailInput.isNotBlank() && passwordInput.isNotBlank()) {
+                                        isSubmittingAuth = true
+                                        authError = null
+                                        coroutineScope.launch {
+                                            val res = authSessionProvider.signInWithEmailAndPassword(emailInput.trim(), passwordInput)
+                                            isSubmittingAuth = false
+                                            if (res.isSuccess) {
+                                                showAuthModal = false
+                                                syncEngine?.triggerSync()
+                                            } else {
+                                                authError = "Sign in failed: ${res.exceptionOrNull()?.message ?: "Check credentials"}"
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isSubmittingAuth,
+                                colors = ButtonDefaults.buttonColors(containerColor = LifeTrackEmeraldPrimary)
+                            ) {
+                                Text(if (isSubmittingAuth) "Authenticating..." else "Sign In")
+                            }
+
+                            Button(
+                                onClick = { showAuthModal = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155))
+                            ) {
+                                Text("Continue Offline")
+                            }
+                        }
+                    }
+                }
+            }
+
             if (selectedSection == "Tasks") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -317,7 +424,7 @@ fun DesktopAppShell(viewModel: TasksViewModel, syncEngine: SyncEngine? = null) {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Phase 1B: Architecture Foundation (In-Memory Verification Engine)",
+                            text = "LifeTrack Hub Enterprise Security Vault",
                             color = Color.Gray
                         )
                     }

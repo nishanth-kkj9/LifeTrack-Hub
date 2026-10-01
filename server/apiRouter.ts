@@ -22,6 +22,15 @@ function getGeminiClient(): GoogleGenAI {
   });
 }
 
+function logSafeGeminiDiagnostic(endpoint: string, model: string, error: any) {
+  const status = error?.status || error?.code || (error?.message?.includes('401') ? 401 : 500);
+  const reason = error?.error?.details?.[0]?.reason || (error?.message?.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') ? 'ACCESS_TOKEN_TYPE_UNSUPPORTED' : 'SERVICE_ERROR');
+  const authMode = process.env.GEMINI_API_KEY?.startsWith('AQ.') ? 'AI_STUDIO_USER_KEY' : (process.env.GEMINI_API_KEY ? 'API_KEY' : 'NONE');
+
+  // Log safe diagnostic metadata without exposing API keys, tokens, or auth headers
+  console.info(`[Gemini Diagnostics] endpoint="${endpoint}" model="${model}" sdkVersion="2.25.0" authMode="${authMode}" status=${status} reason="${reason}"`);
+}
+
 function generateHeuristicSubtasks(title: string, description?: string, category?: string) {
   const cleanTitle = title.trim();
   const lower = cleanTitle.toLowerCase();
@@ -324,8 +333,16 @@ Provide a deep, multi-phase master action plan:
 apiRouter.post('/vtu/parse-marksheet', async (req: Request, res: Response) => {
   const { rawText, usnHint } = req.body;
   if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {
-    return res.status(400).json({ error: 'Marksheet text is required' });
+    return res.status(400).json({
+      success: false,
+      errorCode: 'INVALID_INPUT',
+      message: 'Marksheet text is required for parsing.',
+      requiresManualVerification: true,
+    });
   }
+
+  const usnMatch = rawText.match(/\b([1-4][A-Z]{2}\d{2}[A-Z]{2}\d{3})\b/i);
+  const detectedUsn = usnMatch ? usnMatch[1].toUpperCase() : (usnHint ? usnHint.toUpperCase() : undefined);
 
   try {
     const ai = getGeminiClient();
@@ -336,7 +353,7 @@ Raw VTU text:
 """
 ${rawText.slice(0, 4000)}
 """
-${usnHint ? `Target USN hint: "${usnHint}"` : ''}
+${detectedUsn ? `Target USN hint: "${detectedUsn}"` : ''}
 
 Extract and return ONLY a valid JSON object matching this schema:
 {
@@ -361,7 +378,7 @@ Extract and return ONLY a valid JSON object matching this schema:
     }
   ]
 }
-Ensure output is strict valid JSON without code blocks.`;
+If marks or data are not present in the input text, DO NOT fabricate them. Ensure output is strict valid JSON without code blocks.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -372,50 +389,20 @@ Ensure output is strict valid JSON without code blocks.`;
     textOut = textOut.replace(/```json/gi, '').replace(/```/g, '').trim();
 
     const parsed = JSON.parse(textOut);
-    return res.json({ success: true, data: parsed });
+    if (parsed && Array.isArray(parsed.subjects) && parsed.subjects.length > 0) {
+      return res.json({ success: true, data: parsed });
+    }
   } catch (error: any) {
-    console.warn('Gemini marksheet parse note (using regex-based extractor):', error?.message || error);
+    logSafeGeminiDiagnostic('/vtu/parse-marksheet', 'gemini-3.8-flash', error);
   }
 
-  // Deterministic VTU pattern extractor fallback
-  const usnMatch = rawText.match(/\b([1-4][A-Z]{2}\d{2}[A-Z]{2}\d{3})\b/i);
-  const detectedUsn = usnMatch ? usnMatch[1].toUpperCase() : (usnHint ? usnHint.toUpperCase() : '1RV21CS001');
-
-  // Simple heuristic subject extraction for typical VTU lines
-  const subjectMatches = Array.from(rawText.matchAll(/\b([0-9]{2}[A-Z]{2,4}[0-9]{2,3}|BCS[0-9]{3})\b/gi));
-  const fallbackSubjects = subjectMatches.slice(0, 8).map((match, idx) => ({
-    code: match[1].toUpperCase(),
-    name: `Course ${match[1].toUpperCase()}`,
-    credits: 3,
-    cieMarks: 42,
-    seeMarks: 44,
-    totalMarks: 86,
-    gradeLetter: 'A+',
-    gradePoint: 9,
-    result: 'PASS' as const,
-  }));
-
-  if (fallbackSubjects.length === 0) {
-    fallbackSubjects.push(
-      { code: 'BCS301', name: 'Mathematics-III for Computer Science', credits: 4, cieMarks: 45, seeMarks: 42, totalMarks: 87, gradeLetter: 'A+', gradePoint: 9, result: 'PASS' },
-      { code: 'BCS302', name: 'Digital Design and Computer Organization', credits: 4, cieMarks: 40, seeMarks: 43, totalMarks: 83, gradeLetter: 'A', gradePoint: 8, result: 'PASS' },
-      { code: 'BCS303', name: 'Operating Systems', credits: 4, cieMarks: 44, seeMarks: 46, totalMarks: 90, gradeLetter: 'O', gradePoint: 10, result: 'PASS' },
-      { code: 'BCS304', name: 'Data Structures and Applications', credits: 3, cieMarks: 46, seeMarks: 45, totalMarks: 91, gradeLetter: 'O', gradePoint: 10, result: 'PASS' }
-    );
-  }
-
+  // Section 15: Data-Safe Academic Parse Failure — NEVER fabricate grades, marks, or SGPA
   return res.json({
-    success: true,
-    data: {
-      usn: detectedUsn,
-      studentName: 'Student Record',
-      fatherName: '',
-      collegeName: 'Visvesvaraya Technological University Affiliated Institute',
-      semester: 4,
-      resultDate: 'Recent VTU Examination Session',
-      sgpa: 8.85,
-      subjects: fallbackSubjects,
-    },
+    success: false,
+    errorCode: 'MARKSHEET_PARSE_FAILED',
+    message: 'The marksheet could not be reliably parsed from the provided input text. Please enter subject marks manually.',
+    partialData: detectedUsn ? { usn: detectedUsn } : {},
+    requiresManualVerification: true,
   });
 });
 

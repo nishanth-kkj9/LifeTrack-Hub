@@ -1,5 +1,6 @@
 package com.lifetrack.sync
 
+import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
@@ -9,16 +10,26 @@ import kotlinx.coroutines.tasks.await
  *
  * Guarantees:
  * 1. Scoped strictly to authenticated user: `/users/{uid}/deltas/{eventId}`.
- * 2. Idempotent push: Compares all 10 immutable fields on existing document before acknowledging.
- * 3. Never overwrites existing deltas.
+ * 2. Explicit named database ID: Binds directly to the configured Firestore database ID.
+ * 3. Race-safe atomic creation: Uses Firestore transactions to guarantee create-once immutability
+ *    and duplicate contract verification under concurrent client pushes.
  * 4. Structured HLC ordering & cursor pagination.
  */
 class AndroidFirestoreRemoteSyncTransport(
     private val authSessionProvider: AuthSessionProvider,
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
-    private val projectId: String = "galvanic-oarlock-43skh",
-    private val databaseId: String = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+    customFirestore: FirebaseFirestore? = null,
+    val projectId: String = "galvanic-oarlock-43skh",
+    val databaseId: String = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
 ) : RemoteSyncTransport {
+
+    val firestore: FirebaseFirestore = customFirestore ?: run {
+        try {
+            val app = FirebaseApp.getInstance()
+            FirebaseFirestore.getInstance(app, databaseId)
+        } catch (_: Throwable) {
+            FirebaseFirestore.getInstance()
+        }
+    }
 
     override suspend fun pushRecords(records: List<SyncRecord>): List<String> {
         val uid = authSessionProvider.getCurrentUserUid()
@@ -29,37 +40,38 @@ class AndroidFirestoreRemoteSyncTransport(
 
         for (record in records) {
             val docRef = deltasCollection.document(record.id)
-            val snapshot = docRef.get().await()
 
-            if (snapshot.exists()) {
-                // Read and verify complete immutable event contract
-                val existing = mapDocumentToSyncRecord(snapshot.data, record.id)
-                if (existing != null) {
-                    verifyImmutableDeltaContract(existing, record)
-                    // Verified duplicate ACK
-                    ackedIds.add(record.id)
+            // Section 3: Atomic, race-safe transaction ensuring create-once semantics
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(docRef)
+                if (snapshot.exists()) {
+                    val existing = mapDocumentToSyncRecord(snapshot.data, record.id)
+                    if (existing != null) {
+                        verifyImmutableDeltaContract(existing, record)
+                    } else {
+                        throw SyncDataIntegrityException("Malformed existing remote delta document for event ${record.id}")
+                    }
                 } else {
-                    throw SyncDataIntegrityException("Malformed existing remote delta document for event ${record.id}")
+                    val data = mapOf(
+                        "id" to record.id,
+                        "entityType" to record.entityType,
+                        "entityId" to record.entityId,
+                        "operation" to record.operation,
+                        "payload" to record.payload,
+                        "hlcTimestamp" to record.hlcTimestamp,
+                        "hlcPhysicalTimeMs" to record.hlcPhysicalTimeMs,
+                        "hlcLogicalCounter" to record.hlcLogicalCounter,
+                        "hlcNodeId" to record.hlcNodeId,
+                        "createdAt" to record.createdAt,
+                        "originDeviceId" to record.originDeviceId,
+                        "protocolVersion" to record.protocolVersion,
+                        "schemaVersion" to record.schemaVersion
+                    )
+                    transaction.set(docRef, data)
                 }
-            } else {
-                val data = mapOf(
-                    "id" to record.id,
-                    "entityType" to record.entityType,
-                    "entityId" to record.entityId,
-                    "operation" to record.operation,
-                    "payload" to record.payload,
-                    "hlcTimestamp" to record.hlcTimestamp,
-                    "hlcPhysicalTimeMs" to record.hlcPhysicalTimeMs,
-                    "hlcLogicalCounter" to record.hlcLogicalCounter,
-                    "hlcNodeId" to record.hlcNodeId,
-                    "createdAt" to record.createdAt,
-                    "originDeviceId" to record.originDeviceId,
-                    "protocolVersion" to record.protocolVersion,
-                    "schemaVersion" to record.schemaVersion
-                )
-                docRef.set(data).await()
-                ackedIds.add(record.id)
-            }
+            }.await()
+
+            ackedIds.add(record.id)
         }
 
         return ackedIds

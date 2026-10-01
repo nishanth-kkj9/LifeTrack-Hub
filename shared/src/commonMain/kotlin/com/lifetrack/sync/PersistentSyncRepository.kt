@@ -220,13 +220,23 @@ class PersistentSyncRepository(
         syncTimeMs: Long,
         error: String?
     ): Unit = mutex.withLock {
+        // Section 9: If sync ended with an error, preserve previous last_successful_sync_time
+        val effectiveSyncTime: Long = if (error != null) {
+            driver.query(
+                "SELECT last_successful_sync_time FROM sync_state WHERE device_id = ? LIMIT 1;",
+                arrayOf(deviceId)
+            ) { cursor -> cursor.getLong(0) ?: 0L }.firstOrNull() ?: 0L
+        } else {
+            syncTimeMs
+        }
+
         driver.execute(
             """
             INSERT OR REPLACE INTO sync_state (
                 device_id, last_pulled_hlc, last_successful_sync_time, last_error
             ) VALUES (?, ?, ?, ?);
             """.trimIndent(),
-            arrayOf(deviceId, lastPulledHlc, syncTimeMs, error)
+            arrayOf(deviceId, lastPulledHlc, effectiveSyncTime, error)
         )
     }
 

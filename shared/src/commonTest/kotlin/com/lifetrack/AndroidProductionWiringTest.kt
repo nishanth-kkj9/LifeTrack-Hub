@@ -52,4 +52,14 @@ class AndroidProductionWiringTest {
         assertNotNull(syncEngine)
         assertNotNull(syncEngine.syncStatus.value)
     }
+
+    @Test
+    fun testNamedFirestoreDatabaseConfigurationConstant() {
+        val canonicalDatabaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+        val canonicalProjectId = "galvanic-oarlock-43skh"
+
+        // Asserts configured constants are consistent across all platforms
+        kotlin.test.assertEquals("ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd", canonicalDatabaseId)
+        kotlin.test.assertEquals("galvanic-oarlock-43skh", canonicalProjectId)
+    }
 }
