@@ -5,6 +5,8 @@ import {
   LogOut,
   Calendar,
   CheckCircle2,
+  Search,
+  Timer,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -13,6 +15,8 @@ interface HeaderProps {
   onLogin: () => void;
   onLogout: () => void;
   activeTasksCount: number;
+  onOpenCommandPalette?: () => void;
+  onOpenFocusModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLogin,
   onLogout,
   activeTasksCount,
+  onOpenCommandPalette,
+  onOpenFocusModal,
 }) => {
   const todayFormatted = new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
@@ -44,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
                   Tracker
                 </span>
               </div>
-              <p className="text-xs text-slate-500 hidden sm:block">Tasks • Finances • Exams • Habits</p>
+              <p className="text-xs text-slate-500 hidden sm:block">Tasks • Calendar • Academics • Habits</p>
             </div>
           </div>
 
@@ -62,7 +68,38 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Actions & Auth */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {/* Quick Search */}
+            {onOpenCommandPalette && (
+              <button
+                type="button"
+                id="header-search-button"
+                onClick={onOpenCommandPalette}
+                className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200/70 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                aria-label="Open Command Palette (Cmd+K)"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Search</span>
+                <kbd className="text-[10px] font-mono text-slate-400 bg-white px-1 rounded border border-slate-200">
+                  ⌘K
+                </kbd>
+              </button>
+            )}
+
+            {/* Quick Focus Mode */}
+            {onOpenFocusModal && (
+              <button
+                type="button"
+                id="header-focus-button"
+                onClick={onOpenFocusModal}
+                className="p-1.5 text-slate-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+                title="Focus Timer"
+                aria-label="Start Pomodoro Focus"
+              >
+                <Timer className="w-4 h-4 text-purple-600" />
+              </button>
+            )}
+
             {/* Cloud Sync Status */}
             <div
               id="cloud-sync-status-indicator"

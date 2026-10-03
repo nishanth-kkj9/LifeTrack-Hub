@@ -17,36 +17,45 @@ import {
   Habit,
   QuickNote,
   BudgetSettings,
+  VtuProfile,
 } from './types/index.ts';
 import { Header } from './components/Header.tsx';
 import { Navigation, ActiveTab } from './components/Navigation.tsx';
-import { OverviewView } from './components/views/OverviewView.tsx';
+import { TodayView } from './components/views/TodayView.tsx';
 import { TasksView } from './components/views/TasksView.tsx';
+import { CalendarView } from './components/views/CalendarView.tsx';
+import { AcademicsView } from './components/views/AcademicsView.tsx';
 import { FinancesView } from './components/views/FinancesView.tsx';
-import { ExamsView } from './components/views/ExamsView.tsx';
 import { HabitsView } from './components/views/HabitsView.tsx';
 import { NotesView } from './components/views/NotesView.tsx';
-import { VtuHubView } from './components/views/VtuHubView.tsx';
+import { InsightsView } from './components/views/InsightsView.tsx';
+import { SettingsView } from './components/views/SettingsView.tsx';
 import { INITIAL_VTU_PROFILE } from './lib/vtuData.ts';
-import { VtuProfile } from './types/index.ts';
 import { AddTaskModal } from './components/modals/AddTaskModal.tsx';
 import { AddTransactionModal } from './components/modals/AddTransactionModal.tsx';
 import { AddExamModal } from './components/modals/AddExamModal.tsx';
 import { AddNoteModal } from './components/modals/AddNoteModal.tsx';
+import { CommandPalette } from './components/common/CommandPalette.tsx';
+import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
+import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('today');
 
   // Core Application Data State
   const [appData, setAppData] = useState<UserAppData>(() => loadLocalData());
 
-  // Modal Open States
+  // Modal & Drawer Open States
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
   const [isAddExamOpen, setIsAddExamOpen] = useState(false);
   const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isFocusModalOpen, setIsFocusModalOpen] = useState(false);
+  const [focusTask, setFocusTask] = useState<Task | null>(null);
+  const [selectedDetailTask, setSelectedDetailTask] = useState<Task | null>(null);
 
   // Status message / toast for auth / sync
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
@@ -80,6 +89,18 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Global Keyboard Shortcut: Cmd+K / Ctrl+K for Command Palette
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // 2. Persist data helper (local and cloud)
   const commitAppData = useCallback(
     (updater: (prev: UserAppData) => UserAppData) => {
@@ -103,6 +124,28 @@ export default function App() {
     },
     [currentUser]
   );
+
+  // Force sync immediately
+  const handleForceSync = useCallback(() => {
+    if (currentUser) {
+      setSyncNotice('Syncing with Firestore cloud...');
+      saveUserDataToCloud(currentUser.uid, appData)
+        .then(() => {
+          setIsCloudSynced(true);
+          setSyncNotice('Cloud sync complete!');
+          setTimeout(() => setSyncNotice(null), 2500);
+        })
+        .catch((err) => {
+          console.error('Manual sync failed:', err);
+          setIsCloudSynced(false);
+          setSyncNotice('Cloud sync failed. Check network connection.');
+          setTimeout(() => setSyncNotice(null), 4000);
+        });
+    } else {
+      setSyncNotice('Sign in with Google to enable cloud sync.');
+      setTimeout(() => setSyncNotice(null), 3000);
+    }
+  }, [currentUser, appData]);
 
   // Authentication Handlers
   const handleLogin = async () => {
@@ -158,6 +201,9 @@ export default function App() {
       ...prev,
       tasks: prev.tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t)),
     }));
+    if (selectedDetailTask?.id === updatedTask.id) {
+      setSelectedDetailTask(updatedTask);
+    }
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -165,6 +211,9 @@ export default function App() {
       ...prev,
       tasks: prev.tasks.filter((t) => t.id !== taskId),
     }));
+    if (selectedDetailTask?.id === taskId) {
+      setSelectedDetailTask(null);
+    }
   };
 
   const handleAddTask = (newTask: Task) => {
@@ -231,18 +280,24 @@ export default function App() {
       ...prev,
       habits: prev.habits.map((h) => {
         if (h.id !== habitId) return h;
-        const alreadyDone = h.completedDates.includes(dateStr);
-        const nextDates = alreadyDone
-          ? h.completedDates.filter((d) => d !== dateStr)
-          : [...h.completedDates, dateStr];
+        const completions = { ...(h.completions || {}) };
+        const isDone = Boolean(completions[dateStr]);
+        if (isDone) {
+          delete completions[dateStr];
+        } else {
+          completions[dateStr] = true;
+        }
+
+        const nextCompletedDates = isDone
+          ? (h.completedDates || []).filter((d) => d !== dateStr)
+          : [...(h.completedDates || []), dateStr];
 
         // Recompute streak
-        const sorted = [...nextDates].sort().reverse();
+        const sorted = [...nextCompletedDates].sort().reverse();
         let streak = 0;
         let checkDate = new Date();
         const todayStr = checkDate.toISOString().split('T')[0];
 
-        // Check if completed today or yesterday
         if (sorted.includes(todayStr)) {
           streak = 1;
           checkDate.setDate(checkDate.getDate() - 1);
@@ -269,9 +324,10 @@ export default function App() {
 
         return {
           ...h,
-          completedDates: nextDates,
+          completions,
+          completedDates: nextCompletedDates,
           streak,
-          bestStreak: Math.max(h.bestStreak, streak),
+          bestStreak: Math.max(h.bestStreak || 0, streak),
         };
       }),
     }));
@@ -320,38 +376,20 @@ export default function App() {
     }));
   };
 
-  const handleAddExamFromVtuSubject = (subjectCode: string, subjectName: string) => {
-    const existing = appData.exams.find((e) => e.courseCode === subjectCode);
-    if (existing) {
-      setActiveTab('exams');
-      return;
-    }
+  const handleRestoreData = (restored: UserAppData) => {
+    commitAppData(() => restored);
+  };
 
-    const defaultDate = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
-    const newExam: ExamReminder = {
-      id: `exam-vtu-${Date.now()}`,
-      subject: subjectName,
-      courseCode: subjectCode,
-      examDate: defaultDate,
-      examTime: '09:30',
-      roomOrVenue: 'VTU Exam Hall',
-      targetScore: '85% (A+)',
-      status: 'studying',
-      topics: [
-        { id: `top-${Date.now()}-1`, title: 'Module 1: Fundamental Concepts & Theorems', completed: true },
-        { id: `top-${Date.now()}-2`, title: 'Module 2: Core Analysis & Design', completed: false },
-        { id: `top-${Date.now()}-3`, title: 'Module 3: Advanced Architectures & Algorithms', completed: false },
-        { id: `top-${Date.now()}-4`, title: 'Module 4: Practical Applications & Case Studies', completed: false },
-        { id: `top-${Date.now()}-5`, title: 'Module 5: Emerging Trends & Standard Protocols', completed: false },
-      ],
-      createdAt: Date.now(),
-    };
+  const handleResetData = () => {
+    localStorage.removeItem('lifetrack_hub_local_data_v1');
+    const fresh = loadLocalData();
+    commitAppData(() => fresh);
+  };
 
-    commitAppData((prev) => ({
-      ...prev,
-      exams: [newExam, ...prev.exams],
-    }));
-    setActiveTab('exams');
+  // Focus modal helpers
+  const handleOpenFocus = (task?: Task | null) => {
+    setFocusTask(task || null);
+    setIsFocusModalOpen(true);
   };
 
   // Stats for badge
@@ -364,7 +402,7 @@ export default function App() {
   }).length;
 
   return (
-    <div id="app-root-container" className="min-h-screen bg-slate-50 flex flex-col selection:bg-indigo-100 selection:text-indigo-900">
+    <div id="app-root-container" className="min-h-screen bg-slate-50 flex flex-col selection:bg-emerald-100 selection:text-emerald-900">
       {/* App Header */}
       <Header
         user={currentUser}
@@ -372,6 +410,8 @@ export default function App() {
         onLogin={handleLogin}
         onLogout={handleLogout}
         activeTasksCount={activeTasksCount}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onOpenFocusModal={() => handleOpenFocus(null)}
       />
 
       {/* Navigation Tabs */}
@@ -388,13 +428,13 @@ export default function App() {
       {syncNotice && (
         <div
           id="sync-notice-banner"
-          className="bg-indigo-50 border-b border-indigo-100 px-4 py-2 text-xs font-semibold text-indigo-900 flex items-center justify-between transition-all"
+          className="bg-emerald-50 border-b border-emerald-100 px-4 py-2 text-xs font-semibold text-emerald-900 flex items-center justify-between transition-all"
         >
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
             <span>{syncNotice}</span>
             <button
               onClick={() => setSyncNotice(null)}
-              className="text-indigo-600 hover:text-indigo-800 ml-4 font-bold"
+              className="text-emerald-600 hover:text-emerald-800 ml-4 font-bold cursor-pointer"
             >
               ✕
             </button>
@@ -404,33 +444,29 @@ export default function App() {
 
       {/* Main Content Area */}
       <main id="main-content-view" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        {activeTab === 'overview' && (
-          <OverviewView
+        {/* 1. Today View (Default Landing Operating System) */}
+        {(activeTab === 'today' || activeTab === 'overview') && (
+          <TodayView
             tasks={appData.tasks}
+            habits={appData.habits}
+            exams={appData.exams}
             transactions={appData.transactions}
             budget={appData.budget}
-            exams={appData.exams}
-            habits={appData.habits}
             vtuProfile={appData.vtuProfile || INITIAL_VTU_PROFILE}
-            onNavigateTab={setActiveTab}
             onToggleTask={handleToggleTask}
             onToggleHabitToday={(id) =>
               handleToggleHabitDate(id, new Date().toISOString().split('T')[0])
             }
+            onAddTask={handleAddTask}
             onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
-            onOpenAddTransactionModal={() => setIsAddTxOpen(true)}
-            onOpenAddExamModal={() => setIsAddExamOpen(true)}
+            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            onOpenFocusModal={handleOpenFocus}
+            onNavigateTab={setActiveTab}
+            onSelectTask={(task) => setSelectedDetailTask(task)}
           />
         )}
 
-        {activeTab === 'vtu' && (
-          <VtuHubView
-            vtuProfile={appData.vtuProfile || INITIAL_VTU_PROFILE}
-            onUpdateVtuProfile={handleUpdateVtuProfile}
-            onAddExamFromSubject={handleAddExamFromVtuSubject}
-          />
-        )}
-
+        {/* 2. Tasks View */}
         {activeTab === 'tasks' && (
           <TasksView
             tasks={appData.tasks}
@@ -449,6 +485,31 @@ export default function App() {
           />
         )}
 
+        {/* 3. Calendar View */}
+        {activeTab === 'calendar' && (
+          <CalendarView
+            tasks={appData.tasks}
+            exams={appData.exams}
+            onToggleTask={handleToggleTask}
+            onSelectTask={(task) => setSelectedDetailTask(task)}
+            onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
+          />
+        )}
+
+        {/* 4. Academics View (Unifies Exams & VTU Hub) */}
+        {(activeTab === 'academics' || activeTab === 'exams' || activeTab === 'vtu') && (
+          <AcademicsView
+            exams={appData.exams}
+            vtuProfile={appData.vtuProfile || INITIAL_VTU_PROFILE}
+            tasks={appData.tasks}
+            initialSubTab={activeTab === 'vtu' ? 'vtu' : 'exams'}
+            onUpdateVtuProfile={handleUpdateVtuProfile}
+            onOpenAddExamModal={() => setIsAddExamOpen(true)}
+            onDeleteExam={handleDeleteExam}
+          />
+        )}
+
+        {/* 5. Finances View */}
         {activeTab === 'finances' && (
           <FinancesView
             transactions={appData.transactions}
@@ -460,16 +521,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'exams' && (
-          <ExamsView
-            exams={appData.exams}
-            onAddExam={handleAddExam}
-            onUpdateExam={handleUpdateExam}
-            onDeleteExam={handleDeleteExam}
-            onOpenAddExamModal={() => setIsAddExamOpen(true)}
-          />
-        )}
-
+        {/* 6. Habits View */}
         {activeTab === 'habits' && (
           <HabitsView
             habits={appData.habits}
@@ -479,6 +531,7 @@ export default function App() {
           />
         )}
 
+        {/* 7. Notes View */}
         {activeTab === 'notes' && (
           <NotesView
             notes={appData.notes}
@@ -488,9 +541,74 @@ export default function App() {
             onOpenAddNoteModal={() => setIsAddNoteOpen(true)}
           />
         )}
+
+        {/* 8. Insights View */}
+        {activeTab === 'insights' && (
+          <InsightsView
+            tasks={appData.tasks}
+            habits={appData.habits}
+            transactions={appData.transactions}
+            budget={appData.budget}
+            exams={appData.exams}
+          />
+        )}
+
+        {/* 9. Settings View */}
+        {activeTab === 'settings' && (
+          <SettingsView
+            currentUser={currentUser}
+            isCloudSynced={isCloudSynced}
+            appData={appData}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            onRestoreData={handleRestoreData}
+            onResetData={handleResetData}
+            onForceSync={handleForceSync}
+          />
+        )}
       </main>
 
-      {/* Global Modals */}
+      {/* Global Modals & Overlays */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigate={(tab) => {
+          setActiveTab(tab as ActiveTab);
+          setIsCommandPaletteOpen(false);
+        }}
+        onOpenAddTask={() => setIsAddTaskOpen(true)}
+        onOpenAddTransaction={() => setIsAddTxOpen(true)}
+        onOpenAddExam={() => setIsAddExamOpen(true)}
+        onOpenAddNote={() => setIsAddNoteOpen(true)}
+        tasks={appData.tasks}
+        exams={appData.exams}
+        habits={appData.habits}
+        notes={appData.notes}
+        onToggleTask={handleToggleTask}
+      />
+
+      <PomodoroFocusModal
+        task={focusTask}
+        isOpen={isFocusModalOpen}
+        onClose={() => {
+          setIsFocusModalOpen(false);
+          setFocusTask(null);
+        }}
+        onUpdateTask={handleUpdateTask}
+      />
+
+      <TaskDetailDrawer
+        task={selectedDetailTask}
+        isOpen={Boolean(selectedDetailTask)}
+        onClose={() => setSelectedDetailTask(null)}
+        onUpdateTask={handleUpdateTask}
+        onDeleteTask={handleDeleteTask}
+        onStartFocus={(t) => {
+          setSelectedDetailTask(null);
+          handleOpenFocus(t);
+        }}
+      />
+
       <AddTaskModal
         isOpen={isAddTaskOpen}
         onClose={() => setIsAddTaskOpen(false)}
