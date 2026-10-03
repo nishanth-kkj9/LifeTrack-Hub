@@ -388,14 +388,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Tasks & Todo Workspace
+              Tasks
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold">
-              {activeTasks.length} Active
+            <span className="text-xs font-medium text-slate-500">
+              {activeTasks.length} active
             </span>
           </div>
           <p className="text-xs text-slate-500 max-w-xl">
-            Streamline your daily workflows, time-block study milestones, and break big goals down with AI assistance.
+            Manage assignments, project deliverables, and study targets.
           </p>
         </div>
 
@@ -442,10 +442,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <button
             id="tasks-add-task-btn"
             onClick={onOpenAddTaskModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
           >
             <Plus className="w-4 h-4" />
-            <span>New Task</span>
+            <span>Add Task</span>
           </button>
         </div>
       </div>

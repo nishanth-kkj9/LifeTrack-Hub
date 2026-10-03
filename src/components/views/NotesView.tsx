@@ -54,9 +54,9 @@ export const NotesView: React.FC<NotesViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Formulas & Scratchpad</h1>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Notes</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Quickly store key math equations, exam formulas, study takeaways, and budgeting guidelines.
+            Quickly store key math equations, formulas, takeaways, and thoughts.
           </p>
         </div>
 
@@ -77,20 +77,30 @@ export const NotesView: React.FC<NotesViewProps> = ({
           <button
             id="notes-add-note-btn"
             onClick={onOpenAddNoteModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
           >
             <Plus className="w-4 h-4" />
-            <span>New Note</span>
+            <span>Add Note</span>
           </button>
         </div>
       </div>
 
       {/* Notes Grid */}
       {filteredNotes.length === 0 ? (
-        <div className="bg-white rounded-2xl p-12 text-center border border-dashed border-slate-200">
-          <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-sm font-bold text-slate-700">No notes found</p>
-          <p className="text-xs text-slate-400 mt-1">Keep track of handy formulas or revision checklists here.</p>
+        <div className="bg-white rounded-2xl p-12 text-center border border-dashed border-slate-200 space-y-3">
+          <FileText className="w-10 h-10 text-slate-300 mx-auto" />
+          <div>
+            <p className="text-sm font-bold text-slate-700">No notes found</p>
+            <p className="text-xs text-slate-400 mt-0.5">Keep track of handy formulas or revision checklists here.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenAddNoteModal}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Note</span>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

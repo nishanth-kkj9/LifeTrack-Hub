@@ -44,13 +44,12 @@ export const Header: React.FC<HeaderProps> = ({
               <CheckCircle2 className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-lg text-slate-900 tracking-tight">LifeTrack Hub</span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                  Tracker
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 hidden sm:block">Tasks • Calendar • Academics • Habits</p>
+              <span className="font-extrabold text-lg text-slate-900 tracking-tight">
+                LifeTrack Hub
+              </span>
+              <p className="text-xs text-slate-500 hidden sm:block">
+                Tasks · Calendar · Academics · Habits
+              </p>
             </div>
           </div>
 

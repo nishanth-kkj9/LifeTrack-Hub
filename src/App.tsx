@@ -504,6 +504,8 @@ export default function App() {
             tasks={appData.tasks}
             initialSubTab={activeTab === 'vtu' ? 'vtu' : 'exams'}
             onUpdateVtuProfile={handleUpdateVtuProfile}
+            onAddExam={handleAddExam}
+            onUpdateExam={handleUpdateExam}
             onOpenAddExamModal={() => setIsAddExamOpen(true)}
             onDeleteExam={handleDeleteExam}
           />

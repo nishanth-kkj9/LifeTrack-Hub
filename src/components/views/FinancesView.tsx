@@ -85,9 +85,9 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Personal Finances & Budget</h1>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Finances</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Track daily expenses, monitor your monthly budget cap, and analyze spending categories.
+            Track spending, monitor your monthly budget, and balance your cashflow.
           </p>
         </div>
 
@@ -95,10 +95,10 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
           <button
             id="finances-add-tx-btn"
             onClick={onOpenAddTransactionModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
           >
             <Plus className="w-4 h-4" />
-            <span>Log Transaction</span>
+            <span>Add Transaction</span>
           </button>
         </div>
       </div>
@@ -250,10 +250,20 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
 
             {/* List */}
             {filteredTransactions.length === 0 ? (
-              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl">
-                <DollarSign className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs font-bold text-slate-700">No transactions found</p>
-                <p className="text-[11px] text-slate-400 mt-1">Log a transaction to see your spending ledger.</p>
+              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl space-y-3">
+                <DollarSign className="w-8 h-8 text-slate-300 mx-auto" />
+                <div>
+                  <p className="text-xs font-bold text-slate-700">No transactions recorded</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Track your expenses or income to view your cashflow ledger.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenAddTransactionModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Transaction</span>
+                </button>
               </div>
             ) : (
               <div className="space-y-2">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Plus,
@@ -46,6 +46,18 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
   const [subtaskInput, setSubtaskInput] = useState('');
   const [subtasks, setSubtasks] = useState<Array<{ id: string; title: string; estimatedMinutes?: number }>>([]);
   const [isAiBreakingDown, setIsAiBreakingDown] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -135,6 +147,9 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
   return (
     <div
       id="add-task-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-task-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs"
       onClick={onClose}
     >
@@ -145,7 +160,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-150">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-black text-slate-900">Create New Task</h2>
+            <h2 id="add-task-modal-title" className="text-base font-black text-slate-900">Create New Task</h2>
             <span className="text-xs px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold">
               Productivity
             </span>

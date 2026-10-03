@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, FileText, Pin } from 'lucide-react';
 import { QuickNote } from '../../types/index.ts';
 
@@ -17,6 +17,18 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('Formulas');
   const [pinned, setPinned] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -45,6 +57,9 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
   return (
     <div
       id="add-note-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-note-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
       onClick={onClose}
     >
@@ -56,7 +71,7 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-150">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-base font-bold text-slate-900">Add Scratchpad Note / Formula</h2>
+            <h2 id="add-note-modal-title" className="text-base font-bold text-slate-900">Add Scratchpad Note</h2>
           </div>
           <button
             id="close-add-note-modal-btn"

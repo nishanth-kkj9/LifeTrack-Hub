@@ -80,6 +80,18 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
     }
   }, [task]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !task) return null;
 
   const handleFieldChange = (updates: Partial<Task>) => {
@@ -203,6 +215,9 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Task details drawer"
       className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex justify-end"
       onClick={onClose}
     >

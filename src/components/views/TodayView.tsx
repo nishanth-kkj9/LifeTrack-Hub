@@ -192,7 +192,11 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
   // Habit metrics
   const habitsDoneTodayCount = useMemo(() => {
-    return habits.filter((h) => h.completions && h.completions[todayStr]).length;
+    return habits.filter(
+      (h) =>
+        (h.completedDates && h.completedDates.includes(todayStr)) ||
+        (h.completions && h.completions[todayStr])
+    ).length;
   }, [habits, todayStr]);
 
   // Overall day completion rate
@@ -386,8 +390,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
                     <GraduationCap className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                    <div className="flex items-center gap-1.5 text-xs text-indigo-700 font-semibold">
+                      <span>
                         {examDaysLeft === 0
                           ? 'Today!'
                           : examDaysLeft === 1
@@ -395,9 +399,12 @@ export const TodayView: React.FC<TodayViewProps> = ({
                           : `In ${examDaysLeft} days`}
                       </span>
                       {nextExam.subjectCode && (
-                        <span className="text-xs font-mono font-semibold text-slate-500">
-                          {nextExam.subjectCode}
-                        </span>
+                        <>
+                          <span aria-hidden="true" className="text-indigo-400">·</span>
+                          <span className="font-mono text-slate-600">
+                            {nextExam.subjectCode}
+                          </span>
+                        </>
                       )}
                     </div>
                     <h3 className="text-base font-bold text-slate-900 mt-1">
@@ -490,7 +497,11 @@ export const TodayView: React.FC<TodayViewProps> = ({
             ) : (
               <div className="space-y-2">
                 {habits.map((habit) => {
-                  const isDoneToday = Boolean(habit.completions && habit.completions[todayStr]);
+                  const habitTitle = habit.name || habit.title || 'Daily Habit';
+                  const isDoneToday = Boolean(
+                    (habit.completedDates && habit.completedDates.includes(todayStr)) ||
+                    (habit.completions && habit.completions[todayStr])
+                  );
 
                   return (
                     <div
@@ -505,7 +516,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
                       <div className="flex items-center gap-2.5 min-w-0">
                         <button
                           type="button"
-                          aria-label={isDoneToday ? `Mark ${habit.title} incomplete` : `Mark ${habit.title} completed`}
+                          aria-label={isDoneToday ? `Mark ${habitTitle} incomplete` : `Mark ${habitTitle} completed`}
                           className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors ${
                             isDoneToday
                               ? 'bg-amber-500 border-amber-500 text-white'
@@ -515,7 +526,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
                           {isDoneToday && <CheckCircle2 className="w-3.5 h-3.5" />}
                         </button>
                         <span className={`text-xs font-medium truncate ${isDoneToday ? 'line-through text-slate-500' : ''}`}>
-                          {habit.title}
+                          {habitTitle}
                         </span>
                       </div>
 

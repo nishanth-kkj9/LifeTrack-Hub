@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, DollarSign } from 'lucide-react';
 import { Transaction, TransactionType, FinanceCategory } from '../../types/index.ts';
 
@@ -38,6 +38,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'Card' | 'Cash' | 'Bank Transfer' | 'Online Wallet' | 'Other'>('Card');
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -69,6 +81,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   return (
     <div
       id="add-transaction-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-tx-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
       onClick={onClose}
     >
@@ -78,7 +93,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-150">
-          <h2 className="text-base font-bold text-slate-900">Log Transaction</h2>
+          <h2 id="add-tx-modal-title" className="text-base font-bold text-slate-900">Log Transaction</h2>
           <button
             id="close-add-tx-modal-btn"
             onClick={onClose}

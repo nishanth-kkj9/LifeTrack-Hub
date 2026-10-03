@@ -60,7 +60,9 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
       habits.reduce((sum, h) => sum + (h.streak || 0), 0) / habits.length
     );
     const checkedInToday = habits.filter(
-      (h) => h.completions && h.completions[todayStr]
+      (h) =>
+        (h.completedDates && h.completedDates.includes(todayStr)) ||
+        (h.completions && h.completions[todayStr])
     ).length;
 
     return { avgStreak, bestStreak, checkedInToday };

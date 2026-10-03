@@ -212,8 +212,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 <button
                   key={day.dateStr}
                   type="button"
+                  aria-label={`${day.dateStr}, ${day.taskCount} tasks${day.hasExam ? ', exam scheduled' : ''}`}
+                  aria-pressed={isSelected}
                   onClick={() => setSelectedDate(day.dateStr)}
-                  className={`min-h-[64px] sm:min-h-[76px] p-1.5 rounded-xl border flex flex-col justify-between text-left transition-all cursor-pointer relative ${
+                  className={`min-h-[64px] sm:min-h-[76px] p-1.5 rounded-xl border flex flex-col justify-between text-left transition-all cursor-pointer relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
                     isSelected
                       ? 'border-emerald-600 bg-emerald-50/50 shadow-2xs ring-2 ring-emerald-500/20'
                       : day.isToday

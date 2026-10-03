@@ -18,6 +18,8 @@ interface AcademicsViewProps {
   tasks?: Task[];
   initialSubTab?: 'exams' | 'vtu';
   onUpdateVtuProfile?: (profile: VtuProfile) => void;
+  onAddExam?: (exam: ExamReminder) => void;
+  onUpdateExam?: (exam: ExamReminder) => void;
   onOpenAddExamModal: () => void;
   onDeleteExam: (examId: string) => void;
 }
@@ -28,6 +30,8 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
   tasks = [],
   initialSubTab = 'exams',
   onUpdateVtuProfile,
+  onAddExam,
+  onUpdateExam,
   onOpenAddExamModal,
   onDeleteExam,
 }) => {
@@ -110,6 +114,8 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
       {activeSubTab === 'exams' ? (
         <ExamsView
           exams={exams}
+          onAddExam={onAddExam || (() => {})}
+          onUpdateExam={onUpdateExam || (() => {})}
           onOpenAddExamModal={onOpenAddExamModal}
           onDeleteExam={onDeleteExam}
         />

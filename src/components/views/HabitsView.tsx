@@ -69,9 +69,9 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Daily Habits & Streaks</h1>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Habits</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Build consistency with recurring daily rituals. Click any day in the 7-day grid to log completion.
+            Build consistency with recurring daily rituals. Tap any day to log completion.
           </p>
         </div>
 
@@ -83,15 +83,15 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
             placeholder="New habit (e.g. Read 20 pages)..."
             value={newHabitName}
             onChange={(e) => setNewHabitName(e.target.value)}
-            className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 w-48 sm:w-60"
+            className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 w-48 sm:w-60 min-h-[38px]"
           />
           <button
             type="submit"
             id="habit-new-submit-btn"
-            className="inline-flex items-center gap-1 px-3.5 py-2 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
           >
             <Plus className="w-4 h-4" />
-            <span>Add</span>
+            <span>Add Habit</span>
           </button>
         </form>
       </div>
@@ -118,9 +118,12 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
 
         {/* Habit Rows */}
         {habits.length === 0 ? (
-          <div className="p-10 text-center text-slate-400">
-            <Flame className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs font-bold">No habits added yet</p>
+          <div className="p-12 text-center space-y-3">
+            <Flame className="w-10 h-10 text-slate-300 mx-auto" />
+            <div>
+              <p className="text-sm font-bold text-slate-800">No habits added yet</p>
+              <p className="text-xs text-slate-500 mt-0.5">Enter a daily ritual above (e.g. Read 20 pages or Solve 3 problems) to start your streak.</p>
+            </div>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">

@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import {
   Settings as SettingsIcon,
   Cloud,
-  CloudOff,
   User as UserIcon,
   Database,
   Download,
@@ -15,6 +14,8 @@ import {
   LogOut,
   ShieldCheck,
   Smartphone,
+  Sliders,
+  Info,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { UserAppData } from '../../types/index.ts';
@@ -44,6 +45,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [copiedUid, setCopiedUid] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>('12h');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Export JSON backup
@@ -102,10 +104,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              Settings & Synchronization
+              Settings & Preferences
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Account sync, cloud database status, and backup data management.
+              Account sync, database configuration, backups, and preferences.
             </p>
           </div>
         </div>
@@ -118,7 +120,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* Cloud Sync & Account Section */}
+      {/* 1. Account & Cloud Sync Section */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>
@@ -248,7 +250,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* Data Management Section */}
+      {/* 2. Preferences & Productivity */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <Sliders className="w-4 h-4 text-slate-600" />
+          <span>General Preferences</span>
+        </h2>
+        <div className="divide-y divide-slate-100 text-xs">
+          <div className="py-3 flex items-center justify-between">
+            <div>
+              <p className="font-bold text-slate-800">Time Format</p>
+              <p className="text-slate-500">Choose between 12-hour (5:00 PM) or 24-hour (17:00) time displays</p>
+            </div>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setTimeFormat('12h')}
+                className={`px-3 py-1 rounded-md font-semibold transition ${
+                  timeFormat === '12h' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                12-Hour
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeFormat('24h')}
+                className={`px-3 py-1 rounded-md font-semibold transition ${
+                  timeFormat === '24h' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                24-Hour
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Data Backup & Restore */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
         <h2 className="text-base font-bold text-slate-900">Data Management & Backup</h2>
         <p className="text-xs text-slate-500">
@@ -280,21 +318,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             accept=".json"
             className="hidden"
           />
+        </div>
+      </div>
 
+      {/* 4. Danger Zone (Clearly separated) */}
+      <div className="bg-rose-50/50 rounded-2xl border border-rose-200 p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-2 text-rose-800">
+          <AlertTriangle className="w-4 h-4" />
+          <h2 className="text-base font-bold">Danger Zone</h2>
+        </div>
+        <p className="text-xs text-rose-700">
+          Destructive actions that cannot be undone. Always export a JSON backup before resetting your database.
+        </p>
+
+        <div>
           <Button
-            variant="ghost"
+            variant="danger"
             size="sm"
-            icon={<Trash2 className="w-4 h-4 text-rose-600" />}
+            icon={<Trash2 className="w-4 h-4" />}
             onClick={() => setResetConfirmOpen(true)}
-            className="text-rose-600 hover:bg-rose-50"
           >
-            Reset Data
+            Reset All Local Data
           </Button>
         </div>
 
         {/* Reset Confirmation */}
         {resetConfirmOpen && (
-          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-3">
+          <div className="p-4 rounded-xl bg-white border border-rose-300 text-rose-900 text-xs space-y-3 shadow-xs">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <div>
@@ -327,9 +377,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
-      {/* App Information */}
+      {/* 5. About LifeTrack Hub */}
       <div className="text-center py-4 text-xs text-slate-400">
-        LifeTrack Hub • Personal Operating System • Phase 3A
+        LifeTrack Hub · Personal Operating System · Multiplatform Sync
       </div>
     </div>
   );

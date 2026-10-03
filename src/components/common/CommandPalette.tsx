@@ -7,11 +7,13 @@ import {
   Wallet,
   Flame,
   FileText,
-  Sparkles,
   Plus,
   Play,
   X,
-  ArrowRight,
+  TrendingUp,
+  Settings,
+  CalendarDays,
+  Timer,
 } from 'lucide-react';
 import { Task, ExamReminder, Habit, QuickNote } from '../../types/index.ts';
 
@@ -23,6 +25,7 @@ export interface CommandPaletteProps {
   onOpenAddTransaction: () => void;
   onOpenAddExam: () => void;
   onOpenAddNote: () => void;
+  onOpenFocusModal?: () => void;
   tasks: Task[];
   exams: ExamReminder[];
   habits: Habit[];
@@ -38,6 +41,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenAddTransaction,
   onOpenAddExam,
   onOpenAddNote,
+  onOpenFocusModal,
   tasks,
   exams,
   habits,
@@ -47,12 +51,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      previousActiveElementRef.current = document.activeElement as HTMLElement;
       setQuery('');
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      const timer = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(timer);
+    } else {
+      previousActiveElementRef.current?.focus();
     }
   }, [isOpen]);
 
@@ -63,8 +72,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         e.preventDefault();
         if (isOpen) {
           onClose();
-        } else {
-          // Open handled by parent or state
         }
       }
       if (e.key === 'Escape' && isOpen) {
@@ -84,12 +91,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const standardActions = [
     {
       id: 'act-add-task',
-      title: 'Create new task',
+      title: 'Create task',
       category: 'Actions',
       icon: Plus,
       action: () => {
         onClose();
         onOpenAddTask();
+      },
+    },
+    {
+      id: 'act-focus',
+      title: 'Start Focus session',
+      category: 'Actions',
+      icon: Timer,
+      action: () => {
+        onClose();
+        onOpenFocusModal?.();
       },
     },
     {
@@ -126,7 +143,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       id: 'nav-today',
       title: 'Open Today workspace',
       category: 'Navigation',
-      icon: Calendar,
+      icon: CalendarDays,
       action: () => {
         onClose();
         onNavigate('today');
@@ -164,7 +181,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     },
     {
       id: 'nav-finances',
-      title: 'Open Finances & Ledger',
+      title: 'Open Finances & Budget',
       category: 'Navigation',
       icon: Wallet,
       action: () => {
@@ -184,7 +201,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     },
     {
       id: 'nav-notes',
-      title: 'Open Notes & Scratchpad',
+      title: 'Open Notes scratchpad',
       category: 'Navigation',
       icon: FileText,
       action: () => {
@@ -192,17 +209,43 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         onNavigate('notes');
       },
     },
+    {
+      id: 'nav-insights',
+      title: 'Open Insights & Review',
+      category: 'Navigation',
+      icon: TrendingUp,
+      action: () => {
+        onClose();
+        onNavigate('insights');
+      },
+    },
+    {
+      id: 'nav-settings',
+      title: 'Open Settings & Cloud Sync',
+      category: 'Navigation',
+      icon: Settings,
+      action: () => {
+        onClose();
+        onNavigate('settings');
+      },
+    },
   ];
 
-  // Search filtered tasks
-  const matchedTasks = tasks
-    .filter((t) => t.title.toLowerCase().includes(trimmed))
-    .slice(0, 4)
+  // Dynamic search through app data
+  const matchingTasks = tasks
+    .filter(
+      (t) =>
+        t.title.toLowerCase().includes(trimmed) ||
+        (t.description && t.description.toLowerCase().includes(trimmed)) ||
+        (t.category && t.category.toLowerCase().includes(trimmed)) ||
+        (t.tags && t.tags.some((tag) => tag.toLowerCase().includes(trimmed)))
+    )
+    .slice(0, 5)
     .map((t) => ({
       id: `task-${t.id}`,
       title: t.title,
+      subtitle: `${t.category} • ${t.dueDate}${t.dueTime ? ` ${t.dueTime}` : ''}`,
       category: 'Tasks',
-      subtitle: `${t.dueDate} · ${t.priority} priority`,
       icon: CheckSquare,
       action: () => {
         onClose();
@@ -210,15 +253,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     }));
 
-  // Search filtered exams
-  const matchedExams = exams
-    .filter((e) => e.subject.toLowerCase().includes(trimmed) || e.courseCode?.toLowerCase().includes(trimmed))
+  const matchingExams = exams
+    .filter(
+      (e) =>
+        e.title.toLowerCase().includes(trimmed) ||
+        (e.subjectCode && e.subjectCode.toLowerCase().includes(trimmed))
+    )
     .slice(0, 3)
     .map((e) => ({
       id: `exam-${e.id}`,
-      title: `${e.courseCode ? e.courseCode + ' - ' : ''}${e.subject}`,
+      title: e.title,
+      subtitle: `${e.subjectCode || 'Exam'} • ${e.examDate}`,
       category: 'Exams',
-      subtitle: `Exam on ${e.examDate} @ ${e.examTime}`,
       icon: GraduationCap,
       action: () => {
         onClose();
@@ -226,15 +272,33 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     }));
 
-  // Search filtered notes
-  const matchedNotes = notes
-    .filter((n) => n.title.toLowerCase().includes(trimmed) || n.content.toLowerCase().includes(trimmed))
+  const matchingHabits = habits
+    .filter((h) => h.title.toLowerCase().includes(trimmed))
+    .slice(0, 3)
+    .map((h) => ({
+      id: `habit-${h.id}`,
+      title: h.title,
+      subtitle: `${h.streak || 0} day streak`,
+      category: 'Habits',
+      icon: Flame,
+      action: () => {
+        onClose();
+        onNavigate('habits');
+      },
+    }));
+
+  const matchingNotes = notes
+    .filter(
+      (n) =>
+        n.title.toLowerCase().includes(trimmed) ||
+        n.content.toLowerCase().includes(trimmed)
+    )
     .slice(0, 3)
     .map((n) => ({
       id: `note-${n.id}`,
       title: n.title,
+      subtitle: n.content.slice(0, 40),
       category: 'Notes',
-      subtitle: n.content.slice(0, 45),
       icon: FileText,
       action: () => {
         onClose();
@@ -242,8 +306,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     }));
 
+  const filteredActions = standardActions.filter(
+    (act) =>
+      act.title.toLowerCase().includes(trimmed) ||
+      act.category.toLowerCase().includes(trimmed)
+  );
+
   const allFiltered = trimmed
-    ? [...matchedTasks, ...matchedExams, ...matchedNotes, ...standardActions.filter((a) => a.title.toLowerCase().includes(trimmed))]
+    ? [...matchingTasks, ...matchingExams, ...matchingHabits, ...matchingNotes, ...filteredActions]
     : standardActions;
 
   const handleSelect = (index: number) => {
@@ -274,7 +344,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in-95 duration-100"
+        className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in-95 duration-100"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input Bar */}
@@ -289,13 +359,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               setSelectedIndex(0);
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Type a command, search tasks, exams, or notes..."
-            className="flex-1 text-sm bg-transparent border-none text-slate-900 placeholder:text-slate-400 focus:outline-none font-medium"
+            aria-label="Command search query"
+            placeholder="Type a command, search tasks, exams, habits, or notes..."
+            className="flex-1 text-sm bg-transparent border-none text-slate-900 placeholder:text-slate-400 focus:outline-none font-medium min-w-0"
           />
           {query && (
             <button
+              type="button"
               onClick={() => setQuery('')}
-              className="text-slate-400 hover:text-slate-600 p-1 rounded"
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+              aria-label="Clear query"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -306,7 +379,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         {/* Results List */}
-        <div className="overflow-y-auto py-2 px-2 max-h-[360px] divide-y divide-slate-50">
+        <div
+          role="listbox"
+          aria-label="Command suggestions"
+          className="overflow-y-auto py-2 px-2 max-h-[360px] divide-y divide-slate-50"
+        >
           {allFiltered.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-400">
               No results matching "{query}"
@@ -318,16 +395,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               return (
                 <div
                   key={item.id}
+                  role="option"
+                  aria-selected={isSelected}
                   onClick={() => handleSelect(idx)}
                   onMouseEnter={() => setSelectedIndex(idx)}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
                     isSelected ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-emerald-700' : 'text-slate-400'}`} />
+                    <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-slate-900' : 'text-slate-400'}`} />
                     <div className="truncate">
-                      <p className="text-xs font-medium truncate">{item.title}</p>
+                      <p className="text-xs font-semibold truncate">{item.title}</p>
                       {'subtitle' in item && item.subtitle && (
                         <p className="text-[11px] text-slate-400 truncate">{item.subtitle}</p>
                       )}
@@ -343,7 +422,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         {/* Footer shortcuts */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 bg-slate-50/70 text-[11px] text-slate-500 font-mono">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 bg-slate-50/70 text-[11px] text-slate-500 font-mono">
           <span>Navigate with ↑ ↓</span>
           <span>Select with ↵</span>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, GraduationCap } from 'lucide-react';
 import { ExamReminder, ExamTopic } from '../../types/index.ts';
 
@@ -23,6 +23,18 @@ export const AddExamModal: React.FC<AddExamModalProps> = ({
   const [targetScore, setTargetScore] = useState('90% (A)');
   const [topicInput, setTopicInput] = useState('');
   const [topics, setTopics] = useState<string[]>([]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -70,6 +82,9 @@ export const AddExamModal: React.FC<AddExamModalProps> = ({
   return (
     <div
       id="add-exam-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-exam-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
       onClick={onClose}
     >
@@ -81,7 +96,7 @@ export const AddExamModal: React.FC<AddExamModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-150">
           <div className="flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-base font-bold text-slate-900">Add Exam Reminder</h2>
+            <h2 id="add-exam-modal-title" className="text-base font-bold text-slate-900">Add Exam Reminder</h2>
           </div>
           <button
             id="close-add-exam-modal-btn"
