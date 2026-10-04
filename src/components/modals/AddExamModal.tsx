@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Plus, Trash2, GraduationCap } from 'lucide-react';
 import { ExamReminder, ExamTopic } from '../../types/index.ts';
+import { getLocalDateOffset } from '../../lib/dateUtils.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface AddExamModalProps {
   isOpen: boolean;
@@ -13,28 +15,15 @@ export const AddExamModal: React.FC<AddExamModalProps> = ({
   onClose,
   onAddExam,
 }) => {
+  const { containerRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
   const [subject, setSubject] = useState('');
   const [courseCode, setCourseCode] = useState('');
-  const [examDate, setExamDate] = useState(
-    new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
-  );
+  const [examDate, setExamDate] = useState(() => getLocalDateOffset(7));
   const [examTime, setExamTime] = useState('09:00');
   const [roomOrVenue, setRoomOrVenue] = useState('');
   const [targetScore, setTargetScore] = useState('90% (A)');
   const [topicInput, setTopicInput] = useState('');
   const [topics, setTopics] = useState<string[]>([]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -89,6 +78,7 @@ export const AddExamModal: React.FC<AddExamModalProps> = ({
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         id="add-exam-modal-card"
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto"

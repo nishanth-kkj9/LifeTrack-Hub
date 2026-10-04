@@ -1,5 +1,6 @@
 import confetti from 'canvas-confetti';
 import { Task, TaskPriority, TaskCategory, TaskRecurrence, TaskStatus } from '../types/index.ts';
+import { getLocalDateString } from './dateUtils.ts';
 
 // =========================================================================
 // 1. NATURAL LANGUAGE TASK PARSER (NLP)
@@ -149,7 +150,7 @@ export function parseNaturalLanguageTask(rawInput: string): ParsedTaskInput {
     .replace(/\s{2,}/g, ' ')
     .trim();
 
-  const formattedDate = targetDate.toISOString().split('T')[0];
+  const formattedDate = getLocalDateString(targetDate);
 
   return {
     title: cleanTitle || rawInput.trim(),

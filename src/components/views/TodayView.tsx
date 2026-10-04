@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   Search,
@@ -18,8 +18,8 @@ import { QuickAddBar } from '../todo/QuickAddBar.tsx';
 import { TaskRow } from '../ui/TaskRow.tsx';
 import { TimelineItem } from '../ui/TimelineItem.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Card } from '../ui/Card.tsx';
 import { EmptyState } from '../ui/EmptyState.tsx';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
 
 interface TodayViewProps {
   tasks: Task[];
@@ -53,9 +53,17 @@ export const TodayView: React.FC<TodayViewProps> = ({
 }) => {
   const [taskFilter, setTaskFilter] = useState<'remaining' | 'all' | 'completed'>('remaining');
 
-  const now = new Date();
+  // Time-boundary dynamic clock (refreshes every 30s without heavy 1s global timer)
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   const currentHour = now.getHours();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getLocalDateString(now);
 
   // Dynamic greeting based on user's local time
   const greeting = useMemo(() => {
@@ -64,39 +72,56 @@ export const TodayView: React.FC<TodayViewProps> = ({
     return 'Good evening';
   }, [currentHour]);
 
-  // Formatted date
+  // Formatted date using local clock
   const formattedDate = useMemo(() => {
     return new Intl.DateTimeFormat('en-US', {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
     }).format(now);
-  }, []);
+  }, [now]);
 
-  // Today's prioritized tasks
-  const { overdueTasks, dueTodayTasks, urgentTasks, completedTodayTasks, allRemainingToday } = useMemo(() => {
+  // Today's prioritized tasks following the canonical documented hierarchy:
+  // 1. Overdue
+  // 2. Urgent
+  // 3. Due Today
+  // 4. Starred / Important
+  // 5. Other Remaining
+  // 6. Completed Today
+  const { overdueTasks, urgentTasks, dueTodayTasks, starredTasks, completedTodayTasks, allRemainingToday } = useMemo(() => {
     const overdue: Task[] = [];
-    const dueToday: Task[] = [];
     const urgent: Task[] = [];
+    const dueToday: Task[] = [];
+    const starred: Task[] = [];
+    const other: Task[] = [];
     const completedToday: Task[] = [];
 
     tasks.forEach((task) => {
       if (task.completed) {
-        if (task.dueDate === todayStr || (task.completedAt && new Date(task.completedAt).toISOString().split('T')[0] === todayStr)) {
+        const completedDateStr = task.completedAt ? getLocalDateString(new Date(task.completedAt)) : null;
+        if (task.dueDate === todayStr || completedDateStr === todayStr) {
           completedToday.push(task);
         }
       } else {
         const isOverdue = task.dueDate && task.dueDate < todayStr;
-        const isDueToday = task.dueDate === todayStr;
         const isUrgent = task.priority === 'urgent';
+        const isDueToday = task.dueDate === todayStr;
 
-        if (isOverdue) overdue.push(task);
-        else if (isDueToday) dueToday.push(task);
-        else if (isUrgent) urgent.push(task);
+        if (isOverdue) {
+          overdue.push(task);
+        } else if (isUrgent) {
+          urgent.push(task);
+        } else if (isDueToday) {
+          dueToday.push(task);
+        } else if (task.isStarred) {
+          starred.push(task);
+        } else {
+          other.push(task);
+        }
       }
     });
 
-    // Sort remaining tasks by priority and time
+    // Sort helper: Starred first, then priority, then due time
     const priorityWeight: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
     const sortFn = (a: Task, b: Task) => {
       if (a.isStarred && !b.isStarred) return -1;
@@ -108,14 +133,19 @@ export const TodayView: React.FC<TodayViewProps> = ({
     };
 
     overdue.sort(sortFn);
-    dueToday.sort(sortFn);
     urgent.sort(sortFn);
+    dueToday.sort(sortFn);
+    starred.sort(sortFn);
+    other.sort(sortFn);
 
-    const remaining = [...overdue, ...dueToday, ...urgent];
+    // Canonical ordering: Overdue -> Urgent -> Due Today -> Starred/Important -> Other
+    const remaining = [...overdue, ...urgent, ...dueToday, ...starred, ...other];
+
     return {
       overdueTasks: overdue,
-      dueTodayTasks: dueToday,
       urgentTasks: urgent,
+      dueTodayTasks: dueToday,
+      starredTasks: starred,
       completedTodayTasks: completedToday,
       allRemainingToday: remaining,
     };
@@ -160,8 +190,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
       if (ex.examDate === todayStr) {
         items.push({
           time: ex.examTime || '09:00',
-          title: `Exam: ${ex.title}`,
-          subtitle: `${ex.subjectCode || 'General'} (Today)`,
+          title: `Exam: ${ex.subject}`,
+          subtitle: `${ex.courseCode || 'General Exam'} (Today)`,
           type: 'exam',
           isPast: false,
         });
@@ -170,7 +200,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
     items.sort((a, b) => a.time.localeCompare(b.time));
     return items;
-  }, [tasks, exams, todayStr, currentHour]);
+  }, [tasks, exams, todayStr, currentHour, now]);
 
   // Next upcoming exam (within 14 days)
   const nextExam = useMemo(() => {
@@ -190,12 +220,10 @@ export const TodayView: React.FC<TodayViewProps> = ({
     return diff;
   }, [nextExam, todayStr]);
 
-  // Habit metrics
+  // Habit metrics using canonical completedDates
   const habitsDoneTodayCount = useMemo(() => {
     return habits.filter(
-      (h) =>
-        (h.completedDates && h.completedDates.includes(todayStr)) ||
-        (h.completions && h.completions[todayStr])
+      (h) => h.completedDates && h.completedDates.includes(todayStr)
     ).length;
   }, [habits, todayStr]);
 
@@ -398,17 +426,17 @@ export const TodayView: React.FC<TodayViewProps> = ({
                           ? 'Tomorrow'
                           : `In ${examDaysLeft} days`}
                       </span>
-                      {nextExam.subjectCode && (
+                      {nextExam.courseCode && (
                         <>
                           <span aria-hidden="true" className="text-indigo-400">·</span>
                           <span className="font-mono text-slate-600">
-                            {nextExam.subjectCode}
+                            {nextExam.courseCode}
                           </span>
                         </>
                       )}
                     </div>
                     <h3 className="text-base font-bold text-slate-900 mt-1">
-                      {nextExam.title}
+                      {nextExam.subject}
                     </h3>
                     <p className="text-xs text-slate-600 mt-0.5">
                       Exam Date: {nextExam.examDate} {nextExam.examTime ? `at ${nextExam.examTime}` : ''}
@@ -497,10 +525,9 @@ export const TodayView: React.FC<TodayViewProps> = ({
             ) : (
               <div className="space-y-2">
                 {habits.map((habit) => {
-                  const habitTitle = habit.name || habit.title || 'Daily Habit';
+                  const habitTitle = habit.name;
                   const isDoneToday = Boolean(
-                    (habit.completedDates && habit.completedDates.includes(todayStr)) ||
-                    (habit.completions && habit.completions[todayStr])
+                    habit.completedDates && habit.completedDates.includes(todayStr)
                   );
 
                   return (

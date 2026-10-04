@@ -30,6 +30,8 @@ import {
 } from '../../types/index.ts';
 import { generateTaskSubtasks } from '../../lib/apiClient.ts';
 import { playTaskCompleteSound, triggerTaskConfetti } from '../../lib/todoUtils.ts';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface TaskDetailDrawerProps {
   task: Task | null;
@@ -48,6 +50,11 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   onDeleteTask,
   onStartFocus,
 }) => {
+  const { containerRef } = useModalFocus<HTMLDivElement>({
+    isOpen,
+    onClose,
+  });
+
   const [editedTitle, setEditedTitle] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [editedNotes, setEditedNotes] = useState('');
@@ -73,24 +80,12 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
       setEditedCategory(task.category || 'study');
       setEditedPriority(task.priority || 'medium');
       setEditedStatus(task.status || (task.completed ? 'done' : 'todo'));
-      setEditedDueDate(task.dueDate || new Date().toISOString().split('T')[0]);
+      setEditedDueDate(task.dueDate || getLocalDateString());
       setEditedDueTime(task.dueTime || '');
       setEditedRecurring(task.recurring || 'none');
       setEditedEstimatedMinutes(task.estimatedMinutes || 25);
     }
   }, [task]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   if (!isOpen || !task) return null;
 
@@ -222,6 +217,7 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 overflow-hidden animate-in slide-in-from-right duration-200"
       >

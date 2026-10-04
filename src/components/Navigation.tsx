@@ -238,6 +238,8 @@ export const Navigation: React.FC<NavigationProps> = ({
                     key={tab.key}
                     id={tab.id}
                     type="button"
+                    role="tab"
+                    aria-selected={isActive}
                     onClick={() => handleSelect(tab.key)}
                     className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 ${
                       isActive
@@ -276,6 +278,8 @@ export const Navigation: React.FC<NavigationProps> = ({
                     key={tab.key}
                     id={tab.id}
                     type="button"
+                    role="tab"
+                    aria-selected={isActive}
                     onClick={() => handleSelect(tab.key)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 ${
                       isActive
@@ -305,6 +309,8 @@ export const Navigation: React.FC<NavigationProps> = ({
                   key={tab.key}
                   id={tab.id}
                   type="button"
+                  role="tab"
+                  aria-selected={isActive}
                   onClick={() => handleSelect(tab.key)}
                   className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer min-h-[44px] min-w-[56px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
                     isActive
@@ -349,7 +355,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               {/* Mobile "More" Dropdown / Bottom Sheet */}
               {isMobileMoreOpen && (
                 <div
-                  role="menu"
+                  id="mobile-more-disclosure"
                   aria-label="More navigation options"
                   className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-100"
                 >
@@ -375,7 +381,6 @@ export const Navigation: React.FC<NavigationProps> = ({
                       return (
                         <button
                           key={item.key}
-                          role="menuitem"
                           type="button"
                           onClick={() => handleSelect(item.key)}
                           className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer min-h-[44px] ${

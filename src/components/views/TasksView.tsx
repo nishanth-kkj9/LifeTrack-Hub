@@ -47,6 +47,7 @@ import {
   triggerTaskConfetti,
   triggerStreakCelebration,
 } from '../../lib/todoUtils.ts';
+import { getLocalDateString, getLocalDateOffset, formatAppTime } from '../../lib/dateUtils.ts';
 
 interface TasksViewProps {
   tasks: Task[];
@@ -90,7 +91,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Record<string, boolean>>({});
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   const handleCreateTask = (task: Task) => {
     if (onAddTask) {
@@ -216,9 +217,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         return task.dueDate === todayStr && !task.completed;
       }
       if (activeFilter === 'upcoming') {
-        const nextWeek = new Date();
-        nextWeek.setDate(nextWeek.getDate() + 7);
-        const nextWeekStr = nextWeek.toISOString().split('T')[0];
+        const nextWeekStr = getLocalDateOffset(7);
         return task.dueDate >= todayStr && task.dueDate <= nextWeekStr && !task.completed;
       }
       if (activeFilter === 'urgent') {
@@ -258,13 +257,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         'Later / Someday': [],
       };
 
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-      const endOfWeek = new Date();
-      endOfWeek.setDate(endOfWeek.getDate() + 6);
-      const endOfWeekStr = endOfWeek.toISOString().split('T')[0];
+      const tomorrowStr = getLocalDateOffset(1);
+      const endOfWeekStr = getLocalDateOffset(6);
 
       filteredTasks.forEach((t) => {
         if (t.completed) {

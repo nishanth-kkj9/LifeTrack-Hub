@@ -16,6 +16,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { Task, ExamReminder, Habit, QuickNote } from '../../types/index.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 export interface CommandPaletteProps {
   isOpen: boolean;
@@ -51,21 +52,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  const { containerRef } = useModalFocus<HTMLDivElement>({
+    isOpen,
+    onClose,
+    initialFocusRef: inputRef,
+  });
 
   useEffect(() => {
     if (isOpen) {
-      previousActiveElementRef.current = document.activeElement as HTMLElement;
       setQuery('');
       setSelectedIndex(0);
-      const timer = setTimeout(() => inputRef.current?.focus(), 50);
-      return () => clearTimeout(timer);
-    } else {
-      previousActiveElementRef.current?.focus();
     }
   }, [isOpen]);
 
-  // Keyboard shortcut Ctrl+K / Cmd+K listener
+  // Keyboard shortcut Ctrl+K / Cmd+K listener to toggle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -73,10 +73,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         if (isOpen) {
           onClose();
         }
-      }
-      if (e.key === 'Escape' && isOpen) {
-        e.preventDefault();
-        onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -256,14 +252,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const matchingExams = exams
     .filter(
       (e) =>
-        e.title.toLowerCase().includes(trimmed) ||
-        (e.subjectCode && e.subjectCode.toLowerCase().includes(trimmed))
+        e.subject.toLowerCase().includes(trimmed) ||
+        (e.courseCode && e.courseCode.toLowerCase().includes(trimmed))
     )
     .slice(0, 3)
     .map((e) => ({
       id: `exam-${e.id}`,
-      title: e.title,
-      subtitle: `${e.subjectCode || 'Exam'} • ${e.examDate}`,
+      title: e.subject,
+      subtitle: `${e.courseCode || 'Exam'} • ${e.examDate}`,
       category: 'Exams',
       icon: GraduationCap,
       action: () => {
@@ -273,11 +269,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }));
 
   const matchingHabits = habits
-    .filter((h) => h.title.toLowerCase().includes(trimmed))
+    .filter((h) => h.name.toLowerCase().includes(trimmed))
     .slice(0, 3)
     .map((h) => ({
       id: `habit-${h.id}`,
-      title: h.title,
+      title: h.name,
       subtitle: `${h.streak || 0} day streak`,
       category: 'Habits',
       icon: Flame,
@@ -344,6 +340,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in-95 duration-100"
         onClick={(e) => e.stopPropagation()}
       >
@@ -353,6 +350,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-autocomplete="list"
+            aria-controls="command-palette-list"
+            aria-activedescendant={allFiltered[selectedIndex] ? `cmd-item-${allFiltered[selectedIndex].id}` : undefined}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -380,6 +382,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         {/* Results List */}
         <div
+          id="command-palette-list"
           role="listbox"
           aria-label="Command suggestions"
           className="overflow-y-auto py-2 px-2 max-h-[360px] divide-y divide-slate-50"
@@ -395,6 +398,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               return (
                 <div
                   key={item.id}
+                  id={`cmd-item-${item.id}`}
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => handleSelect(idx)}

@@ -22,6 +22,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
 
   return (
     <div
+      id={`task-row-${task.id}`}
       onClick={() => onClick?.(task)}
       className={`group flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg border border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50 transition-all ${
         task.completed ? 'opacity-60 bg-slate-50/70' : ''

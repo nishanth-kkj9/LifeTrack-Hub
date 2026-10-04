@@ -38,6 +38,7 @@ import { AddNoteModal } from './components/modals/AddNoteModal.tsx';
 import { CommandPalette } from './components/common/CommandPalette.tsx';
 import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
 import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
+import { getLocalDateString } from './lib/dateUtils.ts';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -280,30 +281,24 @@ export default function App() {
       ...prev,
       habits: prev.habits.map((h) => {
         if (h.id !== habitId) return h;
-        const completions = { ...(h.completions || {}) };
-        const isDone = Boolean(completions[dateStr]);
-        if (isDone) {
-          delete completions[dateStr];
-        } else {
-          completions[dateStr] = true;
-        }
-
+        const currentDates = h.completedDates || [];
+        const isDone = currentDates.includes(dateStr);
         const nextCompletedDates = isDone
-          ? (h.completedDates || []).filter((d) => d !== dateStr)
-          : [...(h.completedDates || []), dateStr];
+          ? currentDates.filter((d) => d !== dateStr)
+          : [...currentDates, dateStr];
 
         // Recompute streak
         const sorted = [...nextCompletedDates].sort().reverse();
         let streak = 0;
         let checkDate = new Date();
-        const todayStr = checkDate.toISOString().split('T')[0];
+        const todayStr = getLocalDateString(checkDate);
 
         if (sorted.includes(todayStr)) {
           streak = 1;
           checkDate.setDate(checkDate.getDate() - 1);
         } else {
           checkDate.setDate(checkDate.getDate() - 1);
-          const yesterdayStr = checkDate.toISOString().split('T')[0];
+          const yesterdayStr = getLocalDateString(checkDate);
           if (sorted.includes(yesterdayStr)) {
             streak = 1;
             checkDate.setDate(checkDate.getDate() - 1);
@@ -312,8 +307,8 @@ export default function App() {
 
         if (streak > 0) {
           while (true) {
-            const iso = checkDate.toISOString().split('T')[0];
-            if (sorted.includes(iso)) {
+            const dateIso = getLocalDateString(checkDate);
+            if (sorted.includes(dateIso)) {
               streak++;
               checkDate.setDate(checkDate.getDate() - 1);
             } else {
@@ -324,7 +319,6 @@ export default function App() {
 
         return {
           ...h,
-          completions,
           completedDates: nextCompletedDates,
           streak,
           bestStreak: Math.max(h.bestStreak || 0, streak),
@@ -455,7 +449,7 @@ export default function App() {
             vtuProfile={appData.vtuProfile || INITIAL_VTU_PROFILE}
             onToggleTask={handleToggleTask}
             onToggleHabitToday={(id) =>
-              handleToggleHabitDate(id, new Date().toISOString().split('T')[0])
+              handleToggleHabitDate(id, getLocalDateString())
             }
             onAddTask={handleAddTask}
             onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
@@ -582,6 +576,7 @@ export default function App() {
         onOpenAddTransaction={() => setIsAddTxOpen(true)}
         onOpenAddExam={() => setIsAddExamOpen(true)}
         onOpenAddNote={() => setIsAddNoteOpen(true)}
+        onOpenFocusModal={() => handleOpenFocus(null)}
         tasks={appData.tasks}
         exams={appData.exams}
         habits={appData.habits}

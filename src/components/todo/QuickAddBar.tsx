@@ -129,6 +129,7 @@ export const QuickAddBar: React.FC<QuickAddBarProps> = ({
           </div>
 
           <input
+            id="quick-add-task-input"
             ref={inputRef}
             type="text"
             value={inputValue}
@@ -142,20 +143,20 @@ export const QuickAddBar: React.FC<QuickAddBarProps> = ({
           />
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {inputValue.trim() ? (
-              <button
-                type="submit"
-                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer flex items-center gap-1 shadow-xs min-h-[36px]"
-              >
-                <span>Add</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            ) : (
-              <div className="hidden sm:flex items-center gap-1 text-[11px] text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
-                <kbd className="font-mono font-semibold">Q</kbd>
-                <span>quick add</span>
-              </div>
-            )}
+            <button
+              type="submit"
+              id="quick-add-submit-btn"
+              disabled={!inputValue.trim()}
+              aria-label="Add task"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-xs min-h-[36px] ${
+                inputValue.trim()
+                  ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <span>Add</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 

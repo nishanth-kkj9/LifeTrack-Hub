@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { Task } from '../../types/index.ts';
 import { TASK_TEMPLATES, TaskTemplate, triggerStreakCelebration } from '../../lib/todoUtils.ts';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface TaskTemplatesModalProps {
   isOpen: boolean;
@@ -25,13 +27,14 @@ export const TaskTemplatesModal: React.FC<TaskTemplatesModalProps> = ({
   onClose,
   onImportTasks,
 }) => {
+  const { containerRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate>(TASK_TEMPLATES[0]);
   const [importedId, setImportedId] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleApplyTemplate = (tpl: TaskTemplate) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     const newTasks: Task[] = tpl.tasks.map((t, idx) => ({
       id: `task-tpl-${Date.now()}-${idx}`,
       title: t.title,
@@ -77,10 +80,14 @@ export const TaskTemplatesModal: React.FC<TaskTemplatesModalProps> = ({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Task templates library"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs"
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-6 max-h-[90vh] overflow-y-auto"
       >

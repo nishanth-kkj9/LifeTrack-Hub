@@ -14,6 +14,7 @@ import {
 import { Task, ExamReminder } from '../../types/index.ts';
 import { Button } from '../ui/Button.tsx';
 import { TaskRow } from '../ui/TaskRow.tsx';
+import { getLocalDateString, formatAppTime } from '../../lib/dateUtils.ts';
 
 interface CalendarViewProps {
   tasks: Task[];
@@ -30,7 +31,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onSelectTask,
   onOpenAddTaskModal,
 }) => {
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [viewMonth, setViewMonth] = useState(() => new Date());
 
   // Navigate months
@@ -43,7 +44,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const handleToday = () => {
     const today = new Date();
     setViewMonth(today);
-    setSelectedDate(today.toISOString().split('T')[0]);
+    setSelectedDate(getLocalDateString(today));
   };
 
   // Calendar month grid calculation
@@ -65,13 +66,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       hasExam: boolean;
     }> = [];
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
 
     // Previous month padding
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const d = daysInPrevMonth - i;
       const prevDate = new Date(year, month - 1, d);
-      const dateStr = prevDate.toISOString().split('T')[0];
+      const dateStr = getLocalDateString(prevDate);
       const count = tasks.filter((t) => t.dueDate === dateStr && !t.completed).length;
       const hasExam = exams.some((e) => e.examDate === dateStr);
       days.push({
@@ -88,7 +89,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     // Current month days
     for (let d = 1; d <= daysInMonth; d++) {
       const currDate = new Date(year, month, d);
-      const dateStr = currDate.toISOString().split('T')[0];
+      const dateStr = getLocalDateString(currDate);
       const count = tasks.filter((t) => t.dueDate === dateStr && !t.completed).length;
       const hasExam = exams.some((e) => e.examDate === dateStr);
       days.push({
@@ -106,7 +107,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const remaining = (7 - (days.length % 7)) % 7;
     for (let d = 1; d <= remaining; d++) {
       const nextDate = new Date(year, month + 1, d);
-      const dateStr = nextDate.toISOString().split('T')[0];
+      const dateStr = getLocalDateString(nextDate);
       const count = tasks.filter((t) => t.dueDate === dateStr && !t.completed).length;
       const hasExam = exams.some((e) => e.examDate === dateStr);
       days.push({
@@ -161,6 +162,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button
               type="button"
+              id="calendar-prev-month-btn"
               onClick={handlePrevMonth}
               className="p-1.5 rounded-md hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
               aria-label="Previous month"
@@ -172,6 +174,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             </span>
             <button
               type="button"
+              id="calendar-next-month-btn"
               onClick={handleNextMonth}
               className="p-1.5 rounded-md hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
               aria-label="Next month"
@@ -286,9 +289,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   className="p-3 rounded-xl bg-indigo-50 border border-indigo-200/80 text-indigo-950 flex items-start justify-between"
                 >
                   <div>
-                    <h3 className="text-sm font-bold">{exam.title}</h3>
+                    <h3 className="text-sm font-bold">{exam.subject}</h3>
                     <p className="text-xs text-indigo-700 mt-0.5">
-                      {exam.subjectCode} • {exam.examTime || 'Morning session'}
+                      {exam.courseCode || 'Exam'} • {exam.examTime ? formatAppTime(exam.examTime) : 'Morning session'}
                     </p>
                   </div>
                   <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">

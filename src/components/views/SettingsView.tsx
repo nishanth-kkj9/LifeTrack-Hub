@@ -16,10 +16,18 @@ import {
   Smartphone,
   Sliders,
   Info,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { UserAppData } from '../../types/index.ts';
 import { Button } from '../ui/Button.tsx';
+import {
+  getTimeFormatPreference,
+  setTimeFormatPreference,
+  getLocalDateString,
+  type TimeFormat,
+} from '../../lib/dateUtils.ts';
 
 interface SettingsViewProps {
   currentUser: User | null;
@@ -45,8 +53,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [copiedUid, setCopiedUid] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
-  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>('12h');
+  const [timeFormat, setTimeFormatState] = useState<TimeFormat>(() => getTimeFormatPreference());
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleTimeFormatChange = (fmt: TimeFormat) => {
+    setTimeFormatState(fmt);
+    setTimeFormatPreference(fmt);
+    setSyncStatusMsg(`Time format updated to ${fmt === '12h' ? '12-Hour' : '24-Hour'}`);
+    setTimeout(() => setSyncStatusMsg(null), 2500);
+  };
 
   // Export JSON backup
   const handleExportJson = () => {
@@ -55,7 +71,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lifetrack_hub_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `lifetrack_hub_backup_${getLocalDateString()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -222,32 +238,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* Database & Architecture info */}
-        <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5 text-slate-400" />
-              <span>Target Firestore Database:</span>
-            </span>
-            <span className="font-mono text-slate-800 font-semibold">
-              ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-              <span>Project ID:</span>
-            </span>
-            <span className="font-mono text-slate-800">galvanic-oarlock-43skh</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-              <span>Multi-Platform Sync:</span>
-            </span>
-            <span className="text-emerald-700 font-semibold">Web + Android + Desktop KMP</span>
-          </div>
-        </div>
       </div>
 
       {/* 2. Preferences & Productivity */}
@@ -260,23 +250,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="py-3 flex items-center justify-between">
             <div>
               <p className="font-bold text-slate-800">Time Format</p>
-              <p className="text-slate-500">Choose between 12-hour (5:00 PM) or 24-hour (17:00) time displays</p>
+              <p className="text-slate-500">Choose between 12-hour (5:00 PM) or 24-hour (17:00) time displays throughout the app</p>
             </div>
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
               <button
                 type="button"
-                onClick={() => setTimeFormat('12h')}
-                className={`px-3 py-1 rounded-md font-semibold transition ${
-                  timeFormat === '12h' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                id="pref-time-format-12h"
+                onClick={() => handleTimeFormatChange('12h')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
+                  timeFormat === '12h' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 12-Hour
               </button>
               <button
                 type="button"
-                onClick={() => setTimeFormat('24h')}
-                className={`px-3 py-1 rounded-md font-semibold transition ${
-                  timeFormat === '24h' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                id="pref-time-format-24h"
+                onClick={() => handleTimeFormatChange('24h')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
+                  timeFormat === '24h' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 24-Hour
@@ -319,6 +311,70 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="hidden"
           />
         </div>
+      </div>
+
+      {/* 4. Advanced & System Diagnostics (Cleanly categorized) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <button
+          type="button"
+          onClick={() => setIsDiagnosticsOpen((prev) => !prev)}
+          className="w-full flex items-center justify-between text-left cursor-pointer"
+        >
+          <div className="flex items-center gap-2 text-slate-800">
+            <Info className="w-4 h-4 text-slate-500" />
+            <h2 className="text-base font-bold">Advanced & Diagnostics</h2>
+          </div>
+          {isDiagnosticsOpen ? (
+            <ChevronUp className="w-4 h-4 text-slate-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          )}
+        </button>
+
+        {isDiagnosticsOpen && (
+          <div className="pt-2 space-y-3 text-xs">
+            <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Target Firestore Database:</span>
+                </span>
+                <span className="font-mono text-slate-800 font-semibold break-all">
+                  ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd
+                </span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Cloud Project ID:</span>
+                </span>
+                <span className="font-mono text-slate-800">galvanic-oarlock-43skh</span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Platform Targets:</span>
+                </span>
+                <span className="text-emerald-700 font-semibold">Web + Android + Desktop KMP</span>
+              </div>
+              {currentUser && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-2 border-t border-slate-200/60">
+                  <span className="text-slate-500">Firebase User UID:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-slate-700 truncate max-w-xs">{currentUser.uid}</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyUid}
+                      className="text-indigo-600 hover:text-indigo-800 font-semibold"
+                    >
+                      {copiedUid ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 4. Danger Zone (Clearly separated) */}

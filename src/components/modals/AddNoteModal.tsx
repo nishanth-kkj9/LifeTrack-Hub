@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, FileText, Pin } from 'lucide-react';
 import { QuickNote } from '../../types/index.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface AddNoteModalProps {
   isOpen: boolean;
@@ -13,22 +14,11 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
   onClose,
   onAddNote,
 }) => {
+  const { containerRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('Formulas');
   const [pinned, setPinned] = useState(false);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -64,6 +54,7 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         id="add-note-modal-card"
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"

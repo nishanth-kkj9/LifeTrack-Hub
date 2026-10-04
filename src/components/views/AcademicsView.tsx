@@ -121,8 +121,22 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
         />
       ) : (
         <VtuHubView
-          profile={vtuProfile}
-          onUpdateProfile={onUpdateVtuProfile}
+          vtuProfile={
+            vtuProfile || {
+              usn: '1MS21CS001',
+              studentName: 'Engineering Scholar',
+              branch: 'Computer Science and Engineering',
+              branchCode: 'CS',
+              collegeCode: '1MS',
+              collegeName: 'M S Ramaiah Institute of Technology',
+              currentSemester: 5,
+              scheme: '2022',
+              targetCgpa: 8.5,
+              attendanceThreshold: 85,
+              semesters: [],
+            }
+          }
+          onUpdateVtuProfile={onUpdateVtuProfile || (() => {})}
         />
       )}
     </div>

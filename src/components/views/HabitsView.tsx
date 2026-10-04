@@ -9,6 +9,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { Habit } from '../../types/index.ts';
+import { getLocalDateString, getLocalDateOffset, parseLocalDate } from '../../lib/dateUtils.ts';
 
 interface HabitsViewProps {
   habits: Habit[];
@@ -26,15 +27,13 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
   const [newHabitName, setNewHabitName] = useState('');
   const [newCategory, setNewCategory] = useState('Study');
 
-  // Generate the last 7 days (including today)
+  // Generate the last 7 days (including today) in local time
   const days: { dateStr: string; dayLabel: string; dayNumber: number; isToday: boolean }[] = [];
-  const today = new Date();
-  const todayIso = today.toISOString().split('T')[0];
+  const todayIso = getLocalDateString();
 
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(today.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = getLocalDateOffset(-i);
+    const d = parseLocalDate(dateStr);
     const dayLabel = d.toLocaleDateString('en-US', { weekday: 'narrow' });
     const dayNumber = d.getDate();
     days.push({
@@ -49,14 +48,15 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
     e.preventDefault();
     if (!newHabitName.trim()) return;
 
+    // Preferred behavior: newly created habit is unchecked today; user explicitly logs completion
     const habit: Habit = {
-      id: `habit-${Date.now()}`,
+      id: `habit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: newHabitName.trim(),
       category: newCategory,
       targetDaysPerWeek: 7,
-      completedDates: [todayIso],
-      streak: 1,
-      bestStreak: 1,
+      completedDates: [],
+      streak: 0,
+      bestStreak: 0,
       createdAt: Date.now(),
     };
 

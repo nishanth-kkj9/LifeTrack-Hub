@@ -19,6 +19,8 @@ import {
   Subtask,
 } from '../../types/index.ts';
 import { generateTaskSubtasks } from '../../lib/apiClient.ts';
+import { getLocalDateOffset, getLocalDateString } from '../../lib/dateUtils.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface AddTaskModalProps {
   isOpen: boolean;
@@ -31,13 +33,12 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
   onClose,
   onAddTask,
 }) => {
+  const { containerRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TaskCategory>('study');
   const [priority, setPriority] = useState<TaskPriority>('medium');
-  const [dueDate, setDueDate] = useState(
-    new Date(Date.now() + 86400000).toISOString().split('T')[0]
-  );
+  const [dueDate, setDueDate] = useState(() => getLocalDateString());
   const [dueTime, setDueTime] = useState('18:00');
   const [estimatedMinutes, setEstimatedMinutes] = useState(30);
   const [recurring, setRecurring] = useState<TaskRecurrence>('none');
@@ -46,18 +47,6 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
   const [subtaskInput, setSubtaskInput] = useState('');
   const [subtasks, setSubtasks] = useState<Array<{ id: string; title: string; estimatedMinutes?: number }>>([]);
   const [isAiBreakingDown, setIsAiBreakingDown] = useState(false);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -154,6 +143,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         id="add-task-modal-card"
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto"

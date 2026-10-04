@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Task, TaskPriority } from '../../types/index.ts';
 import { playTaskCompleteSound, triggerTaskConfetti } from '../../lib/todoUtils.ts';
+import { getLocalDateString, parseLocalDate, getLocalDateOffset, formatAppTime } from '../../lib/dateUtils.ts';
 
 interface DailyScheduleViewProps {
   tasks: Task[];
@@ -29,20 +30,18 @@ export const DailyScheduleView: React.FC<DailyScheduleViewProps> = ({
   onSelectTask,
   onStartFocus,
 }) => {
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   const handlePrevDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() - 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const d = parseLocalDate(selectedDate);
+    setSelectedDate(getLocalDateOffset(-1, d));
   };
 
   const handleNextDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const d = parseLocalDate(selectedDate);
+    setSelectedDate(getLocalDateOffset(1, d));
   };
 
   const handleToday = () => {

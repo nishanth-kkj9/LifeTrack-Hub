@@ -17,6 +17,7 @@ import {
 import { Task, Transaction, ExamReminder, Habit, BudgetSettings, VtuProfile } from '../../types/index.ts';
 import { calculateCumulativeCgpa, calculateAttendanceReport, calculateSemesterSgpa } from '../../lib/vtuData.ts';
 import { ActiveTab } from '../Navigation.tsx';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
 
 interface OverviewViewProps {
   tasks: Task[];
@@ -60,7 +61,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   const completionRate = tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
 
   // Urgent and today tasks
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const urgentTasks = activeTasks.filter(
     (t) => t.priority === 'urgent' || t.dueDate === todayStr || t.dueDate < todayStr
   );

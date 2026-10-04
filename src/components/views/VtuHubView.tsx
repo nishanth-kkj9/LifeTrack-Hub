@@ -623,14 +623,16 @@ BCS301	Mathematics for Computer Science	45	42	87	P
 
       {/* SECTION 0: VTU SYNC (CHECK • LEARN • CONNECT) */}
       {activeSection === 'vtu-sync' && (
-        <VtuSyncSection
-          vtuProfile={vtuProfile}
-          onUpdateProfile={onUpdateVtuProfile}
-          onSwitchToCalculator={(sem) => {
-            setSelectedSemester(sem);
-            setActiveSection('calculator');
-          }}
-        />
+        <div id="vtu-sync-container">
+          <VtuSyncSection
+            vtuProfile={vtuProfile}
+            onUpdateProfile={onUpdateVtuProfile}
+            onSwitchToCalculator={(sem) => {
+              setSelectedSemester(sem);
+              setActiveSection('calculator');
+            }}
+          />
+        </div>
       )}
 
       {/* SECTION 1: SGPA & CGPA CALCULATOR */}

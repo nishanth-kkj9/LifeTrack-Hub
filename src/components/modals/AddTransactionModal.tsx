@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, DollarSign } from 'lucide-react';
 import { Transaction, TransactionType, FinanceCategory } from '../../types/index.ts';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -30,25 +32,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   onClose,
   onAddTransaction,
 }) => {
+  const { containerRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
   const [type, setType] = useState<TransactionType>('expense');
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<FinanceCategory>('Food & Dining');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => getLocalDateString());
   const [paymentMethod, setPaymentMethod] = useState<'Card' | 'Cash' | 'Bank Transfer' | 'Online Wallet' | 'Other'>('Card');
   const [notes, setNotes] = useState('');
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -88,6 +79,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         id="add-transaction-modal-card"
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"

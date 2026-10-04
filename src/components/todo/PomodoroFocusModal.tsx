@@ -22,6 +22,7 @@ import {
   focusSoundEngine,
   triggerTaskConfetti,
 } from '../../lib/todoUtils.ts';
+import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface PomodoroFocusModalProps {
   task: Task | null;
@@ -38,6 +39,27 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   onClose,
   onUpdateTask,
 }) => {
+  const accumulatedFocusSecondsRef = useRef(0);
+
+  const handleClose = () => {
+    focusSoundEngine.stop();
+    // Flush partial focus time if at least 1 minute elapsed
+    if (task && accumulatedFocusSecondsRef.current >= 60) {
+      const elapsedMinutes = Math.floor(accumulatedFocusSecondsRef.current / 60);
+      onUpdateTask({
+        ...task,
+        actualMinutes: (task.actualMinutes || 0) + elapsedMinutes,
+      });
+      accumulatedFocusSecondsRef.current = 0;
+    }
+    onClose();
+  };
+
+  const { containerRef } = useModalFocus<HTMLDivElement>({
+    isOpen,
+    onClose: handleClose,
+  });
+
   const [timerMode, setTimerMode] = useState<TimerMode>('focus');
   const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 mins in seconds
   const [isRunning, setIsRunning] = useState(false);
@@ -48,6 +70,17 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   const [customGoal, setCustomGoal] = useState('');
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset session accounting when modal opens or task changes
+  useEffect(() => {
+    if (isOpen) {
+      accumulatedFocusSecondsRef.current = 0;
+      setSessionCompletedSeconds(0);
+      setTimerMode('focus');
+      setTimeLeft(25 * 60);
+      setIsRunning(false);
+    }
+  }, [isOpen, task?.id]);
 
   // Set default time based on mode
   useEffect(() => {
@@ -87,6 +120,7 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
           }
           if (timerMode === 'focus') {
             setSessionCompletedSeconds((s) => s + 1);
+            accumulatedFocusSecondsRef.current += 1;
           }
           return prev - 1;
         });
@@ -100,20 +134,6 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
     };
   }, [isRunning, timerMode]);
 
-  // Escape key handler
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        focusSoundEngine.stop();
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
   if (!isOpen) return null;
 
   const handleTimerComplete = () => {
@@ -123,11 +143,13 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
 
     if (timerMode === 'focus') {
       if (task) {
+        const elapsedMinutes = Math.max(1, Math.round(accumulatedFocusSecondsRef.current / 60));
         const currentActual = task.actualMinutes || 0;
         onUpdateTask({
           ...task,
-          actualMinutes: currentActual + 25,
+          actualMinutes: currentActual + elapsedMinutes,
         });
+        accumulatedFocusSecondsRef.current = 0;
       }
       setTimerMode('short_break');
     } else {
@@ -141,6 +163,8 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
 
   const handleReset = () => {
     setIsRunning(false);
+    accumulatedFocusSecondsRef.current = 0;
+    setSessionCompletedSeconds(0);
     if (timerMode === 'focus') setTimeLeft(25 * 60);
     else if (timerMode === 'short_break') setTimeLeft(5 * 60);
     else if (timerMode === 'long_break') setTimeLeft(15 * 60);
@@ -183,6 +207,7 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
       }`}
     >
       <div
+        ref={containerRef}
         className={`bg-slate-900 border border-slate-800 text-white rounded-3xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ${
           isFullscreen
             ? 'w-full h-full rounded-none border-none'
@@ -208,10 +233,7 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
             <button
-              onClick={() => {
-                focusSoundEngine.stop();
-                onClose();
-              }}
+              onClick={handleClose}
               className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
               aria-label="Close focus timer"
             >

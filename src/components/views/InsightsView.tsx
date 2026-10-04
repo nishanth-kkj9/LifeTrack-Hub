@@ -11,6 +11,7 @@ import {
   Award,
 } from 'lucide-react';
 import { Task, Habit, Transaction, BudgetSettings, ExamReminder } from '../../types/index.ts';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
 
 interface InsightsViewProps {
   tasks: Task[];
@@ -27,8 +28,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
   budget,
   exams,
 }) => {
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   // 1. Task Metrics
   const taskStats = useMemo(() => {
@@ -60,9 +60,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
       habits.reduce((sum, h) => sum + (h.streak || 0), 0) / habits.length
     );
     const checkedInToday = habits.filter(
-      (h) =>
-        (h.completedDates && h.completedDates.includes(todayStr)) ||
-        (h.completions && h.completions[todayStr])
+      (h) => h.completedDates && h.completedDates.includes(todayStr)
     ).length;
 
     return { avgStreak, bestStreak, checkedInToday };
@@ -174,7 +172,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
             </p>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-blue-700 font-medium">
-            ₹{financeStats.savings.toLocaleString()} net balance
+            ${financeStats.savings.toLocaleString()} net balance
           </div>
         </div>
 
