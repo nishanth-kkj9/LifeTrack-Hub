@@ -290,7 +290,7 @@ async function runBrowserUiTests() {
     habitInput?.closest('form')?.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
   });
 
-  const createdHabitEl = Array.from(document.querySelectorAll('span, p')).find((el) =>
+  const createdHabitEl = Array.from(document.querySelectorAll('button, span, p, div')).find((el) =>
     el.textContent?.includes('Read 20 pages')
   );
   assert(createdHabitEl !== undefined, 'Habit "Read 20 pages" created');

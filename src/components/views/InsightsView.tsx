@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   TrendingUp,
   CheckCircle2,
@@ -9,9 +9,24 @@ import {
   Sparkles,
   BarChart3,
   Award,
+  Activity,
+  Download,
+  Upload,
+  Database,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { Task, Habit, Transaction, BudgetSettings, ExamReminder } from '../../types/index.ts';
+import { Task, Habit, Transaction, BudgetSettings, ExamReminder, DailyLifeMetric, UserAppData } from '../../types/index.ts';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { analyzeLifeMetricCorrelations } from '../../lib/correlationEngine.ts';
+import {
+  exportAppDataJson,
+  exportHabitsCsv,
+  exportTasksCsv,
+  exportTransactionsCsv,
+  exportDailyMetricsCsv,
+  parseAppDataJsonFile,
+} from '../../lib/dataExport.ts';
+import { DailyLifeCheckinModal } from '../insights/DailyLifeCheckinModal.tsx';
 
 interface InsightsViewProps {
   tasks: Task[];
@@ -19,6 +34,10 @@ interface InsightsViewProps {
   transactions: Transaction[];
   budget: BudgetSettings;
   exams: ExamReminder[];
+  dailyMetrics?: DailyLifeMetric[];
+  onSaveDailyMetric?: (metric: DailyLifeMetric) => void;
+  appData?: UserAppData;
+  onRestoreAppData?: (data: UserAppData) => void;
 }
 
 export const InsightsView: React.FC<InsightsViewProps> = ({
@@ -27,8 +46,17 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
   transactions,
   budget,
   exams,
+  dailyMetrics = [],
+  onSaveDailyMetric,
+  appData,
+  onRestoreAppData,
 }) => {
   const todayStr = getLocalDateString();
+  const [isCheckinOpen, setIsCheckinOpen] = useState(false);
+
+  const correlations = useMemo(() => {
+    return analyzeLifeMetricCorrelations(dailyMetrics, tasks, habits);
+  }, [dailyMetrics, tasks, habits]);
 
   // 1. Task Metrics
   const taskStats = useMemo(() => {
@@ -231,6 +259,160 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Multi-Dimensional Life Correlations (FxLifeSheet Model) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-purple-600" />
+              <span>Multi-Dimensional Life Correlations</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pearson correlation coefficients between sleep, hydration, exercise, and focus duration.
+            </p>
+          </div>
+          {onSaveDailyMetric && (
+            <button
+              type="button"
+              onClick={() => setIsCheckinOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition cursor-pointer self-start sm:self-auto"
+            >
+              <Activity className="w-4 h-4 text-purple-600" />
+              <span>Log Daily Check-In</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {correlations.map((c, idx) => (
+            <div key={idx} className={`p-4 rounded-xl border ${c.color} space-y-2`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold">{c.metricA} ↔ {c.metricB}</span>
+                <span className="text-xs font-mono font-extrabold px-2 py-0.5 rounded-full bg-white/80 shadow-2xs">
+                  r = {c.coefficient > 0 ? `+${c.coefficient}` : c.coefficient}
+                </span>
+              </div>
+              <p className="text-xs font-medium leading-snug">{c.insightText}</p>
+              <div className="flex items-center justify-between text-[10px] font-semibold opacity-75 pt-1 border-t border-current/20">
+                <span>{c.relationship}</span>
+                <span>{c.sampleSize} Days Analyzed</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Data Portability & Export / Backup Hub */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-2">
+          <Database className="w-5 h-5 text-slate-700" />
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Data Portability & Backup Hub</h2>
+            <p className="text-xs text-slate-500">
+              Full data ownership: Export your habits, tasks, finances, or full JSON app backup at any time.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => exportTasksCsv(tasks)}
+            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+          >
+            <div>
+              <p className="text-xs font-bold text-slate-900">Tasks CSV</p>
+              <p className="text-[10px] text-slate-500">{tasks.length} task records</p>
+            </div>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => exportHabitsCsv(habits)}
+            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+          >
+            <div>
+              <p className="text-xs font-bold text-slate-900">Habits CSV</p>
+              <p className="text-[10px] text-slate-500">{habits.length} habit streaks</p>
+            </div>
+            <FileSpreadsheet className="w-4 h-4 text-orange-600" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => exportTransactionsCsv(transactions)}
+            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+          >
+            <div>
+              <p className="text-xs font-bold text-slate-900">Finances CSV</p>
+              <p className="text-[10px] text-slate-500">{transactions.length} transactions</p>
+            </div>
+            <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => exportDailyMetricsCsv(dailyMetrics)}
+            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+          >
+            <div>
+              <p className="text-xs font-bold text-slate-900">Metrics CSV</p>
+              <p className="text-[10px] text-slate-500">{dailyMetrics.length} daily logs</p>
+            </div>
+            <FileSpreadsheet className="w-4 h-4 text-purple-600" />
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => {
+              if (appData) exportAppDataJson(appData);
+            }}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export Full JSON Backup</span>
+          </button>
+
+          {onRestoreAppData && (
+            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer">
+              <Upload className="w-4 h-4 text-slate-600" />
+              <span>Restore JSON Backup</span>
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const restored = await parseAppDataJsonFile(file);
+                    if (confirm('Restore backup data? This will merge and update your active database.')) {
+                      onRestoreAppData(restored);
+                      alert('Data restored successfully!');
+                    }
+                  } catch (err) {
+                    alert('Failed to parse JSON backup file.');
+                  }
+                }}
+              />
+            </label>
+          )}
+        </div>
+      </div>
+
+      {/* Daily Metrics Check-In Modal */}
+      {onSaveDailyMetric && (
+        <DailyLifeCheckinModal
+          isOpen={isCheckinOpen}
+          onClose={() => setIsCheckinOpen(false)}
+          existingMetric={dailyMetrics.find((m) => m.date === todayStr)}
+          onSaveMetric={onSaveDailyMetric}
+        />
+      )}
     </div>
   );
 };

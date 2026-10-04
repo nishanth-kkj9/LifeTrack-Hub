@@ -94,6 +94,13 @@ export interface ExamReminder {
   createdAt: number;
 }
 
+export interface VacationPeriod {
+  id: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  reason?: string;
+}
+
 export interface Habit {
   id: string;
   name: string;
@@ -103,6 +110,27 @@ export interface Habit {
   streak: number;
   bestStreak: number;
   createdAt: number;
+  scheduleType?: 'daily' | 'weekly_target' | 'custom_days';
+  customDays?: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
+  vacationPeriods?: VacationPeriod[];
+  habitScore?: number; // 0-100 calculated strength score
+}
+
+export interface DailyLifeMetric {
+  id: string;
+  date: string; // YYYY-MM-DD
+  sleepHours?: number; // 0-24
+  sleepQuality?: number; // 1-5 rating
+  energyLevel?: number; // 1-5 rating
+  moodLevel?: number; // 1-5 rating
+  stressLevel?: number; // 1-5 rating
+  waterLitres?: number;
+  stepsCount?: number;
+  focusHours?: number;
+  screenTimeHours?: number;
+  workoutDone?: boolean;
+  journalNotes?: string;
+  updatedAt: number;
 }
 
 export interface QuickNote {
@@ -295,6 +323,7 @@ export interface UserAppData {
   exams: ExamReminder[];
   habits: Habit[];
   notes: QuickNote[];
+  dailyMetrics?: DailyLifeMetric[];
   vtuProfile?: VtuProfile;
   masterPlan?: string;
   lastUpdated?: number;

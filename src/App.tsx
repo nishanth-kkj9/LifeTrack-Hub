@@ -18,6 +18,7 @@ import {
   QuickNote,
   BudgetSettings,
   VtuProfile,
+  DailyLifeMetric,
 } from './types/index.ts';
 import { Header } from './components/Header.tsx';
 import { Navigation, ActiveTab } from './components/Navigation.tsx';
@@ -341,6 +342,41 @@ export default function App() {
     }));
   };
 
+  const handleUpdateHabit = (updatedHabit: Habit) => {
+    commitAppData((prev) => ({
+      ...prev,
+      habits: prev.habits.map((h) => (h.id === updatedHabit.id ? updatedHabit : h)),
+    }));
+  };
+
+  // Multi-Dimensional Daily Life Metrics Operations
+  const handleSaveDailyMetric = (metric: DailyLifeMetric) => {
+    commitAppData((prev) => {
+      const existing = prev.dailyMetrics || [];
+      const filtered = existing.filter((m) => m.date !== metric.date);
+      return {
+        ...prev,
+        dailyMetrics: [metric, ...filtered],
+      };
+    });
+  };
+
+  // Full Data Restoration
+  const handleRestoreAppData = (restoredData: UserAppData) => {
+    commitAppData((prev) => ({
+      ...prev,
+      tasks: restoredData.tasks || prev.tasks,
+      transactions: restoredData.transactions || prev.transactions,
+      budget: restoredData.budget || prev.budget,
+      exams: restoredData.exams || prev.exams,
+      habits: restoredData.habits || prev.habits,
+      notes: restoredData.notes || prev.notes,
+      dailyMetrics: restoredData.dailyMetrics || prev.dailyMetrics,
+      vtuProfile: restoredData.vtuProfile || prev.vtuProfile,
+      lastUpdated: Date.now(),
+    }));
+  };
+
   // Notes Operations
   const handleAddNote = (newNote: QuickNote) => {
     commitAppData((prev) => ({
@@ -524,6 +560,9 @@ export default function App() {
             onToggleHabitDate={handleToggleHabitDate}
             onAddHabit={handleAddHabit}
             onDeleteHabit={handleDeleteHabit}
+            onUpdateHabit={handleUpdateHabit}
+            dailyMetrics={appData.dailyMetrics || []}
+            onSaveDailyMetric={handleSaveDailyMetric}
           />
         )}
 
@@ -546,6 +585,10 @@ export default function App() {
             transactions={appData.transactions}
             budget={appData.budget}
             exams={appData.exams}
+            dailyMetrics={appData.dailyMetrics || []}
+            onSaveDailyMetric={handleSaveDailyMetric}
+            appData={appData}
+            onRestoreAppData={handleRestoreAppData}
           />
         )}
 
