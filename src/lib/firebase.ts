@@ -370,7 +370,16 @@ export async function loginWithGoogle(): Promise<User | null> {
     const res = await signInWithPopup(auth, googleProvider);
     return res.user;
   } catch (err: any) {
-    console.error('Google Sign-in error:', err);
+    if (err?.code === 'auth/unauthorized-domain') {
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
+      console.warn(
+        `Firebase Auth: Domain "${hostname}" is not authorized. Add it to Authorized Domains in Firebase Console (Authentication > Settings).`
+      );
+    } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+      console.info('Google sign-in popup was dismissed by the user.');
+    } else {
+      console.warn('Google sign-in attempt notice:', err?.message || err);
+    }
     throw err;
   }
 }

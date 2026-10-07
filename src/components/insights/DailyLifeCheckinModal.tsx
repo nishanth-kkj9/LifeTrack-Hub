@@ -31,7 +31,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
   onSaveMetric,
   selectedDate = getLocalDateString(),
 }) => {
-  const modalRef = useModalFocus({ isOpen, onClose });
+  const { modalRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
 
   const [dateStr, setDateStr] = useState(selectedDate);
   const [sleepHours, setSleepHours] = useState<number>(existingMetric?.sleepHours ?? 7.5);

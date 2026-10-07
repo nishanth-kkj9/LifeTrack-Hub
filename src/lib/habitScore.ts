@@ -1,8 +1,3 @@
-/**
- * Habit score calculations inspired by mature habit trackers.
- * Provides strength, streak, and completion quality metrics.
- */
-
 export interface HabitScoreInput {
   completions: number;
   totalDueDates: number;
@@ -30,7 +25,10 @@ export function calculateHabitScore({
   const consistencyBoost = Math.min(currentStreak * 2.5, 30);
   const longevityBoost = Math.min(longestStreak * 1.2, 20);
   const completionBoost = completionRate * 0.6;
-  const strength = Math.min(100, Math.max(0, completionBoost + consistencyBoost + longevityBoost));
+  const strength = Math.min(
+    100,
+    Math.max(0, completionBoost + consistencyBoost + longevityBoost)
+  );
 
   const backlogDays = totalDueDates === 0 ? 0 : Math.max(0, totalDueDates - completions);
 

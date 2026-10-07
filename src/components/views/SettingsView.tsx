@@ -38,6 +38,7 @@ interface SettingsViewProps {
   onRestoreData: (data: UserAppData) => void;
   onResetData: () => void;
   onForceSync?: () => void;
+  onOpenAuthDomainModal?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -49,6 +50,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onRestoreData,
   onResetData,
   onForceSync,
+  onOpenAuthDomainModal,
 }) => {
   const [copiedUid, setCopiedUid] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
@@ -226,6 +228,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <p className="text-xs text-slate-500 mt-0.5">
                 Enable multi-device sync, cloud backup, and seamless Android sync.
               </p>
+              {onOpenAuthDomainModal && (
+                <button
+                  type="button"
+                  onClick={onOpenAuthDomainModal}
+                  className="text-[11px] text-indigo-600 hover:text-indigo-800 underline font-medium mt-1 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Preview domain setup guide (Firebase Authorized Domains)</span>
+                </button>
+              )}
             </div>
             <Button
               variant="primary"

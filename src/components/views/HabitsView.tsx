@@ -13,6 +13,8 @@ import {
 import { Habit, DailyLifeMetric } from '../../types/index.ts';
 import { getLocalDateString, getLocalDateOffset, parseLocalDate } from '../../lib/dateUtils.ts';
 import { analyzeHabitStrength } from '../../lib/habitScoring.ts';
+import { calculateHabitScore } from '../../lib/habitScore.ts';
+import { computeAdaptiveSchedule } from '../../lib/schedule.ts';
 import { HabitDetailModal } from '../todo/HabitDetailModal.tsx';
 import { DailyLifeCheckinModal } from '../insights/DailyLifeCheckinModal.tsx';
 import { exportHabitsCsv } from '../../lib/dataExport.ts';
@@ -177,6 +179,20 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
           <div className="divide-y divide-slate-100">
             {habits.map((habit) => {
               const analysis = analyzeHabitStrength(habit, todayIso);
+              const totalDays = Math.max(1, Math.round((Date.now() - habit.createdAt) / (1000 * 60 * 60 * 24)) + 1);
+              const habitScore = calculateHabitScore({
+                completions: habit.completedDates?.length || 0,
+                totalDueDates: totalDays,
+                currentStreak: analysis.currentStreak,
+                longestStreak: analysis.bestStreak,
+              });
+              const scheduleStatus = computeAdaptiveSchedule({
+                completedDates: habit.completedDates || [],
+                dueDates: [todayIso],
+                skippedDates: (habit.vacationPeriods || []).flatMap((v) => [v.startDate, v.endDate]),
+                targetDate: todayIso,
+              });
+
               return (
                 <div
                   key={habit.id}
@@ -200,6 +216,16 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${analysis.levelBadgeColor}`}>
                         {analysis.strengthScore}% {analysis.levelLabel}
                       </span>
+                      {/* Routine Health Status from habitScore.ts */}
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                        {habitScore.healthLabel}
+                      </span>
+                      {/* Adaptive Backlog Badge */}
+                      {habitScore.backlogDays > 0 && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                          {habitScore.backlogDays}d Backlog
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap">

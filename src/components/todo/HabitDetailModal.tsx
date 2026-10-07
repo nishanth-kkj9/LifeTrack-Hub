@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { Habit, VacationPeriod } from '../../types/index.ts';
 import { analyzeHabitStrength } from '../../lib/habitScoring.ts';
+import { calculateHabitScore } from '../../lib/habitScore.ts';
+import { computeAdaptiveSchedule } from '../../lib/schedule.ts';
 import { exportHabitsCsv } from '../../lib/dataExport.ts';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
@@ -33,7 +35,7 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
   onUpdateHabit,
   onDeleteHabit,
 }) => {
-  const modalRef = useModalFocus({ isOpen, onClose });
+  const { modalRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
 
   const [vacationReason, setVacationReason] = useState('');
   const [vacationStart, setVacationStart] = useState(getLocalDateString());
@@ -42,6 +44,22 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
   if (!isOpen || !habit) return null;
 
   const analysis = analyzeHabitStrength(habit);
+  const todayStr = getLocalDateString();
+  const totalDays = Math.max(1, Math.round((Date.now() - habit.createdAt) / (1000 * 60 * 60 * 24)) + 1);
+
+  const habitScoreResult = calculateHabitScore({
+    completions: habit.completedDates?.length || 0,
+    totalDueDates: totalDays,
+    currentStreak: analysis.currentStreak,
+    longestStreak: analysis.bestStreak,
+  });
+
+  const adaptiveSchedule = computeAdaptiveSchedule({
+    completedDates: habit.completedDates || [],
+    dueDates: [todayStr],
+    skippedDates: (habit.vacationPeriods || []).flatMap((v) => [v.startDate, v.endDate]),
+    targetDate: todayStr,
+  });
 
   const handleAddVacation = (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,6 +177,24 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
             <div>
               <p className="text-slate-400 text-[10px]">30-Day Consistency</p>
               <p className="font-bold text-blue-300">{analysis.monthlyCompletionRate}%</p>
+            </div>
+          </div>
+
+          {/* Habit Intelligence & Adaptive Schedule Strip */}
+          <div className="grid grid-cols-3 gap-2 pt-2 text-center border-t border-slate-700/60 text-xs bg-slate-800/50 -mx-4 -mb-3 p-3 rounded-b-xl">
+            <div>
+              <p className="text-slate-400 text-[10px]">Routine Health</p>
+              <p className="font-bold text-purple-300">{habitScoreResult.healthLabel}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-[10px]">Today's Status</p>
+              <p className="font-bold text-cyan-300 font-mono text-[11px]">{adaptiveSchedule.status}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-[10px]">Schedule Backlog</p>
+              <p className={`font-bold ${habitScoreResult.backlogDays > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {habitScoreResult.backlogDays}d
+              </p>
             </div>
           </div>
         </div>

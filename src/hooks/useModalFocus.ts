@@ -7,14 +7,23 @@ interface UseModalFocusOptions {
   closeOnEscape?: boolean;
 }
 
+export type ModalFocusRef<T extends HTMLElement = HTMLDivElement> = RefObject<T | null> & {
+  containerRef: RefObject<T | null>;
+  modalRef: RefObject<T | null>;
+};
+
 export function useModalFocus<T extends HTMLElement = HTMLDivElement>({
   isOpen,
   onClose,
   initialFocusRef,
   closeOnEscape = true,
-}: UseModalFocusOptions) {
+}: UseModalFocusOptions): ModalFocusRef<T> {
   const containerRef = useRef<T>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+
+  // Attach aliases so both direct ref usage `ref={modalRef}` and destructuring `{ containerRef }` / `{ modalRef }` work seamlessly
+  (containerRef as any).containerRef = containerRef;
+  (containerRef as any).modalRef = containerRef;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -89,5 +98,5 @@ export function useModalFocus<T extends HTMLElement = HTMLDivElement>({
     };
   }, [isOpen, onClose, closeOnEscape, initialFocusRef]);
 
-  return { containerRef };
+  return containerRef as ModalFocusRef<T>;
 }

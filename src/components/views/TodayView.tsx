@@ -20,6 +20,8 @@ import { TimelineItem } from '../ui/TimelineItem.tsx';
 import { Button } from '../ui/Button.tsx';
 import { EmptyState } from '../ui/EmptyState.tsx';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { calculateHabitScore } from '../../lib/habitScore.ts';
+import { computeHabitStatus } from '../../lib/schedule.ts';
 
 interface TodayViewProps {
   tasks: Task[];
@@ -529,6 +531,13 @@ export const TodayView: React.FC<TodayViewProps> = ({
                   const isDoneToday = Boolean(
                     habit.completedDates && habit.completedDates.includes(todayStr)
                   );
+                  const totalDays = Math.max(1, Math.round((Date.now() - habit.createdAt) / (1000 * 60 * 60 * 24)) + 1);
+                  const score = calculateHabitScore({
+                    completions: habit.completedDates?.length || 0,
+                    totalDueDates: totalDays,
+                    currentStreak: habit.streak || 0,
+                    longestStreak: habit.bestStreak || habit.streak || 0,
+                  });
 
                   return (
                     <div
@@ -557,9 +566,14 @@ export const TodayView: React.FC<TodayViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 shrink-0">
-                        <Flame className="w-3 h-3 fill-amber-500 text-amber-500" />
-                        <span>{habit.streak || 0}d</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100/80 text-amber-800">
+                          {score.currentStrength}%
+                        </span>
+                        <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                          <Flame className="w-3 h-3 fill-amber-500 text-amber-500" />
+                          <span>{habit.streak || 0}d</span>
+                        </div>
                       </div>
                     </div>
                   );

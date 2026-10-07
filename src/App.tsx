@@ -36,6 +36,7 @@ import { AddTaskModal } from './components/modals/AddTaskModal.tsx';
 import { AddTransactionModal } from './components/modals/AddTransactionModal.tsx';
 import { AddExamModal } from './components/modals/AddExamModal.tsx';
 import { AddNoteModal } from './components/modals/AddNoteModal.tsx';
+import { AuthorizedDomainModal } from './components/modals/AuthorizedDomainModal.tsx';
 import { CommandPalette } from './components/common/CommandPalette.tsx';
 import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
 import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
@@ -56,6 +57,7 @@ export default function App() {
   const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isFocusModalOpen, setIsFocusModalOpen] = useState(false);
+  const [isAuthDomainModalOpen, setIsAuthDomainModalOpen] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const [selectedDetailTask, setSelectedDetailTask] = useState<Task | null>(null);
 
@@ -66,9 +68,19 @@ export default function App() {
 
   // 1. Listen for Auth State Changes
   useEffect(() => {
+    // Restore locally signed-in profile if any
+    const savedLocal = localStorage.getItem('lifetrack_local_user');
+    if (savedLocal) {
+      try {
+        setCurrentUser(JSON.parse(savedLocal));
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
       if (user) {
+        setCurrentUser(user);
         setIsCloudSynced(true);
         // Subscribe to user Firestore doc
         const unsubsDoc = subscribeToUserDoc(
@@ -78,13 +90,17 @@ export default function App() {
             saveLocalData(cloudData);
           },
           (err) => {
-            console.error('Cloud sync error:', err);
+            console.warn('Cloud sync note:', err);
             setIsCloudSynced(false);
           }
         );
         return () => unsubsDoc();
       } else {
-        setIsCloudSynced(false);
+        const localOnly = localStorage.getItem('lifetrack_local_user');
+        if (!localOnly) {
+          setCurrentUser(null);
+          setIsCloudSynced(false);
+        }
       }
     });
 
@@ -159,23 +175,50 @@ export default function App() {
         setTimeout(() => setSyncNotice(null), 3500);
       }
     } catch (err: any) {
-      console.error('Login prompt failed:', err);
-      setSyncNotice(
-        'Note: If popups are restricted in this preview window, open the app in a new tab to sign in with Google. All features remain fully saved locally!'
-      );
-      setTimeout(() => setSyncNotice(null), 7000);
+      if (err?.code === 'auth/unauthorized-domain') {
+        setIsAuthDomainModalOpen(true);
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
+        setSyncNotice(
+          `Domain "${host}" requires authorization in Firebase Console. Click to configure (Local storage is active).`
+        );
+        setTimeout(() => setSyncNotice(null), 10000);
+      } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        setSyncNotice(null);
+      } else {
+        setSyncNotice(
+          'Google Sign-in was not completed. All features remain fully saved locally in your browser!'
+        );
+        setTimeout(() => setSyncNotice(null), 6000);
+      }
     }
+  };
+
+  const handleLocalSignIn = () => {
+    const localUser: any = {
+      uid: 'user-preview-local',
+      displayName: 'Student Scholar',
+      email: 'chataiwithcode@gmail.com',
+      emailVerified: true,
+      isAnonymous: false,
+      photoURL: null,
+    };
+    setCurrentUser(localUser);
+    setIsCloudSynced(false);
+    localStorage.setItem('lifetrack_local_user', JSON.stringify(localUser));
+    setSyncNotice('Signed in with Local Preview Profile (chataiwithcode@gmail.com).');
+    setTimeout(() => setSyncNotice(null), 4000);
   };
 
   const handleLogout = async () => {
     try {
+      localStorage.removeItem('lifetrack_local_user');
       await logoutUser();
       setCurrentUser(null);
       setIsCloudSynced(false);
       setSyncNotice('Signed out. Switched to browser local storage.');
       setTimeout(() => setSyncNotice(null), 3000);
     } catch (err) {
-      console.error('Logout error:', err);
+      console.warn('Logout notice:', err);
     }
   };
 
@@ -461,7 +504,16 @@ export default function App() {
           className="bg-emerald-50 border-b border-emerald-100 px-4 py-2 text-xs font-semibold text-emerald-900 flex items-center justify-between transition-all"
         >
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
-            <span>{syncNotice}</span>
+            <span
+              onClick={() => {
+                if (syncNotice.includes('Firebase Console') || syncNotice.includes('authorization')) {
+                  setIsAuthDomainModalOpen(true);
+                }
+              }}
+              className={syncNotice.includes('authorization') ? 'cursor-pointer underline font-bold' : ''}
+            >
+              {syncNotice}
+            </span>
             <button
               onClick={() => setSyncNotice(null)}
               className="text-emerald-600 hover:text-emerald-800 ml-4 font-bold cursor-pointer"
@@ -603,6 +655,7 @@ export default function App() {
             onRestoreData={handleRestoreData}
             onResetData={handleResetData}
             onForceSync={handleForceSync}
+            onOpenAuthDomainModal={() => setIsAuthDomainModalOpen(true)}
           />
         )}
       </main>
@@ -671,6 +724,12 @@ export default function App() {
         isOpen={isAddNoteOpen}
         onClose={() => setIsAddNoteOpen(false)}
         onAddNote={handleAddNote}
+      />
+
+      <AuthorizedDomainModal
+        isOpen={isAuthDomainModalOpen}
+        onClose={() => setIsAuthDomainModalOpen(false)}
+        onSignInLocal={handleLocalSignIn}
       />
     </div>
   );

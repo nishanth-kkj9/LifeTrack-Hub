@@ -27,6 +27,9 @@ import {
   parseAppDataJsonFile,
 } from '../../lib/dataExport.ts';
 import { DailyLifeCheckinModal } from '../insights/DailyLifeCheckinModal.tsx';
+import { LifeDashboard } from '../../features/dashboard/LifeDashboard.tsx';
+import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
+import { calculateHabitScore } from '../../lib/habitScore.ts';
 
 interface InsightsViewProps {
   tasks: Task[];
@@ -57,6 +60,42 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
   const correlations = useMemo(() => {
     return analyzeLifeMetricCorrelations(dailyMetrics, tasks, habits);
   }, [dailyMetrics, tasks, habits]);
+
+  // Analytics Engine Life Summary (from analytics.ts & habitScore.ts)
+  const { weeklySummary, lifeInsights } = useMemo(() => {
+    const habitLikes = habits.map((h) => {
+      const totalDays = Math.max(1, Math.round((Date.now() - h.createdAt) / (1000 * 60 * 60 * 24)) + 1);
+      const score = calculateHabitScore({
+        completions: h.completedDates?.length || 0,
+        totalDueDates: totalDays,
+        currentStreak: h.streak || 0,
+        longestStreak: h.bestStreak || h.streak || 0,
+      });
+      return {
+        id: h.id,
+        name: h.name,
+        score: {
+          currentStrength: score.currentStrength,
+          completionRate: score.completionRate,
+        },
+      };
+    });
+
+    const metricLikes = dailyMetrics.map((m) => ({
+      date: m.date,
+      mood: m.moodLevel,
+      energy: m.energyLevel,
+      stress: m.stressLevel,
+      sleepHours: m.sleepHours,
+      steps: m.stepsCount,
+      workoutDone: m.workoutDone,
+    }));
+
+    const summary = buildWeeklySummary(habitLikes, metricLikes);
+    const insights = generateInsights(habitLikes, metricLikes);
+
+    return { weeklySummary: summary, lifeInsights: insights };
+  }, [habits, dailyMetrics]);
 
   // 1. Task Metrics
   const taskStats = useMemo(() => {
@@ -224,6 +263,30 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
             Exam dates synchronized
           </div>
         </div>
+      </div>
+
+      {/* Executive Life Intelligence Dashboard (from src/features/dashboard/LifeDashboard.tsx) */}
+      <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl text-white space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-purple-400" />
+            <h2 className="text-base font-bold text-white tracking-tight">
+              Life Intelligence Engine (FxLifeSheet & Loop Analytics)
+            </h2>
+          </div>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-900/60 text-purple-200 border border-purple-700 self-start sm:self-auto">
+            Real-Time Synthesis
+          </span>
+        </div>
+
+        <LifeDashboard
+          totalHabits={weeklySummary.totalHabits}
+          completionRate={weeklySummary.completionRate}
+          averageMood={weeklySummary.averageMood}
+          averageEnergy={weeklySummary.averageEnergy}
+          averageSleep={weeklySummary.averageSleep}
+          insights={lifeInsights}
+        />
       </div>
 
       {/* Weekly Review Summary Card */}
