@@ -114,6 +114,7 @@ export interface Habit {
   customDays?: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
   vacationPeriods?: VacationPeriod[];
   habitScore?: number; // 0-100 calculated strength score
+  habitHealth?: 'Excellent' | 'Strong' | 'Stable' | 'Needs attention';
 }
 
 export interface DailyLifeMetric {

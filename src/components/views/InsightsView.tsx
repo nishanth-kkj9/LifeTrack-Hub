@@ -27,6 +27,7 @@ import {
   parseAppDataJsonFile,
 } from '../../lib/dataExport.ts';
 import { DailyLifeCheckinModal } from '../insights/DailyLifeCheckinModal.tsx';
+import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
 import { LifeDashboard } from '../../features/dashboard/LifeDashboard.tsx';
 import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
 import { calculateHabitScore } from '../../lib/habitScore.ts';
@@ -287,6 +288,11 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           averageSleep={weeklySummary.averageSleep}
           insights={lifeInsights}
         />
+
+        {/* Deep Habit & Life Insights Panel */}
+        <div className="pt-4 border-t border-slate-800">
+          <LifeInsightsPanel habits={habits} dailyMetrics={dailyMetrics} />
+        </div>
       </div>
 
       {/* Weekly Review Summary Card */}

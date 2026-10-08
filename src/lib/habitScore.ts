@@ -47,7 +47,21 @@ export function calculateHabitScore({
   };
 }
 
-export function calculateOverallCompletionRate<T extends { score: { completionRate: number } }>(items: T[]) {
-  if (!items.length) return 0;
-  return items.reduce((sum, item) => sum + item.score.completionRate, 0) / items.length;
+export function calculateOverallCompletionRate(
+  itemsOrHabits: any[],
+  targetDaysPerWeek?: number
+): number {
+  if (!itemsOrHabits.length) return 0;
+  if (typeof targetDaysPerWeek === 'number') {
+    const totalCompletions = itemsOrHabits.reduce(
+      (sum, h) => sum + (h.completedDates?.length || 0),
+      0
+    );
+    const totalDueDates = itemsOrHabits.length * targetDaysPerWeek * 4;
+    return totalDueDates === 0 ? 0 : (totalCompletions / totalDueDates) * 100;
+  }
+  return (
+    itemsOrHabits.reduce((sum, item) => sum + (item?.score?.completionRate || 0), 0) /
+    itemsOrHabits.length
+  );
 }

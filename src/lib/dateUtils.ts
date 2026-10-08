@@ -93,3 +93,56 @@ export function formatDisplayDate(dateStr: string, options?: Intl.DateTimeFormat
     day: 'numeric',
   });
 }
+
+export function getDateFromString(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export function getDayOfWeek(date: Date): number {
+  return date.getDay(); // 0=Sunday, 6=Saturday
+}
+
+export function getWeekStart(date: Date = new Date()): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day;
+  return new Date(d.setDate(diff));
+}
+
+export function getWeekEnd(date: Date = new Date()): Date {
+  const start = getWeekStart(date);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return end;
+}
+
+export function getDatesInRange(startStr: string, endStr: string): string[] {
+  const dates: string[] = [];
+  const current = getDateFromString(startStr);
+  const end = getDateFromString(endStr);
+
+  while (current <= end) {
+    dates.push(getLocalDateString(current));
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
+}
+
+export function getLastNDays(n: number): string[] {
+  const dates: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.unshift(getLocalDateString(d));
+  }
+  return dates;
+}
+
+export function daysAgo(dateStr: string): number {
+  const target = getDateFromString(dateStr);
+  const today = new Date();
+  const diff = today.getTime() - target.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}

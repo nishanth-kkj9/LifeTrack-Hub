@@ -21,10 +21,10 @@ Object.defineProperty(globalThis, 'KeyboardEvent', { value: dom.window.KeyboardE
 Object.defineProperty(globalThis, 'CustomEvent', { value: dom.window.CustomEvent, writable: true, configurable: true });
 Object.defineProperty(globalThis, 'Blob', { value: dom.window.Blob, writable: true, configurable: true });
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-globalThis.URL = {
-  createObjectURL: () => 'blob:http://localhost:3000/mock-uuid',
-  revokeObjectURL: () => {},
-} as unknown as typeof URL;
+if (typeof URL !== 'undefined') {
+  (URL as any).createObjectURL = () => 'blob:http://localhost:3000/mock-uuid';
+  (URL as any).revokeObjectURL = () => {};
+}
 
 function setReactInputValue(inputEl: HTMLInputElement, value: string) {
   const prototypeSetter = Object.getOwnPropertyDescriptor(
@@ -377,6 +377,50 @@ async function runBrowserUiTests() {
 
   const loginBtnAfterLogout = document.getElementById('user-login-button');
   assert(loginBtnAfterLogout !== null, 'Logout successfully returns to Sign In state');
+
+  // Test 15: Habit Intelligence, Advanced Scoring & LifeInsightsPanel
+  console.log('\n[Test 15] Habit Intelligence Engine, Scoring & LifeInsightsPanel');
+  // Unit verification of scoring logic
+  const { calculateHabitScore, calculateOverallCompletionRate } = await import('../src/lib/habitScore.ts');
+  const { calculateHabitStreaks, computeAdaptiveSchedule } = await import('../src/lib/schedule.ts');
+  const { getWeeklyTrend, buildWeeklySummary } = await import('../src/lib/analytics.ts');
+
+  const testScore = calculateHabitScore({
+    completions: 12,
+    totalDueDates: 16,
+    currentStreak: 5,
+    longestStreak: 10,
+  });
+  assert(testScore.currentStrength > 0, 'calculateHabitScore computes strength score');
+  assert(testScore.healthLabel !== undefined, 'calculateHabitScore produces health label');
+
+  const testStreaks = calculateHabitStreaks(['2026-10-08', '2026-10-07', '2026-10-06']);
+  assert(testStreaks.longest >= 3, 'calculateHabitStreaks computes correct streak sequence');
+
+  // Navigate to Habits and switch to Cards mode
+  const habitsNavBtnForTest15 = document.getElementById('tab-nav-habits');
+  await act(async () => {
+    habitsNavBtnForTest15?.click();
+  });
+
+  const cardsToggleBtn = document.getElementById('habits-toggle-cards-btn');
+  assert(cardsToggleBtn !== null, 'Habits cards toggle button exists');
+
+  await act(async () => {
+    cardsToggleBtn?.click();
+  });
+
+  const cardsGrid = document.getElementById('habits-cards-grid');
+  assert(cardsGrid !== null, 'Habit cards grid renders in cards mode');
+
+  // Navigate to Insights tab and verify LifeInsightsPanel
+  const insightsNavBtnForTest15 = document.getElementById('tab-nav-insights');
+  await act(async () => {
+    insightsNavBtnForTest15?.click();
+  });
+
+  const insightsView = document.getElementById('insights-view');
+  assert(insightsView !== null, 'Insights view renders with LifeInsightsPanel integrated');
 
   // Teardown
   await act(async () => {

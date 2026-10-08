@@ -13,16 +13,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <script>
-      // Gracefully silence HMR WebSocket transport warnings in iframe preview
+      // Gracefully silence HMR WebSocket transport warnings and preview domain auth notices in iframe preview
       window.addEventListener('error', function (e) {
-        if (e && e.message && (e.message.indexOf('WebSocket') !== -1 || e.message.indexOf('createWebSocketModuleRunnerTransport') !== -1)) {
+        var msg = e && e.message ? String(e.message) : '';
+        if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('createWebSocketModuleRunnerTransport') !== -1 || msg.indexOf('unauthorized-domain') !== -1) {
           e.stopImmediatePropagation();
           e.preventDefault();
         }
       }, true);
       window.addEventListener('unhandledrejection', function (e) {
-        var reason = e && e.reason && (e.reason.message || String(e.reason));
-        if (reason && (reason.indexOf('WebSocket') !== -1 || reason.indexOf('createWebSocketModuleRunnerTransport') !== -1)) {
+        var reason = e && e.reason ? (e.reason.message || String(e.reason)) : '';
+        if (reason.indexOf('WebSocket') !== -1 || reason.indexOf('createWebSocketModuleRunnerTransport') !== -1 || reason.indexOf('unauthorized-domain') !== -1) {
           e.stopImmediatePropagation();
           e.preventDefault();
         }

@@ -13,12 +13,13 @@ import {
   Sparkles,
   BookOpen,
 } from 'lucide-react';
-import { Task, ExamReminder, Habit, Transaction, BudgetSettings, VtuProfile } from '../../types/index.ts';
+import { Task, ExamReminder, Habit, Transaction, BudgetSettings, VtuProfile, DailyLifeMetric } from '../../types/index.ts';
 import { QuickAddBar } from '../todo/QuickAddBar.tsx';
 import { TaskRow } from '../ui/TaskRow.tsx';
 import { TimelineItem } from '../ui/TimelineItem.tsx';
 import { Button } from '../ui/Button.tsx';
 import { EmptyState } from '../ui/EmptyState.tsx';
+import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
 import { calculateHabitScore } from '../../lib/habitScore.ts';
 import { computeHabitStatus } from '../../lib/schedule.ts';
@@ -30,6 +31,7 @@ interface TodayViewProps {
   transactions?: Transaction[];
   budget?: BudgetSettings;
   vtuProfile?: VtuProfile;
+  dailyMetrics?: DailyLifeMetric[];
   onToggleTask: (taskId: string) => void;
   onToggleHabitToday: (habitId: string) => void;
   onAddTask: (task: Task) => void;
@@ -44,6 +46,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
   tasks,
   habits,
   exams,
+  dailyMetrics = [],
   onToggleTask,
   onToggleHabitToday,
   onAddTask,
@@ -614,6 +617,27 @@ export const TodayView: React.FC<TodayViewProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Life Insights Panel Highlight */}
+          {dailyMetrics && dailyMetrics.length > 0 && (
+            <div className="bg-slate-900 text-white rounded-2xl border border-slate-800 p-5 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  <h2 className="text-sm font-bold text-white">Weekly Life Insights</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('insights')}
+                  className="text-xs font-medium text-purple-300 hover:text-white flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Full Analytics</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+              <LifeInsightsPanel habits={habits} dailyMetrics={dailyMetrics} />
+            </div>
+          )}
         </div>
       </div>
     </div>

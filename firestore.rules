@@ -65,6 +65,18 @@ service cloud.firestore {
         allow create, update: if isValidId(userId) && isOwner(userId) && isValidId(deviceId) && isValidSyncState(request.resource.data, deviceId);
         allow delete: if isValidId(userId) && isOwner(userId);
       }
+
+      // Individual Habit with Scoring Subcollection
+      match /habits/{habitId} {
+        allow get, list: if isValidId(userId) && isOwner(userId);
+        allow create, update, delete: if isValidId(userId) && isOwner(userId) && isValidId(habitId);
+      }
+
+      // Daily Life Metrics Subcollection
+      match /metrics/{date} {
+        allow get, list: if isValidId(userId) && isOwner(userId);
+        allow create, update, delete: if isValidId(userId) && isOwner(userId) && isValidId(date);
+      }
     }
   }
 }

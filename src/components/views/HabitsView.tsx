@@ -18,6 +18,8 @@ import { computeAdaptiveSchedule } from '../../lib/schedule.ts';
 import { HabitDetailModal } from '../todo/HabitDetailModal.tsx';
 import { DailyLifeCheckinModal } from '../insights/DailyLifeCheckinModal.tsx';
 import { exportHabitsCsv } from '../../lib/dataExport.ts';
+import { HabitCard } from '../habits/HabitCard.tsx';
+import { LayoutGrid, Table } from 'lucide-react';
 
 interface HabitsViewProps {
   habits: Habit[];
@@ -42,6 +44,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
   const [newCategory, setNewCategory] = useState('Study');
   const [selectedDetailHabit, setSelectedDetailHabit] = useState<Habit | null>(null);
   const [isCheckinOpen, setIsCheckinOpen] = useState(false);
+  const [displayMode, setDisplayMode] = useState<'matrix' | 'cards'>('matrix');
 
   // Generate the last 7 days (including today) in local time
   const days: { dateStr: string; dayLabel: string; dayNumber: number; isToday: boolean }[] = [];
@@ -122,6 +125,32 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
             <span className="hidden sm:inline">Export CSV</span>
           </button>
 
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-xl bg-slate-100 p-0.5 border border-slate-200">
+            <button
+              type="button"
+              id="habits-toggle-matrix-btn"
+              onClick={() => setDisplayMode('matrix')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                displayMode === 'matrix' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Table className="w-3.5 h-3.5" />
+              <span>7-Day Grid</span>
+            </button>
+            <button
+              type="button"
+              id="habits-toggle-cards-btn"
+              onClick={() => setDisplayMode('cards')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                displayMode === 'cards' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Cards</span>
+            </button>
+          </div>
+
           {/* Quick Add Form */}
           <form onSubmit={handleCreateHabit} className="flex items-center gap-1.5">
             <input
@@ -144,9 +173,35 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
         </div>
       </div>
 
-      {/* Habit List with 7-Day Grid */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        {/* Table Header with Days */}
+      {/* Habit Views: Cards or 7-Day Grid */}
+      {displayMode === 'cards' ? (
+        habits.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3 shadow-xs">
+            <Flame className="w-10 h-10 text-slate-300 mx-auto" />
+            <div>
+              <p className="text-sm font-bold text-slate-800">No habits added yet</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Enter a daily ritual above (e.g. Read 20 pages or Solve 3 problems) to start your habit score.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="habits-cards-grid">
+            {habits.map((habit) => (
+              <HabitCard
+                key={habit.id}
+                habit={habit}
+                onToggle={onToggleHabitDate}
+                onDelete={onDeleteHabit}
+                onUpdate={onUpdateHabit}
+              />
+            ))}
+          </div>
+        )
+      ) : (
+        /* Habit List with 7-Day Grid */
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          {/* Table Header with Days */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Habit & Strength Rating</span>
           <div className="flex items-center gap-2 sm:gap-3 mr-12 sm:mr-16">
@@ -291,6 +346,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Habit Detail & Vacation Modal */}
       {selectedDetailHabit && (

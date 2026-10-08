@@ -5,8 +5,8 @@
  */
 
 import React from 'react';
-import { DailyLifeMetric, Habit } from '../types/index';
-import { buildWeeklySummary, generateInsights } from '../lib/analytics';
+import { DailyLifeMetric, Habit } from '../../types/index.ts';
+import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
 
 export interface LifeInsightsPanelProps {
   habits: Habit[];

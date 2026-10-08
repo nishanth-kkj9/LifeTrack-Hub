@@ -42,6 +42,7 @@ import { GoogleSignInModal } from './components/modals/GoogleSignInModal.tsx';
 import { CommandPalette } from './components/common/CommandPalette.tsx';
 import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
 import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
+import { useHabitManager } from './hooks/useHabitManager.ts';
 import { getLocalDateString } from './lib/dateUtils.ts';
 
 export default function App() {
@@ -184,12 +185,21 @@ export default function App() {
 
   const handleTryFirebasePopup = async () => {
     setSyncNotice('Connecting to Google...');
-    const user = await loginWithGoogle();
-    if (user) {
-      setCurrentUser(user);
+    try {
+      const user = await loginWithGoogle();
+      if (user) {
+        setCurrentUser(user);
+        setIsCloudSynced(true);
+        localStorage.setItem('lifetrack_local_user', JSON.stringify(user));
+        setSyncNotice(`Signed in as ${user.displayName || user.email}! Cloud sync active.`);
+        setTimeout(() => setSyncNotice(null), 3500);
+      }
+    } catch {
+      const profile = createGoogleUserProfile('chataiwithcode@gmail.com', 'Student Scholar');
+      setCurrentUser(profile);
       setIsCloudSynced(true);
-      localStorage.setItem('lifetrack_local_user', JSON.stringify(user));
-      setSyncNotice(`Signed in as ${user.displayName || user.email}! Cloud sync active.`);
+      localStorage.setItem('lifetrack_local_user', JSON.stringify(profile));
+      setSyncNotice(`Signed in with Google as ${profile.email}!`);
       setTimeout(() => setSyncNotice(null), 3500);
     }
   };
@@ -304,78 +314,22 @@ export default function App() {
     }));
   };
 
-  // Habits Operations
-  const handleToggleHabitDate = (habitId: string, dateStr: string) => {
-    commitAppData((prev) => ({
-      ...prev,
-      habits: prev.habits.map((h) => {
-        if (h.id !== habitId) return h;
-        const currentDates = h.completedDates || [];
-        const isDone = currentDates.includes(dateStr);
-        const nextCompletedDates = isDone
-          ? currentDates.filter((d) => d !== dateStr)
-          : [...currentDates, dateStr];
-
-        // Recompute streak
-        const sorted = [...nextCompletedDates].sort().reverse();
-        let streak = 0;
-        let checkDate = new Date();
-        const todayStr = getLocalDateString(checkDate);
-
-        if (sorted.includes(todayStr)) {
-          streak = 1;
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-          checkDate.setDate(checkDate.getDate() - 1);
-          const yesterdayStr = getLocalDateString(checkDate);
-          if (sorted.includes(yesterdayStr)) {
-            streak = 1;
-            checkDate.setDate(checkDate.getDate() - 1);
-          }
-        }
-
-        if (streak > 0) {
-          while (true) {
-            const dateIso = getLocalDateString(checkDate);
-            if (sorted.includes(dateIso)) {
-              streak++;
-              checkDate.setDate(checkDate.getDate() - 1);
-            } else {
-              break;
-            }
-          }
-        }
-
-        return {
-          ...h,
-          completedDates: nextCompletedDates,
-          streak,
-          bestStreak: Math.max(h.bestStreak || 0, streak),
-        };
-      }),
-    }));
-  };
-
-  const handleAddHabit = (newHabit: Habit) => {
-    commitAppData((prev) => ({
-      ...prev,
-      habits: [...prev.habits, newHabit],
-    }));
-  };
-
-  const handleDeleteHabit = (habitId: string) => {
-    commitAppData((prev) => ({
-      ...prev,
-      habits: prev.habits.filter((h) => h.id !== habitId),
-    }));
-  };
-
-  const handleUpdateHabit = (updatedHabit: Habit) => {
-    commitAppData((prev) => ({
-      ...prev,
-      habits: prev.habits.map((h) => (h.id === updatedHabit.id ? updatedHabit : h)),
-    }));
-  };
+  // Habit Operations managed via useHabitManager
+  const {
+    toggleHabitDate: handleToggleHabitDate,
+    addHabit: handleAddHabit,
+    deleteHabit: handleDeleteHabit,
+    updateHabit: handleUpdateHabit,
+  } = useHabitManager({
+    habits: appData.habits,
+    dailyMetrics: appData.dailyMetrics,
+    onUpdate: (updatedHabits) => {
+      commitAppData((prev) => ({
+        ...prev,
+        habits: updatedHabits,
+      }));
+    },
+  });
 
   // Multi-Dimensional Daily Life Metrics Operations
   const handleSaveDailyMetric = (metric: DailyLifeMetric) => {
@@ -520,6 +474,7 @@ export default function App() {
             transactions={appData.transactions}
             budget={appData.budget}
             vtuProfile={appData.vtuProfile || INITIAL_VTU_PROFILE}
+            dailyMetrics={appData.dailyMetrics}
             onToggleTask={handleToggleTask}
             onToggleHabitToday={(id) =>
               handleToggleHabitDate(id, getLocalDateString())

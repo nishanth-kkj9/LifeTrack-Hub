@@ -2,19 +2,56 @@
   "entities": {
     "UserAppData": {
       "title": "UserAppData",
-      "description": "Legacy monolithic application document for React web frontend",
+      "description": "Enhanced life-tracking application document",
       "type": "object",
       "properties": {
         "tasks": { "type": "array", "description": "User tasks list" },
         "transactions": { "type": "array", "description": "Transactions list" },
         "budget": { "type": "object", "description": "Budget settings" },
         "exams": { "type": "array", "description": "Exams list" },
-        "habits": { "type": "array", "description": "Habits list" },
+        "habits": { "type": "array", "description": "Enhanced habits with scoring" },
+        "dailyMetrics": { "type": "array", "description": "Daily life metrics (mood, energy, sleep)" },
         "notes": { "type": "array", "description": "Notes list" },
         "vtuProfile": { "type": "object", "description": "VTU academic record" },
         "lastUpdated": { "type": "number", "description": "Timestamp" }
       },
       "required": ["tasks", "transactions", "budget", "exams", "habits", "notes"]
+    },
+    "HabitWithScore": {
+      "title": "HabitWithScore",
+      "description": "Habit with advanced scoring and streak tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["fitness", "health", "productivity", "learning", "finance", "personal"] },
+        "targetDaysPerWeek": { "type": "number" },
+        "completedDates": { "type": "array", "description": "YYYY-MM-DD format dates" },
+        "streak": { "type": "number" },
+        "bestStreak": { "type": "number" },
+        "habitScore": { "type": "number", "description": "0-100 strength score" },
+        "scheduleType": { "type": "string", "enum": ["daily", "weekly_target", "custom_days"] },
+        "customDays": { "type": "array", "description": "0=Sunday, 6=Saturday" },
+        "createdAt": { "type": "number" }
+      }
+    },
+    "DailyLifeMetric": {
+      "title": "DailyLifeMetric",
+      "description": "Multi-dimensional daily tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "mood": { "type": "number", "description": "1-5 rating" },
+        "energy": { "type": "number", "description": "1-5 rating" },
+        "stress": { "type": "number", "description": "1-5 rating" },
+        "sleepHours": { "type": "number" },
+        "sleepQuality": { "type": "number", "description": "1-5 rating" },
+        "steps": { "type": "number" },
+        "workoutDone": { "type": "boolean" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      }
     },
     "SyncDeltaRecord": {
       "title": "SyncDeltaRecord",
@@ -53,7 +90,15 @@
   "firestore": {
     "/users/{userId}": {
       "schema": "UserAppData",
-      "description": "Private root document for legacy web state"
+      "description": "User root document with all data"
+    },
+    "/users/{userId}/habits/{habitId}": {
+      "schema": "HabitWithScore",
+      "description": "Individual habit with scoring"
+    },
+    "/users/{userId}/metrics/{date}": {
+      "schema": "DailyLifeMetric",
+      "description": "Daily life metrics"
     },
     "/users/{userId}/deltas/{deltaId}": {
       "schema": "SyncDeltaRecord",
