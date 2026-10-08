@@ -340,6 +340,44 @@ async function runBrowserUiTests() {
     assert(mainContent !== null, `Main viewport layout intact at ${width}px width`);
   }
 
+  // Test 14: Google Sign-In Flow
+  console.log('\n[Test 14] Google Sign-In & Authentication Workflow');
+  const loginBtn = document.getElementById('user-login-button');
+  assert(loginBtn !== null, 'Google Sign-In button exists in header');
+
+  await act(async () => {
+    loginBtn?.click();
+  });
+
+  const googleModalTitle = document.getElementById('google-signin-modal-title');
+  assert(googleModalTitle !== null, 'Google Sign-In modal opens when clicking login button');
+
+  // Click primary Google account option in modal
+  const primaryAccountBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+    b.textContent?.includes('chataiwithcode@gmail.com')
+  );
+  assert(primaryAccountBtn !== undefined, 'Primary Google account button found in modal');
+
+  await act(async () => {
+    primaryAccountBtn?.click();
+  });
+
+  // Verify signed-in state
+  const logoutBtn = document.getElementById('user-logout-button');
+  assert(logoutBtn !== null, 'User is successfully signed in and logout button is rendered');
+  assert(
+    localStorage.getItem('lifetrack_local_user')?.includes('chataiwithcode@gmail.com') === true,
+    'Signed-in Google profile is persisted in localStorage'
+  );
+
+  // Click logout
+  await act(async () => {
+    logoutBtn?.click();
+  });
+
+  const loginBtnAfterLogout = document.getElementById('user-login-button');
+  assert(loginBtnAfterLogout !== null, 'Logout successfully returns to Sign In state');
+
   // Teardown
   await act(async () => {
     root?.unmount();

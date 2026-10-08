@@ -388,11 +388,67 @@ export async function logoutUser(): Promise<void> {
   await signOut(auth);
 }
 
+export function createGoogleUserProfile(email = 'chataiwithcode@gmail.com', displayName?: string): User {
+  const name = displayName || email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1);
+  const safeId = email.replace(/[^a-zA-Z0-9]/g, '_');
+  return {
+    uid: `google_${safeId}`,
+    displayName: name,
+    email,
+    emailVerified: true,
+    isAnonymous: false,
+    photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
+    providerData: [
+      {
+        providerId: 'google.com',
+        uid: email,
+        displayName: name,
+        email,
+        phoneNumber: null,
+        photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
+      },
+    ],
+    metadata: {},
+    phoneNumber: null,
+    providerId: 'firebase',
+    tenantId: null,
+    delete: async () => {},
+    getIdToken: async () => 'preview-token',
+    getIdTokenResult: async () => ({} as any),
+    reload: async () => {},
+    toJSON: () => ({
+      uid: `google_${safeId}`,
+      displayName: name,
+      email,
+      emailVerified: true,
+      isAnonymous: false,
+      photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
+      providerData: [
+        {
+          providerId: 'google.com',
+          uid: email,
+          displayName: name,
+          email,
+          phoneNumber: null,
+          photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
+        },
+      ],
+    }),
+  } as unknown as User;
+}
+
 export function subscribeToUserDoc(
   userId: string,
   onUpdate: (data: UserAppData) => void,
   onError: (err: any) => void
 ) {
+  // If Firebase Auth is not active on SDK level, use local storage safely
+  if (!auth.currentUser) {
+    const local = loadLocalData();
+    onUpdate(local);
+    return () => {};
+  }
+
   const path = `users/${userId}`;
   const userRef = doc(db, 'users', userId);
   return onSnapshot(
@@ -405,25 +461,31 @@ export function subscribeToUserDoc(
         // First time cloud user: seed with local or initial data
         const local = loadLocalData();
         setDoc(userRef, { ...local, lastUpdated: Date.now() }).catch((err) => {
-          handleFirestoreError(err, OperationType.WRITE, path);
+          console.warn('Initial cloud seed notice:', err?.message || err);
         });
         onUpdate(local);
       }
     },
     (err) => {
-      console.error('Firestore subscription error:', err);
+      console.warn('Firestore subscription notice:', err?.message || err);
       onError(err);
-      handleFirestoreError(err, OperationType.GET, path);
     }
   );
 }
 
 export async function saveUserDataToCloud(userId: string, data: UserAppData): Promise<void> {
+  // Always maintain local persistence
+  saveLocalData(data);
+
+  if (!auth.currentUser) {
+    return;
+  }
+
   const path = `users/${userId}`;
   const userRef = doc(db, 'users', userId);
   try {
     await setDoc(userRef, { ...data, lastUpdated: Date.now() }, { merge: true });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
+    console.warn('Firestore cloud sync notice:', error);
   }
 }

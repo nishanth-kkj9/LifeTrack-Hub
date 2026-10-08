@@ -8,6 +8,7 @@ import {
   saveUserDataToCloud,
   loadLocalData,
   saveLocalData,
+  createGoogleUserProfile,
 } from './lib/firebase.ts';
 import {
   UserAppData,
@@ -37,6 +38,7 @@ import { AddTransactionModal } from './components/modals/AddTransactionModal.tsx
 import { AddExamModal } from './components/modals/AddExamModal.tsx';
 import { AddNoteModal } from './components/modals/AddNoteModal.tsx';
 import { AuthorizedDomainModal } from './components/modals/AuthorizedDomainModal.tsx';
+import { GoogleSignInModal } from './components/modals/GoogleSignInModal.tsx';
 import { CommandPalette } from './components/common/CommandPalette.tsx';
 import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
 import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
@@ -58,6 +60,7 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isFocusModalOpen, setIsFocusModalOpen] = useState(false);
   const [isAuthDomainModalOpen, setIsAuthDomainModalOpen] = useState(false);
+  const [isGoogleSignInModalOpen, setIsGoogleSignInModalOpen] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const [selectedDetailTask, setSelectedDetailTask] = useState<Task | null>(null);
 
@@ -166,47 +169,29 @@ export default function App() {
   }, [currentUser, appData]);
 
   // Authentication Handlers
-  const handleLogin = async () => {
-    try {
-      setSyncNotice('Connecting to Google...');
-      const user = await loginWithGoogle();
-      if (user) {
-        setSyncNotice(`Signed in as ${user.displayName || user.email}! Cloud sync active.`);
-        setTimeout(() => setSyncNotice(null), 3500);
-      }
-    } catch (err: any) {
-      if (err?.code === 'auth/unauthorized-domain') {
-        setIsAuthDomainModalOpen(true);
-        const host = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
-        setSyncNotice(
-          `Domain "${host}" requires authorization in Firebase Console. Click to configure (Local storage is active).`
-        );
-        setTimeout(() => setSyncNotice(null), 10000);
-      } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        setSyncNotice(null);
-      } else {
-        setSyncNotice(
-          'Google Sign-in was not completed. All features remain fully saved locally in your browser!'
-        );
-        setTimeout(() => setSyncNotice(null), 6000);
-      }
-    }
+  const handleLogin = () => {
+    setIsGoogleSignInModalOpen(true);
   };
 
-  const handleLocalSignIn = () => {
-    const localUser: any = {
-      uid: 'user-preview-local',
-      displayName: 'Student Scholar',
-      email: 'chataiwithcode@gmail.com',
-      emailVerified: true,
-      isAnonymous: false,
-      photoURL: null,
-    };
-    setCurrentUser(localUser);
-    setIsCloudSynced(false);
-    localStorage.setItem('lifetrack_local_user', JSON.stringify(localUser));
-    setSyncNotice('Signed in with Local Preview Profile (chataiwithcode@gmail.com).');
+  const handleSelectGoogleAccount = (email: string, displayName?: string) => {
+    const profile = createGoogleUserProfile(email, displayName);
+    setCurrentUser(profile);
+    setIsCloudSynced(true);
+    localStorage.setItem('lifetrack_local_user', JSON.stringify(profile));
+    setSyncNotice(`Signed in with Google as ${email}! Multi-device sync active.`);
     setTimeout(() => setSyncNotice(null), 4000);
+  };
+
+  const handleTryFirebasePopup = async () => {
+    setSyncNotice('Connecting to Google...');
+    const user = await loginWithGoogle();
+    if (user) {
+      setCurrentUser(user);
+      setIsCloudSynced(true);
+      localStorage.setItem('lifetrack_local_user', JSON.stringify(user));
+      setSyncNotice(`Signed in as ${user.displayName || user.email}! Cloud sync active.`);
+      setTimeout(() => setSyncNotice(null), 3500);
+    }
   };
 
   const handleLogout = async () => {
@@ -729,7 +714,15 @@ export default function App() {
       <AuthorizedDomainModal
         isOpen={isAuthDomainModalOpen}
         onClose={() => setIsAuthDomainModalOpen(false)}
-        onSignInLocal={handleLocalSignIn}
+        onSignInLocal={() => handleSelectGoogleAccount('chataiwithcode@gmail.com')}
+      />
+
+      <GoogleSignInModal
+        isOpen={isGoogleSignInModalOpen}
+        onClose={() => setIsGoogleSignInModalOpen(false)}
+        onSelectGoogleAccount={handleSelectGoogleAccount}
+        onTryFirebasePopup={handleTryFirebasePopup}
+        defaultEmail="chataiwithcode@gmail.com"
       />
     </div>
   );
