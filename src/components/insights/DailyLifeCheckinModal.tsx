@@ -98,13 +98,13 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
           key={rating}
           type="button"
           onClick={() => onChange(rating)}
-          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
             value === rating
               ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
           }`}
         >
-          {rating}. {labels[rating - 1]}
+          {rating} · {labels[rating - 1]}
         </button>
       ))}
     </div>
@@ -119,18 +119,18 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
     >
       <div
         ref={modalRef}
-        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg p-6 space-y-5 my-8 animate-scaleUp"
+        className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl shadow-slate-900/10 w-full max-w-lg p-6 sm:p-7 space-y-5 my-8 animate-scaleUp text-slate-900"
       >
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-xl bg-purple-100 text-purple-700">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-purple-50 border border-purple-200/80 flex items-center justify-center text-purple-700 shadow-xs">
               <Activity className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="daily-checkin-modal-title" className="text-lg font-bold text-slate-900">
+              <h2 id="daily-checkin-modal-title" className="text-lg font-extrabold text-slate-900 tracking-tight">
                 Daily Life Metrics Check-In
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Log well-being, sleep, energy & focus for correlation insights.
               </p>
             </div>
@@ -139,7 +139,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -148,7 +148,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           {/* Date Selector */}
           <div>
-            <label htmlFor="checkin-date-input" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+            <label htmlFor="checkin-date-input" className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
               <span>Log Date</span>
             </label>
@@ -157,18 +157,18 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
               type="date"
               value={dateStr}
               onChange={(e) => setDateStr(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-900"
+              className="w-full px-3.5 py-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
             />
           </div>
 
           {/* Sleep Hours & Sleep Quality */}
-          <div className="p-3.5 bg-indigo-50/50 rounded-xl border border-indigo-100 space-y-3">
+          <div className="p-4 bg-indigo-50/60 rounded-2xl border border-indigo-100/80 space-y-3">
             <div className="flex items-center justify-between">
-              <label htmlFor="sleep-hours-slider" className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+              <label htmlFor="sleep-hours-slider" className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
                 <Moon className="w-4 h-4 text-indigo-600" />
                 <span>Sleep Duration</span>
               </label>
-              <span className="text-xs font-mono font-bold text-indigo-700">{sleepHours} hrs</span>
+              <span className="text-xs font-mono font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">{sleepHours} hrs</span>
             </div>
             <input
               id="sleep-hours-slider"
@@ -178,10 +178,10 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
               step="0.5"
               value={sleepHours}
               onChange={(e) => setSleepHours(parseFloat(e.target.value))}
-              className="w-full accent-indigo-600 cursor-pointer"
+              className="w-full accent-indigo-600 cursor-pointer h-2 bg-indigo-200 rounded-lg"
             />
             <div>
-              <p className="text-[11px] font-semibold text-indigo-900 mb-1">Sleep Quality</p>
+              <p className="text-[11px] font-bold text-indigo-950 mb-1.5">Sleep Quality</p>
               <RatingChips
                 value={sleepQuality}
                 onChange={setSleepQuality}
@@ -191,9 +191,9 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
           </div>
 
           {/* Energy & Mood Level */}
-          <div className="p-3.5 bg-amber-50/50 rounded-xl border border-amber-100 space-y-3">
+          <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-100/80 space-y-3.5">
             <div>
-              <p className="text-xs font-bold text-amber-900 mb-1 flex items-center gap-1.5">
+              <p className="text-xs font-bold text-amber-950 mb-1.5 flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-amber-600" />
                 <span>Energy Rating</span>
               </p>
@@ -204,7 +204,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
               />
             </div>
             <div>
-              <p className="text-xs font-bold text-amber-900 mb-1 flex items-center gap-1.5">
+              <p className="text-xs font-bold text-amber-950 mb-1.5 flex items-center gap-1.5">
                 <Smile className="w-4 h-4 text-amber-600" />
                 <span>Mood Rating</span>
               </p>
@@ -218,13 +218,13 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
 
           {/* Stress & Hydration */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-100 space-y-1.5">
-              <label htmlFor="stress-level-select" className="text-xs font-bold text-rose-900 block">Stress Rating</label>
+            <div className="p-3.5 bg-rose-50/60 rounded-2xl border border-rose-100/80 space-y-2">
+              <label htmlFor="stress-level-select" className="text-xs font-bold text-rose-950 block">Stress Rating</label>
               <select
                 id="stress-level-select"
                 value={stressLevel}
                 onChange={(e) => setStressLevel(Number(e.target.value))}
-                className="w-full text-xs p-2 rounded-lg border border-rose-200 bg-white font-medium"
+                className="w-full text-xs p-2.5 rounded-xl border border-rose-200/80 bg-white font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-rose-500"
               >
                 <option value={1}>1 - Relaxed / Calm</option>
                 <option value={2}>2 - Low Stress</option>
@@ -234,8 +234,8 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
               </select>
             </div>
 
-            <div className="p-3 bg-sky-50/50 rounded-xl border border-sky-100 space-y-1.5">
-              <label htmlFor="water-litres-input" className="text-xs font-bold text-sky-900 block flex items-center gap-1">
+            <div className="p-3.5 bg-sky-50/60 rounded-2xl border border-sky-100/80 space-y-2">
+              <label htmlFor="water-litres-input" className="text-xs font-bold text-sky-950 block flex items-center gap-1">
                 <Droplet className="w-3.5 h-3.5 text-sky-600" />
                 <span>Water Hydration (L)</span>
               </label>
@@ -247,15 +247,15 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
                 max="8"
                 value={waterLitres}
                 onChange={(e) => setWaterLitres(parseFloat(e.target.value) || 0)}
-                className="w-full text-xs p-2 rounded-lg border border-sky-200 bg-white font-mono font-bold"
+                className="w-full text-xs p-2.5 rounded-xl border border-sky-200/80 bg-white font-mono font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
           </div>
 
           {/* Focus Hours & Workout Toggle */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 space-y-1.5">
-              <label htmlFor="focus-hours-input" className="text-xs font-bold text-purple-900 block flex items-center gap-1">
+            <div className="p-3.5 bg-purple-50/60 rounded-2xl border border-purple-100/80 space-y-2">
+              <label htmlFor="focus-hours-input" className="text-xs font-bold text-purple-950 block flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-purple-600" />
                 <span>Deep Focus (Hours)</span>
               </label>
@@ -267,23 +267,23 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
                 max="18"
                 value={focusHours}
                 onChange={(e) => setFocusHours(parseFloat(e.target.value) || 0)}
-                className="w-full text-xs p-2 rounded-lg border border-purple-200 bg-white font-mono font-bold"
+                className="w-full text-xs p-2.5 rounded-xl border border-purple-200/80 bg-white font-mono font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
 
-            <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 flex items-center justify-between">
+            <div className="p-3.5 bg-emerald-50/60 rounded-2xl border border-emerald-100/80 flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-emerald-900 flex items-center gap-1">
+                <p className="text-xs font-bold text-emerald-950 flex items-center gap-1">
                   <Dumbbell className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Workout Completed</span>
                 </p>
-                <p className="text-[11px] text-emerald-700">Gym, running, or sport</p>
+                <p className="text-[11px] text-emerald-700 font-medium">Gym, running, or sport</p>
               </div>
               <button
                 type="button"
                 onClick={() => setWorkoutDone(!workoutDone)}
-                className={`w-6 h-6 rounded-md border flex items-center justify-center transition cursor-pointer ${
-                  workoutDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white'
+                className={`w-7 h-7 rounded-lg border flex items-center justify-center transition cursor-pointer shadow-2xs ${
+                  workoutDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white hover:border-slate-400'
                 }`}
               >
                 {workoutDone && <Check className="w-4 h-4 stroke-[3]" />}
@@ -293,7 +293,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
 
           {/* Quick Reflection / Notes */}
           <div>
-            <label htmlFor="journal-notes-textarea" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+            <label htmlFor="journal-notes-textarea" className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
               <BookOpen className="w-3.5 h-3.5 text-slate-500" />
               <span>Daily Reflection Note</span>
             </label>
@@ -303,22 +303,22 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
               placeholder="What went well today? Any key wins or observations..."
               value={journalNotes}
               onChange={(e) => setJournalNotes(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-900"
+              className="w-full px-3.5 py-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer"
+              className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               id="daily-checkin-save-btn"
-              className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition shadow-xs cursor-pointer"
+              className="px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition shadow-xs cursor-pointer"
             >
               Save Metrics
             </button>

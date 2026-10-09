@@ -105,19 +105,19 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
     >
       <div
         ref={modalRef}
-        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg p-6 space-y-6 my-8 animate-scaleUp"
+        className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl shadow-slate-900/10 w-full max-w-lg p-6 sm:p-7 space-y-6 my-8 animate-scaleUp text-slate-900"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-700">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-700 shadow-xs">
               <Flame className="w-5 h-5 fill-emerald-600" />
             </div>
             <div>
-              <h2 id="habit-detail-modal-title" className="text-lg font-bold text-slate-900">
+              <h2 id="habit-detail-modal-title" className="text-lg font-extrabold text-slate-900 tracking-tight">
                 {habit.name}
               </h2>
-              <p className="text-xs text-slate-500 capitalize">
+              <p className="text-xs text-slate-500 capitalize mt-0.5">
                 {habit.category || 'Habit'} • Intelligence & Scoring
               </p>
             </div>
@@ -126,7 +126,7 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
