@@ -8,6 +8,8 @@ import {
   saveUserDataToCloud,
   loadLocalData,
   saveLocalData,
+  clearLocalData,
+  INITIAL_DATA,
   createGoogleUserProfile,
 } from './lib/firebase.ts';
 import {
@@ -69,6 +71,7 @@ export default function App() {
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const docUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // 1. Listen for Auth State Changes
   useEffect(() => {
@@ -83,6 +86,12 @@ export default function App() {
     }
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // Clean up any previous Firestore document subscription
+      if (docUnsubscribeRef.current) {
+        docUnsubscribeRef.current();
+        docUnsubscribeRef.current = null;
+      }
+
       if (user) {
         setCurrentUser(user);
         setIsCloudSynced(true);
@@ -98,17 +107,29 @@ export default function App() {
             setIsCloudSynced(false);
           }
         );
-        return () => unsubsDoc();
+        docUnsubscribeRef.current = unsubsDoc;
       } else {
         const localOnly = localStorage.getItem('lifetrack_local_user');
-        if (!localOnly) {
+        if (localOnly) {
+          try {
+            setCurrentUser(JSON.parse(localOnly));
+          } catch {
+            setCurrentUser(null);
+          }
+        } else {
           setCurrentUser(null);
-          setIsCloudSynced(false);
         }
+        setIsCloudSynced(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (docUnsubscribeRef.current) {
+        docUnsubscribeRef.current();
+        docUnsubscribeRef.current = null;
+      }
+      unsubscribe();
+    };
   }, []);
 
   // Global Keyboard Shortcut: Cmd+K / Ctrl+K for Command Palette
@@ -130,13 +151,14 @@ export default function App() {
         const next = updater(prev);
         saveLocalData(next);
 
-        if (currentUser) {
+        // Only sync to Firestore cloud if real Firebase Auth session is active
+        if (currentUser && auth.currentUser) {
           if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
           saveTimerRef.current = setTimeout(() => {
             saveUserDataToCloud(currentUser.uid, next)
               .then(() => setIsCloudSynced(true))
               .catch((err) => {
-                console.error('Failed to sync to cloud:', err);
+                console.warn('Auto-save to cloud failed:', err);
                 setIsCloudSynced(false);
               });
           }, 400);
@@ -149,24 +171,32 @@ export default function App() {
 
   // Force sync immediately
   const handleForceSync = useCallback(() => {
-    if (currentUser) {
-      setSyncNotice('Syncing with Firestore cloud...');
-      saveUserDataToCloud(currentUser.uid, appData)
-        .then(() => {
-          setIsCloudSynced(true);
-          setSyncNotice('Cloud sync complete!');
-          setTimeout(() => setSyncNotice(null), 2500);
-        })
-        .catch((err) => {
-          console.error('Manual sync failed:', err);
-          setIsCloudSynced(false);
-          setSyncNotice('Cloud sync failed. Check network connection.');
-          setTimeout(() => setSyncNotice(null), 4000);
-        });
-    } else {
-      setSyncNotice('Sign in with Google to enable cloud sync.');
+    if (!currentUser) {
+      setSyncNotice('Saved in browser storage. Sign in to sync across devices.');
       setTimeout(() => setSyncNotice(null), 3000);
+      return;
     }
+
+    if (!auth.currentUser) {
+      setSyncNotice('Active in Local Mode. Connect to Firebase for multi-device sync.');
+      setIsCloudSynced(false);
+      setTimeout(() => setSyncNotice(null), 3500);
+      return;
+    }
+
+    setSyncNotice('Syncing with Firestore cloud...');
+    saveUserDataToCloud(currentUser.uid, appData)
+      .then(() => {
+        setIsCloudSynced(true);
+        setSyncNotice('Cloud sync complete!');
+        setTimeout(() => setSyncNotice(null), 2500);
+      })
+      .catch((err) => {
+        console.error('Manual sync failed:', err);
+        setIsCloudSynced(false);
+        setSyncNotice(`Cloud sync failed: ${err.message || 'Check network connection'}`);
+        setTimeout(() => setSyncNotice(null), 4000);
+      });
   }, [currentUser, appData]);
 
   // Authentication Handlers
@@ -177,9 +207,9 @@ export default function App() {
   const handleSelectGoogleAccount = (email: string, displayName?: string) => {
     const profile = createGoogleUserProfile(email, displayName);
     setCurrentUser(profile);
-    setIsCloudSynced(true);
+    setIsCloudSynced(false); // Honest status: local profile only
     localStorage.setItem('lifetrack_local_user', JSON.stringify(profile));
-    setSyncNotice(`Signed in with Google as ${email}! Multi-device sync active.`);
+    setSyncNotice(`Active as ${displayName || email} (Local Offline Mode)`);
     setTimeout(() => setSyncNotice(null), 4000);
   };
 
@@ -190,17 +220,23 @@ export default function App() {
       if (user) {
         setCurrentUser(user);
         setIsCloudSynced(true);
-        localStorage.setItem('lifetrack_local_user', JSON.stringify(user));
+        localStorage.removeItem('lifetrack_local_user');
         setSyncNotice(`Signed in as ${user.displayName || user.email}! Cloud sync active.`);
         setTimeout(() => setSyncNotice(null), 3500);
+      } else {
+        setSyncNotice(null);
       }
-    } catch {
-      const profile = createGoogleUserProfile('chataiwithcode@gmail.com', 'Student Scholar');
-      setCurrentUser(profile);
-      setIsCloudSynced(true);
-      localStorage.setItem('lifetrack_local_user', JSON.stringify(profile));
-      setSyncNotice(`Signed in with Google as ${profile.email}!`);
-      setTimeout(() => setSyncNotice(null), 3500);
+    } catch (err: any) {
+      console.warn('Google sign-in error:', err);
+      setIsCloudSynced(false);
+      if (err?.code === 'auth/unauthorized-domain') {
+        const hostname = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
+        setSyncNotice(`Domain "${hostname}" needs authorization in Firebase Console.`);
+      } else {
+        setSyncNotice(`Sign-in failed: ${err?.message || 'Unable to connect to Google'}`);
+      }
+      setTimeout(() => setSyncNotice(null), 4500);
+      throw err;
     }
   };
 
@@ -393,9 +429,10 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    localStorage.removeItem('lifetrack_hub_local_data_v1');
-    const fresh = loadLocalData();
-    commitAppData(() => fresh);
+    clearLocalData();
+    commitAppData(() => INITIAL_DATA);
+    setSyncNotice('All local data reset to default template.');
+    setTimeout(() => setSyncNotice(null), 3000);
   };
 
   // Focus modal helpers

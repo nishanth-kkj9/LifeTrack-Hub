@@ -6,12 +6,35 @@ import { apiRouter } from './server/apiRouter.ts';
 
 dotenv.config();
 
+// Process-level safety nets to prevent server crashes from unhandled errors
+process.on('unhandledRejection', (reason) => {
+  console.warn('[Server Warning: Unhandled Rejection]', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[Server Error: Uncaught Exception]', error);
+});
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Security headers & basic parsing
+  app.use(express.json({ limit: '2mb' }));
+
   // API routes FIRST
   app.use('/api', apiRouter);
+
+  // Global error handling middleware for API routes
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('[Express Global Error Handler]', err);
+    if (!res.headersSent) {
+      res.status(err.status || 500).json({
+        error: 'An unexpected internal server error occurred',
+        message: err?.message || 'Server error',
+      });
+    }
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {

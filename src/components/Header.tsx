@@ -104,19 +104,26 @@ export const Header: React.FC<HeaderProps> = ({
               id="cloud-sync-status-indicator"
               className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700"
               title={
-                user
-                  ? 'Connected to Firebase Firestore. Changes sync in real-time.'
+                user && isCloudSynced
+                  ? 'Connected to Firebase Firestore. Multi-device sync active.'
+                  : user
+                  ? 'Active in local mode. Connect to Firebase cloud to sync across devices.'
                   : 'Saving locally in browser storage. Sign in with Google to sync across devices.'
               }
             >
-              {user ? (
+              {user && isCloudSynced ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span className="hidden lg:inline text-emerald-700 font-medium">Synced</span>
+                  <span className="hidden lg:inline text-emerald-700 font-medium">Cloud Synced</span>
+                </>
+              ) : user ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span className="hidden lg:inline text-amber-700 font-medium">Local Mode</span>
                 </>
               ) : (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <span className="w-2 h-2 rounded-full bg-slate-400"></span>
                   <span className="hidden lg:inline text-slate-600">Local</span>
                 </>
               )}

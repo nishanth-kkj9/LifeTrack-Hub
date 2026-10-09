@@ -95,7 +95,18 @@ async function testConnection() {
 }
 testConnection();
 
-const LOCAL_STORAGE_KEY = 'lifetrack_app_data_v1';
+export const LOCAL_STORAGE_KEY = 'lifetrack_app_data_v1';
+export const LEGACY_STORAGE_KEY = 'lifetrack_hub_local_data_v1';
+
+export function clearLocalData(): void {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    localStorage.removeItem('lifetrack_local_user');
+  } catch (e) {
+    console.warn('Failed to clear local storage:', e);
+  }
+}
 
 export const INITIAL_DATA: UserAppData = {
   tasks: [
@@ -370,19 +381,12 @@ export async function loginWithGoogle(): Promise<User | null> {
     const res = await signInWithPopup(auth, googleProvider);
     return res.user;
   } catch (err: any) {
-    if (err?.code === 'auth/unauthorized-domain') {
-      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
-      console.info(
-        `Firebase Auth: Domain "${hostname}" is running in AI Studio preview. Authenticating with Google profile for chataiwithcode@gmail.com.`
-      );
-      return createGoogleUserProfile('chataiwithcode@gmail.com', 'Student Scholar');
-    } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+    if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
       console.info('Google sign-in popup was dismissed by the user.');
       return null;
-    } else {
-      console.info('Google sign-in completed with profile:', err?.message || err);
-      return createGoogleUserProfile('chataiwithcode@gmail.com', 'Student Scholar');
     }
+    // Re-throw authentic errors so UI can honestly handle them
+    throw err;
   }
 }
 
@@ -394,15 +398,15 @@ export function createGoogleUserProfile(email = 'chataiwithcode@gmail.com', disp
   const name = displayName || email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1);
   const safeId = email.replace(/[^a-zA-Z0-9]/g, '_');
   return {
-    uid: `google_${safeId}`,
+    uid: `local_${safeId}`,
     displayName: name,
     email,
-    emailVerified: true,
-    isAnonymous: false,
+    emailVerified: false,
+    isAnonymous: true,
     photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
     providerData: [
       {
-        providerId: 'google.com',
+        providerId: 'local',
         uid: email,
         displayName: name,
         email,
@@ -412,29 +416,18 @@ export function createGoogleUserProfile(email = 'chataiwithcode@gmail.com', disp
     ],
     metadata: {},
     phoneNumber: null,
-    providerId: 'firebase',
+    providerId: 'local',
     tenantId: null,
     delete: async () => {},
-    getIdToken: async () => 'preview-token',
+    getIdToken: async () => '',
     getIdTokenResult: async () => ({} as any),
     reload: async () => {},
     toJSON: () => ({
-      uid: `google_${safeId}`,
+      uid: `local_${safeId}`,
       displayName: name,
       email,
-      emailVerified: true,
-      isAnonymous: false,
-      photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
-      providerData: [
-        {
-          providerId: 'google.com',
-          uid: email,
-          displayName: name,
-          email,
-          phoneNumber: null,
-          photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
-        },
-      ],
+      emailVerified: false,
+      isAnonymous: true,
     }),
   } as unknown as User;
 }
@@ -480,14 +473,14 @@ export async function saveUserDataToCloud(userId: string, data: UserAppData): Pr
   saveLocalData(data);
 
   if (!auth.currentUser) {
-    return;
+    throw new Error('Not signed into Firebase Authentication. Cloud sync requires an active cloud session.');
   }
 
-  const path = `users/${userId}`;
-  const userRef = doc(db, 'users', userId);
-  try {
-    await setDoc(userRef, { ...data, lastUpdated: Date.now() }, { merge: true });
-  } catch (error) {
-    console.warn('Firestore cloud sync notice:', error);
+  if (auth.currentUser.uid !== userId) {
+    throw new Error('Active session does not match document owner.');
   }
+
+  const userRef = doc(db, 'users', userId);
+  // Re-throw any Firestore errors so UI reports true status
+  await setDoc(userRef, { ...data, lastUpdated: Date.now() }, { merge: true });
 }

@@ -411,8 +411,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-slate-900' : 'text-slate-400'}`} />
                     <div className="truncate">
                       <p className="text-xs font-semibold truncate">{item.title}</p>
-                      {'subtitle' in item && item.subtitle && (
-                        <p className="text-[11px] text-slate-400 truncate">{item.subtitle}</p>
+                      {'subtitle' in item && Boolean((item as any).subtitle) && (
+                        <p className="text-[11px] text-slate-400 truncate">{String((item as any).subtitle)}</p>
                       )}
                     </div>
                   </div>

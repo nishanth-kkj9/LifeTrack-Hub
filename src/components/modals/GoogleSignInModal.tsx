@@ -48,11 +48,11 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({
       onClose();
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user') {
-        setPopupError('Popup was closed. Please select an account above.');
+        setPopupError('Popup closed by user. Select an account or try again.');
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        setPopupError('Preview domain not authorized in Firebase Console. You can continue with a Local Profile below.');
       } else {
-        // Automatically complete Google sign-in with default account
-        onSelectGoogleAccount(defaultEmail, 'Student Scholar');
-        onClose();
+        setPopupError(err?.message || 'Unable to open Google sign-in window.');
       }
     } finally {
       setIsPopupLoading(false);
