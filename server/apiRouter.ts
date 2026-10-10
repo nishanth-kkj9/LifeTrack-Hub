@@ -7,8 +7,8 @@ dotenv.config();
 export const apiRouter = express.Router();
 apiRouter.use(express.json({ limit: '2mb' }));
 
-// Allow configurable Gemini model via environment variable with standard default
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+// Allow configurable Gemini model via environment variable with standard default (gemini-2.5-flash)
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 // Rate Limiter: In-memory sliding window (30 requests/min per IP)
 interface RateLimitRecord {
