@@ -16,5 +16,29 @@ export default defineConfig(() => {
       hmr: false,
       watch: null,
     },
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('firebase')) {
+                return 'vendor-firebase';
+              }
+              if (id.includes('react') || id.includes('react-dom')) {
+                return 'vendor-react';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('canvas-confetti') || id.includes('motion')) {
+                return 'vendor-animations';
+              }
+              return 'vendor';
+            }
+          },
+        },
+      },
+    },
   };
 });

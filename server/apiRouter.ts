@@ -33,10 +33,8 @@ if (cleanupInterval.unref) {
 }
 
 function rateLimiter(req: Request, res: Response, next: NextFunction) {
-  const ip =
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    'anonymous-client';
+  // Use genuine network connection address to prevent header-spoofing rate limit bypass
+  const ip = req.socket.remoteAddress || req.ip || 'anonymous-client';
   const now = Date.now();
   const record = rateLimitMap.get(ip);
 

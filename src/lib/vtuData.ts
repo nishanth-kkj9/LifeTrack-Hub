@@ -1041,7 +1041,7 @@ export function getEduStudentRecord(rawUsn: string): EduStudentRecord {
 
   // Fallback: Dynamically decode and generate realistic VTU transcript
   const decoded = decodeVtuUsn(cleanUsn);
-  const rollNum = parseInt(decoded.rollNumber, 10) || 1;
+  const rollNum = parseInt(decoded.rollNumber || '1', 10) || 1;
   const nameIdx = (cleanUsn.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) + rollNum) % SAMPLE_NAMES.length;
   const fatherIdx = (rollNum + 3) % SAMPLE_FATHERS.length;
 
@@ -1102,13 +1102,13 @@ export function getEduStudentRecord(rawUsn: string): EduStudentRecord {
     usn: cleanUsn,
     studentName: SAMPLE_NAMES[nameIdx],
     fatherName: SAMPLE_FATHERS[fatherIdx],
-    collegeCode: decoded.collegeCode,
-    collegeName: decoded.collegeName,
-    branchCode: decoded.branchCode,
+    collegeCode: decoded.collegeCode || 'MS',
+    collegeName: decoded.collegeName || 'VTU Affiliated College',
+    branchCode: decoded.branchCode || 'CS',
     branchName,
     scheme,
     admissionYear: admissionYr,
-    batch: decoded.batch,
+    batch: decoded.batch || `${admissionYr} - ${admissionYr + 4}`,
     currentSemester,
     overallCgpa,
     percentage,

@@ -101,6 +101,27 @@ async function runApiRouterTests() {
     });
     check('Valid task returns subtasks', res7.status === 200 && Array.isArray(res7.body.subtasks));
 
+    // 8. Test Rate Limiter anti-spoofing resilience:
+    // Rotating X-Forwarded-For must NOT bypass rate limiter for requests from the same connection
+    let blockedCount = 0;
+    for (let i = 0; i < 35; i++) {
+      const spoofRes = await fetch(`${baseUrl}/api/gemini/breakdown`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': `198.51.100.${(i % 250) + 1}`, // Rotating spoofed header
+        },
+        body: JSON.stringify({ title: `Rate limit probe ${i}` }),
+      });
+      if (spoofRes.status === 429) {
+        blockedCount++;
+      }
+    }
+    check(
+      'Rotating X-Forwarded-For does not bypass rate limiter (excess requests blocked with 429)',
+      blockedCount > 0
+    );
+
     console.log(`--- All ${passed}/${total} API Router Robustness Tests Passed Successfully ---`);
   } finally {
     server.close();

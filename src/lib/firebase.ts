@@ -350,6 +350,19 @@ export const INITIAL_DATA: UserAppData = {
   vtuProfile: INITIAL_VTU_PROFILE,
 };
 
+export const EMPTY_USER_DATA: UserAppData = {
+  tasks: [],
+  transactions: [],
+  budget: {
+    monthlyBudget: 0,
+    savingsGoal: 0,
+  },
+  exams: [],
+  habits: [],
+  notes: [],
+  vtuProfile: INITIAL_VTU_PROFILE,
+};
+
 export function loadLocalData(): UserAppData {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -453,12 +466,14 @@ export function subscribeToUserDoc(
         const cloudData = snapshot.data() as UserAppData;
         onUpdate(cloudData);
       } else {
-        // First time cloud user: seed with local or initial data
-        const local = loadLocalData();
-        setDoc(userRef, { ...local, lastUpdated: Date.now() }).catch((err) => {
+        // First time cloud user: if local storage has explicit user data, migrate it;
+        // otherwise initialize a clean user account without injecting mock demo records into cloud.
+        const hasCustomLocalData = Boolean(localStorage.getItem(LOCAL_STORAGE_KEY));
+        const initialToSave = hasCustomLocalData ? loadLocalData() : EMPTY_USER_DATA;
+        setDoc(userRef, { ...initialToSave, lastUpdated: Date.now() }).catch((err) => {
           console.warn('Initial cloud seed notice:', err?.message || err);
         });
-        onUpdate(local);
+        onUpdate(initialToSave);
       }
     },
     (err) => {

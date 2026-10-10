@@ -19,6 +19,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Set trusted proxy hop for secure IP resolution
+  app.set('trust proxy', 1);
+
   // Security headers & basic parsing
   app.use(express.json({ limit: '2mb' }));
 

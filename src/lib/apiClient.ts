@@ -1,5 +1,22 @@
 import { Subtask, Transaction, ExamReminder, Habit } from '../types/index.ts';
 
+function getApiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  try {
+    let clientId = localStorage.getItem('lifetrack_client_instance_id');
+    if (!clientId) {
+      clientId = `cli_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      localStorage.setItem('lifetrack_client_instance_id', clientId);
+    }
+    headers['x-lifetrack-client-id'] = clientId;
+  } catch {
+    // Non-browser fallback
+  }
+  return headers;
+}
+
 export interface FinanceInsightResponse {
   healthStatus: 'Healthy' | 'Attention Needed' | 'Over Budget';
   summary: string;
@@ -20,7 +37,7 @@ export async function requestTaskBreakdown(
   try {
     const response = await fetch('/api/gemini/breakdown', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getApiHeaders(),
       body: JSON.stringify({ title, description, category }),
     });
 
@@ -58,7 +75,7 @@ export async function requestFinanceInsights(
 ): Promise<FinanceInsightResponse> {
   const response = await fetch('/api/gemini/finance-insights', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getApiHeaders(),
     body: JSON.stringify({ transactions, budget, totalIncome, totalExpense }),
   });
 
@@ -78,7 +95,7 @@ export async function requestStudyGuide(
 ): Promise<StudyGuideResponse> {
   const response = await fetch('/api/gemini/study-guide', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getApiHeaders(),
     body: JSON.stringify({
       subject,
       topics,
@@ -104,7 +121,7 @@ export async function requestDeepPlan(params: {
 }): Promise<string> {
   const response = await fetch('/api/gemini/deep-plan', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getApiHeaders(),
     body: JSON.stringify(params),
   });
 
