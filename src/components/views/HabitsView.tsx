@@ -200,20 +200,20 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
         )
       ) : (
         /* Habit List with 7-Day Grid */
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
           {/* Table Header with Days */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Habit & Strength Rating</span>
           <div className="flex items-center gap-2 sm:gap-3 mr-12 sm:mr-16">
             {days.map((d) => (
               <div
                 key={d.dateStr}
-                className={`w-7 sm:w-9 text-center py-1 rounded-lg ${
-                  d.isToday ? 'bg-orange-50 text-orange-900 font-extrabold' : 'text-slate-500'
+                className={`w-7 sm:w-9 text-center py-1 rounded-xl transition-colors ${
+                  d.isToday ? 'bg-orange-100/80 text-orange-950 font-black ring-1 ring-orange-200' : 'text-slate-500'
                 }`}
               >
-                <span className="text-[10px] block uppercase">{d.dayLabel}</span>
-                <span className="text-xs font-bold">{d.dayNumber}</span>
+                <span className="text-[10px] block uppercase font-bold">{d.dayLabel}</span>
+                <span className="text-xs font-bold tabular-nums">{d.dayNumber}</span>
               </div>
             ))}
           </div>

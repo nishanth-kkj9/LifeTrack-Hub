@@ -21,9 +21,9 @@ export const Card: React.FC<CardProps> = ({
 
   return (
     <div
-      className={`bg-white rounded-xl ${
+      className={`bg-white rounded-2xl ${
         bordered ? 'border border-slate-200/90' : ''
-      } shadow-2xs ${paddingClasses[padding]} ${className}`}
+      } shadow-[0_1px_3px_rgba(0,0,0,0.03)] transition-all ${paddingClasses[padding]} ${className}`}
       {...props}
     >
       {children}

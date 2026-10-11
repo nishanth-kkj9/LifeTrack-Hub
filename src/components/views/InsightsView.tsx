@@ -57,6 +57,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
 }) => {
   const todayStr = getLocalDateString();
   const [isCheckinOpen, setIsCheckinOpen] = useState(false);
+  const [backupStatusMessage, setBackupStatusMessage] = useState<string | null>(null);
 
   const correlations = useMemo(() => {
     return analyzeLifeMetricCorrelations(dailyMetrics, tasks, habits);
@@ -459,18 +460,25 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
                   if (!file) return;
                   try {
                     const restored = await parseAppDataJsonFile(file);
-                    if (confirm('Restore backup data? This will merge and update your active database.')) {
-                      onRestoreAppData(restored);
-                      alert('Data restored successfully!');
-                    }
+                    onRestoreAppData(restored);
+                    setBackupStatusMessage('Data restored successfully!');
+                    setTimeout(() => setBackupStatusMessage(null), 3000);
                   } catch (err) {
-                    alert('Failed to parse JSON backup file.');
+                    setBackupStatusMessage('Failed to parse JSON backup file.');
+                    setTimeout(() => setBackupStatusMessage(null), 3500);
                   }
                 }}
               />
             </label>
           )}
         </div>
+
+        {backupStatusMessage && (
+          <div className="mt-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>{backupStatusMessage}</span>
+          </div>
+        )}
       </div>
 
       {/* Daily Metrics Check-In Modal */}

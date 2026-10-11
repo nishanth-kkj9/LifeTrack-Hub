@@ -309,7 +309,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
                           tx.type === 'income' ? 'text-emerald-600' : 'text-slate-900'
                         }`}
                       >
-                        {tx.type === 'income' ? '+' : '-'}${tx.amount.toFixed(2)}
+                        {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toFixed(2)}
                       </span>
 
                       <button
@@ -330,7 +330,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
 
         {/* Right 1 Col: Category Spending Breakdown */}
         <div className="space-y-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
             <h2 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
               <PieChart className="w-4 h-4 text-indigo-600" />
               <span>Expense Categories</span>
@@ -346,11 +346,11 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
                     <div key={category} className="space-y-1">
                       <div className="flex items-center justify-between text-xs font-semibold">
                         <span className="text-slate-700 truncate">{category}</span>
-                        <span className="text-slate-900 font-mono">${amount.toFixed(2)} ({percent}%)</span>
+                        <span className="text-slate-900 font-mono">₹{amount.toFixed(2)} ({percent}%)</span>
                       </div>
                       <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                         <div
-                          className="bg-indigo-600 h-full rounded-full"
+                          className="bg-indigo-600 h-full rounded-full transition-all duration-300"
                           style={{ width: `${percent}%` }}
                         />
                       </div>
