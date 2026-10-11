@@ -115,17 +115,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   return (
     <div id="settings-view" className="space-y-6 animate-fadeIn pb-12">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-slate-900 text-white shadow-xs">
-            <SettingsIcon className="w-5 h-5" />
+            <SettingsIcon className="w-5 h-5 text-indigo-400" />
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Settings & Preferences
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Account sync, database configuration, backups, and preferences.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Account sync, Firebase database configuration, backups, and preferences.
             </p>
           </div>
         </div>

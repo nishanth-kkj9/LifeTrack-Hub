@@ -240,18 +240,20 @@ export const TodayView: React.FC<TodayViewProps> = ({
   return (
     <div id="today-view" className="space-y-6 pb-12 animate-fadeIn">
       {/* 1. Today Header & Primary Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 bg-gradient-to-b from-white to-slate-50/50 p-6 sm:p-7 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div>
           <div className="flex items-center gap-2 text-slate-500 text-xs sm:text-sm font-medium">
-            <CalendarIcon className="w-4 h-4 text-emerald-600" />
-            <span>{formattedDate}</span>
+            <span className="p-1 rounded-md bg-emerald-50 text-emerald-600">
+              <CalendarIcon className="w-3.5 h-3.5" />
+            </span>
+            <span className="text-slate-600 font-semibold">{formattedDate}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1.5">
             {greeting}
           </h1>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-xs sm:text-sm text-slate-600 mt-1">
             {allRemainingToday.length === 0
-              ? 'You have cleared your main priority tasks for today.'
+              ? 'You have cleared all your scheduled priority tasks for today.'
               : `You have ${allRemainingToday.length} task${allRemainingToday.length === 1 ? '' : 's'} scheduled for today.`}
           </p>
         </div>
@@ -264,7 +266,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
             size="md"
             icon={<Plus className="w-4 h-4" />}
             onClick={onOpenAddTaskModal}
-            className="shadow-sm"
+            className="shadow-sm hover:shadow transition-all bg-slate-900 hover:bg-slate-800 text-white font-semibold"
           >
             Add Task
           </Button>
@@ -276,9 +278,10 @@ export const TodayView: React.FC<TodayViewProps> = ({
             icon={<Search className="w-4 h-4 text-slate-500" />}
             onClick={onOpenCommandPalette}
             aria-label="Search and command palette"
+            className="font-medium bg-white hover:bg-slate-50 border-slate-200"
           >
             <span>Search</span>
-            <kbd className="hidden sm:inline ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 bg-slate-100 rounded border border-slate-200">
+            <kbd className="hidden sm:inline ml-1.5 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-slate-500 bg-slate-100 rounded border border-slate-200 shadow-2xs">
               ⌘K
             </kbd>
           </Button>
@@ -289,7 +292,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
             size="md"
             icon={<Timer className="w-4 h-4 text-purple-600" />}
             onClick={() => onOpenFocusModal(null)}
-            className="text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+            className="text-purple-700 hover:bg-purple-50 hover:text-purple-800 font-semibold"
           >
             Focus
           </Button>
@@ -297,7 +300,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
       </div>
 
       {/* 2. Quick Add Bar */}
-      <div className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-2xs">
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
         <QuickAddBar
           onAddTask={onAddTask}
           onOpenAdvancedModal={onOpenAddTaskModal}

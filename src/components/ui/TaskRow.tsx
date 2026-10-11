@@ -24,8 +24,8 @@ export const TaskRow: React.FC<TaskRowProps> = ({
     <div
       id={`task-row-${task.id}`}
       onClick={() => onClick?.(task)}
-      className={`group flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg border border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50 transition-all ${
-        task.completed ? 'opacity-60 bg-slate-50/70' : ''
+      className={`group flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-xs transition-all ${
+        task.completed ? 'opacity-60 bg-slate-50/60' : ''
       } ${onClick ? 'cursor-pointer' : ''} ${className}`}
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -39,13 +39,13 @@ export const TaskRow: React.FC<TaskRowProps> = ({
             e.stopPropagation();
             onToggle(task.id);
           }}
-          className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+          className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 hover:scale-105 active:scale-95 ${
             task.completed
-              ? 'bg-emerald-600 border-emerald-600 text-white'
+              ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
               : 'border-slate-300 hover:border-emerald-600 bg-white'
           }`}
         >
-          {task.completed && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+          {task.completed && <Check className="w-3.5 h-3.5 stroke-[2.8]" />}
         </button>
 
         {/* Task Title and Context */}

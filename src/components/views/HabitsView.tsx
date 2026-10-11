@@ -86,18 +86,18 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
   const todayMetric = dailyMetrics.find((m) => m.date === todayIso);
 
   return (
-    <div id="habits-view-container" className="space-y-6 pb-12">
+    <div id="habits-view-container" className="space-y-6 pb-12 animate-fadeIn">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Habits & Ritual Intelligence</h1>
-            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-              Loop Scoring Engine
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Habits & Rituals</h1>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+              Consistency Engine
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Build consistency with exponential strength scoring, resilience tracking & vacation modes.
+            Build consistency with strength scoring, resilience tracking, and streak metrics.
           </p>
         </div>
 
@@ -108,17 +108,17 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
               type="button"
               id="habits-open-checkin-btn"
               onClick={() => setIsCheckinOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition cursor-pointer min-h-[38px]"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition cursor-pointer min-h-[36px]"
             >
-              <Activity className="w-4 h-4 text-purple-600" />
-              <span>{todayMetric ? 'Update Daily Log' : 'Log Daily Life Metrics'}</span>
+              <Activity className="w-3.5 h-3.5 text-purple-600" />
+              <span>{todayMetric ? 'Update Daily Log' : 'Log Daily Metrics'}</span>
             </button>
           )}
 
           <button
             type="button"
             onClick={() => exportHabitsCsv(habits)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer min-h-[38px]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs min-h-[36px]"
             title="Export habits history CSV"
           >
             <Download className="w-3.5 h-3.5" />
@@ -126,13 +126,13 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
           </button>
 
           {/* View Mode Toggle */}
-          <div className="flex items-center rounded-xl bg-slate-100 p-0.5 border border-slate-200">
+          <div className="flex items-center rounded-xl bg-slate-100/80 p-0.5 border border-slate-200/70">
             <button
               type="button"
               id="habits-toggle-matrix-btn"
               onClick={() => setDisplayMode('matrix')}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
-                displayMode === 'matrix' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer select-none ${
+                displayMode === 'matrix' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Table className="w-3.5 h-3.5" />
@@ -142,8 +142,8 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
               type="button"
               id="habits-toggle-cards-btn"
               onClick={() => setDisplayMode('cards')}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
-                displayMode === 'cards' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer select-none ${
+                displayMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -159,12 +159,12 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
               placeholder="New habit (e.g. Read 20 pages)..."
               value={newHabitName}
               onChange={(e) => setNewHabitName(e.target.value)}
-              className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 w-40 sm:w-52 min-h-[38px]"
+              className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white w-36 sm:w-48 min-h-[36px] font-medium text-slate-800"
             />
             <button
               type="submit"
               id="habit-new-submit-btn"
-              className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[36px]"
             >
               <Plus className="w-4 h-4" />
               <span>Add</span>

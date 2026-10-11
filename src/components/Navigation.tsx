@@ -222,7 +222,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       <nav
         id="primary-app-nav"
         aria-label="Main Navigation"
-        className="bg-white border-b border-slate-200 sticky top-16 z-20"
+        className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-16 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Desktop Navigation (>= md) */}
@@ -241,10 +241,10 @@ export const Navigation: React.FC<NavigationProps> = ({
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => handleSelect(tab.key)}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 ${
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 select-none ${
                       isActive
                         ? 'bg-slate-900 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
                     <Icon
@@ -254,7 +254,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                     <span>{tab.label}</span>
                     {tab.badge && (
                       <span
-                        className={`ml-0.5 px-1.5 py-0.2 rounded-full text-[11px] font-bold ${
+                        className={`ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
                           tab.badgeColor ||
                           (isActive ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-800')
                         }`}
@@ -268,7 +268,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
 
             {/* Divider and Secondary Navigation Items */}
-            <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
+            <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200/80">
               {desktopSecondaryTabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = normalizedActive === tab.key;
@@ -281,10 +281,10 @@ export const Navigation: React.FC<NavigationProps> = ({
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => handleSelect(tab.key)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 ${
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 select-none ${
                       isActive
                         ? 'bg-slate-900 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
                     <Icon

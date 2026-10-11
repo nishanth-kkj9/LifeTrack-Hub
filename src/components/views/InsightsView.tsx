@@ -163,17 +163,17 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
   return (
     <div id="insights-view" className="space-y-6 animate-fadeIn pb-12">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-slate-900 text-white shadow-xs">
-            <TrendingUp className="w-5 h-5" />
+            <TrendingUp className="w-5 h-5 text-emerald-400" />
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Review & Insights
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Reflect on your weekly execution, habit consistency, and financial balance.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Reflect on weekly task execution, habit consistency loops, and financial balance.
             </p>
           </div>
         </div>
@@ -182,15 +182,15 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
       {/* 4 Pillars Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Productivity Pillar */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Execution</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Execution</span>
             <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-extrabold text-slate-900 font-mono">
+            <span className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
               {taskStats.rate}%
             </span>
             <p className="text-xs text-slate-500 mt-1">
@@ -203,15 +203,15 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
         </div>
 
         {/* Habits Pillar */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Habits</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Habits</span>
             <div className="p-1.5 rounded-lg bg-amber-50 text-amber-500">
               <Flame className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-extrabold text-slate-900 font-mono">
+            <span className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
               {habitStats.bestStreak}d
             </span>
             <p className="text-xs text-slate-500 mt-1">
@@ -224,15 +224,15 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
         </div>
 
         {/* Financial Health Pillar */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Budget Health</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Budget Health</span>
             <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
               <Wallet className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-extrabold text-slate-900 font-mono">
+            <span className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
               {financeStats.budgetUsage}%
             </span>
             <p className="text-xs text-slate-500 mt-1">
@@ -240,7 +240,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
             </p>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-blue-700 font-medium">
-            ${financeStats.savings.toLocaleString()} net balance
+            ₹{financeStats.savings.toLocaleString('en-IN')} net balance
           </div>
         </div>
 

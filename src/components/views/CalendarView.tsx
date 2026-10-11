@@ -144,39 +144,41 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   return (
     <div id="calendar-view" className="space-y-6 animate-fadeIn pb-12">
       {/* Calendar Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <CalendarIcon className="w-6 h-6 text-emerald-600" />
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-slate-900 text-white shadow-xs">
+              <CalendarIcon className="w-5 h-5 text-emerald-400 stroke-[2.2]" />
+            </span>
             <span>Calendar & Schedule</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Plan your deadlines, scheduled time blocks, and academic exam dates.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Plan deadlines, scheduled study time blocks, and academic exam dates.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={handleToday}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="secondary" size="sm" onClick={handleToday} className="bg-white hover:bg-slate-50 border-slate-200 font-semibold shadow-2xs">
             Today
           </Button>
-          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+          <div className="flex items-center bg-slate-100/80 rounded-xl p-1 border border-slate-200/70">
             <button
               type="button"
               id="calendar-prev-month-btn"
               onClick={handlePrevMonth}
-              className="p-1.5 rounded-md hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-all cursor-pointer"
               aria-label="Previous month"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-semibold px-2 min-w-[110px] text-center text-slate-800">
+            <span className="text-xs font-bold px-3 min-w-[120px] text-center text-slate-800">
               {monthName}
             </span>
             <button
               type="button"
               id="calendar-next-month-btn"
               onClick={handleNextMonth}
-              className="p-1.5 rounded-md hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 transition-all cursor-pointer"
               aria-label="Next month"
             >
               <ChevronRight className="w-4 h-4" />
@@ -187,6 +189,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             size="sm"
             icon={<Plus className="w-4 h-4" />}
             onClick={onOpenAddTaskModal}
+            className="bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-xs"
           >
             Add Task
           </Button>

@@ -107,11 +107,11 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
   });
 
   return (
-    <div id="exams-view-container" className="space-y-6 pb-12">
+    <div id="exams-view-container" className="space-y-6 pb-12 animate-fadeIn">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Exams & Academic Tracker</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Exams & Countdown Hub</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Real-time exam countdowns, syllabus checklists, and schedule tracking.
           </p>
@@ -120,7 +120,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         <button
           id="exams-add-exam-btn"
           onClick={onOpenAddExamModal}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs hover:shadow-sm min-h-[36px]"
         >
           <Plus className="w-4 h-4" />
           <span>Add Exam</span>

@@ -81,13 +81,13 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <div id="finances-view-container" className="space-y-6 pb-12">
+    <div id="finances-view-container" className="space-y-6 pb-12 animate-fadeIn">
       {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Finances</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Finances & Cashflow</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Track spending, monitor your monthly budget, and balance your cashflow.
+            Track student spending, monitor monthly budget caps, and balance cashflow.
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
           <button
             id="finances-add-tx-btn"
             onClick={onOpenAddTransactionModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs hover:shadow-sm min-h-[36px]"
           >
             <Plus className="w-4 h-4" />
             <span>Add Transaction</span>
@@ -106,53 +106,57 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
       {/* 4 Financial Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Net Savings */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Net Cashflow</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Net Cashflow</span>
             <span className="p-2 rounded-xl bg-slate-100 text-slate-700">
               <DollarSign className="w-4 h-4" />
             </span>
           </div>
-          <p className={`text-2xl font-black ${netSavings >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-            ${netSavings.toFixed(2)}
+          <p className={`text-2xl font-black tabular-nums tracking-tight ${netSavings >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+            ₹{netSavings.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-slate-500 mt-1">Total revenue minus expenses</p>
+          <p className="text-xs text-slate-500 mt-1">Total income minus expenses</p>
         </div>
 
         {/* Total Income */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Income</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Income</span>
             <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
               <TrendingUp className="w-4 h-4" />
             </span>
           </div>
-          <p className="text-2xl font-black text-emerald-600">+${totalIncome.toFixed(2)}</p>
-          <p className="text-xs text-slate-500 mt-1">{transactions.filter((t) => t.type === 'income').length} deposits</p>
+          <p className="text-2xl font-black tabular-nums tracking-tight text-emerald-600">
+            +₹{totalIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">{transactions.filter((t) => t.type === 'income').length} credit logs</p>
         </div>
 
         {/* Total Expense */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Expenses</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Expenses</span>
             <span className="p-2 rounded-xl bg-rose-50 text-rose-600">
               <TrendingDown className="w-4 h-4" />
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900">-${totalExpense.toFixed(2)}</p>
+          <p className="text-2xl font-black tabular-nums tracking-tight text-slate-900">
+            -₹{totalExpense.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
           <p className="text-xs text-slate-500 mt-1">{transactions.filter((t) => t.type === 'expense').length} purchases</p>
         </div>
 
         {/* Monthly Budget */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Monthly Budget</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Monthly Budget</span>
             <button
               id="finances-edit-budget-toggle"
               onClick={() => setIsEditingBudget(!isEditingBudget)}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+              className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer"
             >
-              {isEditingBudget ? 'Cancel' : 'Edit'}
+              {isEditingBudget ? 'Cancel' : 'Edit Cap'}
             </button>
           </div>
 
@@ -163,13 +167,13 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
                 type="number"
                 value={budgetInput}
                 onChange={(e) => setBudgetInput(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold"
-                placeholder="Budget limit ($)"
+                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold focus:ring-2 focus:ring-slate-900 focus:outline-hidden"
+                placeholder="Budget cap (₹)"
               />
               <button
                 id="finances-budget-save-btn"
                 onClick={handleSaveBudget}
-                className="w-full py-1 text-xs font-bold bg-slate-900 text-white rounded-lg"
+                className="w-full py-1 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
               >
                 Save
               </button>
@@ -177,8 +181,12 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
           ) : (
             <>
               <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-black text-slate-900">${budget.monthlyBudget}</span>
-                <span className="text-xs font-bold text-slate-500">{budgetSpentPercent}% used</span>
+                <span className="text-2xl font-black tabular-nums tracking-tight text-slate-900">
+                  ₹{budget.monthlyBudget.toLocaleString('en-IN')}
+                </span>
+                <span className={`text-xs font-bold tabular-nums ${budgetSpentPercent > 90 ? 'text-rose-600' : 'text-slate-500'}`}>
+                  {budgetSpentPercent}% used
+                </span>
               </div>
               <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-3">
                 <div

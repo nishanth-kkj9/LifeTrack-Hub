@@ -40,17 +40,17 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
   return (
     <div id="academics-view" className="space-y-6 animate-fadeIn pb-12">
       {/* Academics Header with Segmented Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-indigo-600 text-white shadow-xs">
-              <GraduationCap className="w-5 h-5" />
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-slate-900 text-white shadow-xs">
+              <GraduationCap className="w-5 h-5 text-indigo-400" />
             </span>
             <div>
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Academics & Study Hub
               </h1>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Exam countdowns, syllabus tracking, CBCS grading, and VTU engineering tools.
               </p>
             </div>
@@ -58,22 +58,22 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center bg-slate-100/80 p-1 rounded-xl border border-slate-200/70 text-xs font-semibold">
             <button
               type="button"
               id="subtab-academics-exams"
               onClick={() => setActiveSubTab('exams')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer select-none ${
                 activeSubTab === 'exams'
-                  ? 'bg-white text-indigo-900 shadow-xs font-bold'
+                  ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Calendar className="w-4 h-4 text-indigo-600" />
               <span>Exams & Study</span>
               {exams.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-700 text-[10px]">
+                <span className="px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">
                   {exams.length}
                 </span>
               )}
@@ -83,15 +83,15 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
               type="button"
               id="subtab-academics-vtu"
               onClick={() => setActiveSubTab('vtu')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer select-none ${
                 activeSubTab === 'vtu'
-                  ? 'bg-white text-indigo-900 shadow-xs font-bold'
+                  ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Award className="w-4 h-4 text-indigo-600" />
               <span>VTU Hub (CBCS)</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px]">
+              <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
                 Scheme
               </span>
             </button>
@@ -103,6 +103,7 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
               size="sm"
               icon={<Plus className="w-4 h-4" />}
               onClick={onOpenAddExamModal}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-xs"
             >
               Add Exam
             </Button>

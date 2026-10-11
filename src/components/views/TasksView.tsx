@@ -378,32 +378,32 @@ export const TasksView: React.FC<TasksViewProps> = ({
   return (
     <div id="tasks-master-view-container" className="space-y-5 pb-16">
       {/* 1. PRODUCTIVITY COMMAND BANNER */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+      <div className="bg-gradient-to-b from-white to-slate-50/50 rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)] flex flex-col lg:flex-row lg:items-center justify-between gap-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Tasks
             </h1>
-            <span className="text-xs font-medium text-slate-500">
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
               {activeTasks.length} active
             </span>
           </div>
           <p className="text-xs text-slate-500 max-w-xl">
-            Manage assignments, project deliverables, and study targets.
+            Organize tasks, subtasks, kanban workflows, and daily schedules.
           </p>
         </div>
 
         {/* Daily Velocity & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Daily Goal Badge */}
-          <div className="bg-slate-50 px-3.5 py-2 rounded-2xl border border-slate-200/80 flex items-center gap-3">
+          <div className="bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 flex items-center gap-3 shadow-2xs">
             <div className="flex items-center gap-1.5 text-amber-600">
-              <Flame className="w-4 h-4 fill-amber-500" />
-              <span className="text-xs font-black text-slate-900">
+              <Flame className="w-3.5 h-3.5 fill-amber-500" />
+              <span className="text-xs font-bold text-slate-800">
                 {completedTasks.length}/{tasks.length} Done
               </span>
             </div>
-            <div className="w-20 bg-slate-200 h-2 rounded-full overflow-hidden">
+            <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/60">
               <div
                 className="bg-emerald-500 h-full rounded-full transition-all duration-500"
                 style={{ width: `${dailyProgressPercent}%` }}
@@ -414,7 +414,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           {/* Templates Trigger */}
           <button
             onClick={() => setIsTemplatesModalOpen(true)}
-            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-xl border border-slate-200/90 transition cursor-pointer flex items-center gap-1.5 shadow-2xs hover:shadow-xs"
             title="Import task templates"
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
@@ -426,7 +426,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <button
               id="tasks-clear-completed-btn"
               onClick={onClearCompletedTasks}
-              className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-200 transition cursor-pointer"
+              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-200/90 transition cursor-pointer"
             >
               Clear Done ({completedTasks.length})
             </button>
@@ -436,7 +436,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <button
             id="tasks-add-task-btn"
             onClick={onOpenAddTaskModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs hover:shadow-sm min-h-[36px]"
           >
             <Plus className="w-4 h-4" />
             <span>Add Task</span>
@@ -448,9 +448,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
       <QuickAddBar onAddTask={handleCreateTask} onOpenAdvancedModal={onOpenAddTaskModal} />
 
       {/* 3. VIEW MODE & FILTER TOOLBAR */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/90 shadow-2xs">
         {/* Layout View Mode Switcher */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+        <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl w-fit border border-slate-200/60">
           {[
             { mode: 'list', label: 'List', icon: LayoutList },
             { mode: 'kanban', label: 'Kanban', icon: Kanban },
@@ -462,10 +462,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
               <button
                 key={v.mode}
                 onClick={() => setViewMode(v.mode as ViewMode)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer select-none ${
                   viewMode === v.mode
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -479,11 +479,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {viewMode === 'list' && (
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="font-bold text-[11px] uppercase tracking-wider text-slate-400">Group:</span>
+              <span className="font-semibold text-[11px] uppercase tracking-wider text-slate-400">Group:</span>
               <select
                 value={groupBy}
                 onChange={(e) => setGroupBy(e.target.value as GroupByKey)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-700 focus:outline-hidden"
+                className="bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-hidden cursor-pointer"
               >
                 <option value="date">Due Date</option>
                 <option value="priority">Priority</option>
@@ -499,9 +499,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
               setIsBatchMode(!isBatchMode);
               if (isBatchMode) handleDeselectAll();
             }}
-            className={`px-3 py-1 text-xs font-bold rounded-xl border transition cursor-pointer ${
+            className={`px-3 py-1 text-xs font-semibold rounded-xl border transition cursor-pointer ${
               isBatchMode
-                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold'
                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
@@ -516,12 +516,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
               placeholder="Filter tasks..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-7 py-1 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:bg-white focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+              className="w-full pl-8 pr-7 py-1 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:bg-white focus:ring-2 focus:ring-slate-900 font-medium text-slate-800"
             />
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -546,10 +546,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <button
             key={f.key}
             onClick={() => setActiveFilter(f.key as FilterKey)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer select-none ${
               activeFilter === f.key
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                ? 'bg-slate-900 text-white shadow-2xs font-bold'
+                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 border border-slate-200/80'
             }`}
           >
             {f.label}

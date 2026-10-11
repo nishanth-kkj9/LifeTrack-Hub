@@ -50,34 +50,34 @@ export const NotesView: React.FC<NotesViewProps> = ({
     });
 
   return (
-    <div id="notes-view-container" className="space-y-6 pb-12">
+    <div id="notes-view-container" className="space-y-6 pb-12 animate-fadeIn">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Notes</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Notes & Scratchpad</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Quickly store key math equations, formulas, takeaways, and thoughts.
+            Quickly store key math equations, formulas, takeaways, and lecture thoughts.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Search */}
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               id="notes-search-input"
               type="text"
               placeholder="Search notes..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 pr-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 w-36 sm:w-48"
+              className="pl-8.5 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200/90 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white w-40 sm:w-52 min-h-[36px] font-medium text-slate-800"
             />
           </div>
 
           <button
             id="notes-add-note-btn"
             onClick={onOpenAddNoteModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs min-h-[38px]"
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs hover:shadow-sm min-h-[36px]"
           >
             <Plus className="w-4 h-4" />
             <span>Add Note</span>
