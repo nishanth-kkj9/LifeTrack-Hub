@@ -78,6 +78,12 @@ function runRulesVerification() {
     rulesContent.includes('data.payload.size() <= 65536')
   );
   assert(
+    'isValidSyncDelta pins protocol/schema versions to the supported value (== 1) so future-version poison pills are unwritable',
+    rulesContent.includes('data.protocolVersion is number && data.protocolVersion == 1') &&
+      rulesContent.includes('data.schemaVersion is number && data.schemaVersion == 1')
+  );
+
+  assert(
     'isValidSyncDelta strictly checks deltaId matching and regex format',
     rulesContent.includes('data.id == deltaId') && rulesContent.includes("data.id.matches('^[a-zA-Z0-9_\\\\-]+$')")
   );

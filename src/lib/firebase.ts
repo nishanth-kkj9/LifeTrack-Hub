@@ -12,12 +12,20 @@ import {
   doc,
   setDoc,
   getDoc,
-  getDocFromServer,
   onSnapshot,
   Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { UserAppData } from '../types/index.ts';
+import {
+  UserAppData,
+  Task,
+  Transaction,
+  ExamReminder,
+  Habit,
+  QuickNote,
+  BudgetSettings,
+  DailyLifeMetric,
+} from '../types/index.ts';
 import { INITIAL_VTU_PROFILE } from './vtuData.ts';
 import { getLocalDateOffset, getLocalDateString } from './dateUtils.ts';
 
@@ -52,25 +60,11 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null
 ): never {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo:
-        auth.currentUser?.providerData?.map((provider) => ({
-          providerId: provider.providerId,
-          email: provider.email,
-        })) || [],
-    },
-    operationType,
-    path,
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  // SECURITY: never embed user PII (email/uid) into thrown error strings —
+  // they surface in UI toasts, console logs and crash reports.
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Firestore Error [${operationType}] ${path ?? '(unknown path)'}:`, message);
+  throw new Error(`Firestore ${operationType} failed: ${message}`);
 }
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -82,18 +76,6 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 export const db: Firestore = firebaseConfig.firestoreDatabaseId
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
-
-// Connection verification test on startup
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase connection: client appears offline.');
-    }
-  }
-}
-testConnection();
 
 export const LOCAL_STORAGE_KEY = 'lifetrack_app_data_v1';
 export const LEGACY_STORAGE_KEY = 'lifetrack_hub_local_data_v1';
@@ -363,29 +345,119 @@ export const EMPTY_USER_DATA: UserAppData = {
   vtuProfile: INITIAL_VTU_PROFILE,
 };
 
+/**
+ * Demo/sample dataset. NEVER auto-loaded as the default app state anymore:
+ * fresh users start empty, and sample data is an explicit user action
+ * (Settings → Data Management → "Load Sample Data"). This prevents fictional
+ * tasks/transactions from being silently seeded into a signed-in user's cloud doc.
+ */
+export function getDemoData(): UserAppData {
+  return INITIAL_DATA;
+}
+
+/**
+ * Defensive sanitizer for persisted/imported app data.
+ *
+ * STABILITY: a single malformed entry (e.g. `tasks: [null]` from an interrupted
+ * save, a bad import, or an older schema) used to crash the whole React tree
+ * (no ErrorBoundary, no validation) — an empirically reproduced white screen.
+ * This strips non-object entries and coerces required shapes so rendering can
+ * never dereference null. When anything had to be repaired, the original raw
+ * payload is quarantined under a backup key (never deleted).
+ */
+export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: boolean } {
+  let repaired = false;
+  const src = input && typeof input === 'object' ? input : {};
+
+  const cleanArray = <T,>(v: any, ok: (item: any) => boolean): T[] => {
+    if (!Array.isArray(v)) {
+      repaired = true;
+      return [];
+    }
+    const out = v.filter(ok);
+    if (out.length !== v.length) repaired = true;
+    return out as T[];
+  };
+
+  const isRecord = (x: any) => x !== null && typeof x === 'object';
+
+  const tasks = cleanArray<Task>(src.tasks, (t) => isRecord(t) && typeof t.id === 'string' && typeof t.title === 'string')
+    .map((t) => {
+      if (!Array.isArray(t.subtasks)) {
+        repaired = true;
+        return { ...t, subtasks: [] };
+      }
+      return t;
+    });
+
+  const transactions = cleanArray<Transaction>(src.transactions, (t) => isRecord(t) && typeof t.id === 'string' && typeof t.amount === 'number');
+  const exams = cleanArray<ExamReminder>(src.exams, (e) => isRecord(e) && typeof e.id === 'string')
+    .map((e) => (Array.isArray(e.topics) ? e : { ...e, topics: [] }));
+  const habits = cleanArray<Habit>(src.habits, (h) => isRecord(h) && typeof h.id === 'string')
+    .map((h) => (Array.isArray(h.completedDates) ? h : { ...h, completedDates: [] }));
+  const notes = cleanArray<QuickNote>(src.notes, (n) => isRecord(n) && typeof n.id === 'string');
+  const dailyMetrics = cleanArray<DailyLifeMetric>(src.dailyMetrics, (m) => isRecord(m) && typeof m.date === 'string');
+
+  const budget: BudgetSettings =
+    isRecord(src.budget) && typeof src.budget.monthlyBudget === 'number'
+      ? src.budget
+      : (repaired = true, { monthlyBudget: 0, savingsGoal: 0 });
+
+  const data: UserAppData = {
+    ...src,
+    tasks,
+    transactions,
+    exams,
+    habits,
+    notes,
+    dailyMetrics,
+    budget,
+    vtuProfile: isRecord(src.vtuProfile) ? src.vtuProfile : INITIAL_VTU_PROFILE,
+  };
+  return { data, repaired };
+}
+
+export const CORRUPT_BACKUP_KEY = 'lifetrack_app_data_v1_corrupt_backup';
+
 export function loadLocalData(): UserAppData {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.tasks)) {
-        if (!parsed.vtuProfile) {
-          parsed.vtuProfile = INITIAL_VTU_PROFILE;
+      if (parsed && typeof parsed === 'object') {
+        const { data, repaired } = sanitizeUserAppData(parsed);
+        if (repaired) {
+          // Quarantine the original payload for forensic recovery; keep the repaired data in use.
+          console.error('[Data Integrity] Persisted app data was malformed and has been repaired. Original saved to', CORRUPT_BACKUP_KEY);
+          try {
+            localStorage.setItem(CORRUPT_BACKUP_KEY, raw);
+          } catch {
+            // quarantine is best-effort
+          }
         }
-        return parsed;
+        return data;
       }
     }
   } catch (e) {
     console.warn('Failed to read from localStorage:', e);
   }
-  return INITIAL_DATA;
+  return EMPTY_USER_DATA;
 }
 
-export function saveLocalData(data: UserAppData): void {
+export function saveLocalData(data: UserAppData): boolean {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+    return true;
   } catch (e) {
-    console.warn('Failed to save to localStorage:', e);
+    // QuotaExceededError lands here. Historically this was a console.warn only,
+    // i.e. SILENT data loss: the UI kept working while nothing was persisted.
+    console.error('[Persistence] Failed to save to localStorage (quota exceeded?):', e);
+    try {
+      window.dispatchEvent(new CustomEvent('lifetrack-storage-full'));
+    } catch {
+      // non-browser context
+    }
+    return false;
   }
 }
 

@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,10 +71,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 fun main() = application {
     val timeProvider = remember { SystemTimeProvider() }
     val idGenerator = remember { PlatformIdGenerator(timeProvider) }
     val secureStorage = remember { DesktopSecureKeyStorage() }
+
+    // STABILITY (G2/G3): ONE single-threaded dispatcher shared by the sync engine and the
+    // ViewModel scope serializes every SQLite + HLC access in the process. StandardHlcClock
+    // and the JDBC connection are not internally synchronized; this confinement makes
+    // concurrent corruption structurally impossible.
+    val dbDispatcher = remember { Dispatchers.Default.limitedParallelism(1) }
 
     // Single coherent production SQLite persistence driver with explicit failure
     val desktopDbFile = remember { getDefaultDesktopDbFile() }
@@ -97,18 +105,20 @@ fun main() = application {
         )
     }
 
+    val firebaseConfig = remember { com.lifetrack.sync.FirebaseConfig() }
+
     val authSessionProvider = remember {
         com.lifetrack.auth.DesktopFirebaseAuthSessionProvider(
-            apiKey = "AIzaSyA3Qd0EdAPWUslmC75YI_mga4KD9Df9eAs",
-            projectId = "galvanic-oarlock-43skh"
+            apiKey = firebaseConfig.apiKey,
+            projectId = firebaseConfig.projectId
         )
     }
 
     val remoteTransport = remember {
         com.lifetrack.sync.DesktopFirestoreRestTransport(
             authSessionProvider = authSessionProvider,
-            projectId = "galvanic-oarlock-43skh",
-            databaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+            projectId = firebaseConfig.projectId,
+            databaseId = firebaseConfig.firestoreDatabaseId
         )
     }
 
@@ -121,7 +131,8 @@ fun main() = application {
             timeProvider = timeProvider,
             authSessionProvider = authSessionProvider,
             deviceId = deviceId,
-            deviceName = "Windows Desktop"
+            deviceName = "Windows Desktop",
+            ioDispatcher = dbDispatcher
         )
     }
 
@@ -135,8 +146,14 @@ fun main() = application {
             toggleSubtaskUseCase = ToggleSubtaskUseCase(taskRepository),
             deleteSubtaskUseCase = DeleteSubtaskUseCase(taskRepository),
             getTaskMetricsUseCase = GetTaskMetricsUseCase(taskRepository),
-            parseNaturalLanguageTaskUseCase = ParseNaturalLanguageTaskUseCase()
+            parseNaturalLanguageTaskUseCase = ParseNaturalLanguageTaskUseCase(),
+            scopeDispatcher = dbDispatcher
         )
+    }
+
+    // Cancel ViewModel coroutines when the window closes (prevents scope leak).
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.dispose() }
     }
 
     Window(

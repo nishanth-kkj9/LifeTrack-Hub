@@ -47,7 +47,9 @@ export function summarizeWeeklyMetrics(metrics: DailyMetricLike[]) {
     sleep: Number(avgSleep.toFixed(1)),
     steps: totalSteps,
     workouts,
-    completionRate: 80,
+    // completionRate is habit-derived; metrics alone cannot produce it.
+    // Real value is computed in buildWeeklySummary() from habit scores.
+    completionRate: 0,
     daysTracked: targetList.length,
   };
 }
@@ -60,13 +62,19 @@ export function buildWeeklySummary(habits: HabitLike[], metrics: DailyMetricLike
 
   const summary = summarizeWeeklyMetrics(metrics);
 
+  // REAL completion rate: average of per-habit completionRate when available,
+  // falling back to strength score. No hardcoded constants.
+  const realCompletionRate = totalHabits
+    ? habits.reduce((sum, h) => sum + (h.score?.completionRate ?? h.score?.currentStrength ?? 0), 0) / totalHabits
+    : 0;
+
   return {
     totalHabits,
     averageStrength: Number(avgStrength.toFixed(1)),
     averageMood: summary.mood,
     averageEnergy: summary.energy,
     averageSleep: summary.sleep,
-    completionRate: summary.completionRate,
+    completionRate: Number(realCompletionRate.toFixed(1)),
     weeklyHighlights: [
       `You tracked ${summary.daysTracked} days of life data this week.`,
       `Average energy is ${summary.energy}/5 and mood is ${summary.mood}/5.`,

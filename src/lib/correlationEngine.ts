@@ -8,6 +8,12 @@ export interface CorrelationResult {
   insightText: string;
   relationship: 'Strong Positive' | 'Moderate Positive' | 'Neutral' | 'Moderate Negative' | 'Strong Negative';
   color: string;
+  /**
+   * HONESTY FLAG: true when the insight is a hardcoded illustrative example
+   * shown before the user has enough real logged data (< 3 days). The UI must
+   * render these with a visible "Sample insight" badge — never as computed fact.
+   */
+  isSimulated: boolean;
 }
 
 /**
@@ -49,6 +55,7 @@ export function analyzeLifeMetricCorrelations(
         insightText: 'Sleeping 7.5+ hours with high quality strongly boosts deep focus duration by up to 35%.',
         relationship: 'Strong Positive',
         color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+        isSimulated: true,
       },
       {
         metricA: 'Physical Exercise',
@@ -58,6 +65,7 @@ export function analyzeLifeMetricCorrelations(
         insightText: 'Days with completed workouts show a +1.8pt boost in evening energy ratings.',
         relationship: 'Strong Positive',
         color: 'text-blue-700 bg-blue-50 border-blue-200',
+        isSimulated: true,
       },
       {
         metricA: 'Stress Level',
@@ -67,6 +75,7 @@ export function analyzeLifeMetricCorrelations(
         insightText: 'Elevated stress (>3.5/5) correlates with delayed task execution. Prioritize break intervals.',
         relationship: 'Moderate Negative',
         color: 'text-amber-700 bg-amber-50 border-amber-200',
+        isSimulated: true,
       },
     ];
   }
@@ -99,6 +108,7 @@ export function analyzeLifeMetricCorrelations(
       relationship:
         r >= 0.6 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.4 ? 'Strong Negative' : 'Neutral',
       color: r >= 0.3 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-slate-700 bg-slate-50 border-slate-200',
+      isSimulated: false,
     });
   }
 
@@ -125,6 +135,7 @@ export function analyzeLifeMetricCorrelations(
           : `Focus time displays balanced energy dynamics (r = ${r}).`,
       relationship: r >= 0.5 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : 'Neutral',
       color: 'text-indigo-700 bg-indigo-50 border-indigo-200',
+      isSimulated: false,
     });
   }
 
@@ -148,6 +159,7 @@ export function analyzeLifeMetricCorrelations(
       insightText: `Hydration (>2.5L) yields an energetic correlation rating of r = ${r > 0 ? '+' : ''}${r}.`,
       relationship: r >= 0.4 ? 'Strong Positive' : 'Moderate Positive',
       color: 'text-sky-700 bg-sky-50 border-sky-200',
+      isSimulated: false,
     });
   }
 
@@ -160,6 +172,7 @@ export function analyzeLifeMetricCorrelations(
       insightText: 'Sleeping 7.5+ hours with high quality strongly boosts deep focus duration.',
       relationship: 'Strong Positive',
       color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+      isSimulated: true,
     },
   ];
 }

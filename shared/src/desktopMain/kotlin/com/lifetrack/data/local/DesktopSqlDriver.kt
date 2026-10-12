@@ -20,6 +20,15 @@ class DesktopSqlDriver(
 
     private val connection: Connection
 
+    /**
+     * STABILITY (G3): a java.sql.Connection is NOT thread-safe, and transaction() flips
+     * autoCommit globally on it. Every operation is serialized through this lock so that
+     * concurrent callers (ViewModel coroutines, sync engine) can never interleave statements
+     * into the wrong transaction. Production wiring additionally confines callers to one
+     * single-threaded dispatcher — this lock is defense in depth.
+     */
+    private val opLock = java.util.concurrent.locks.ReentrantLock()
+
     init {
         dbFile.parentFile?.mkdirs()
         try {
@@ -28,6 +37,9 @@ class DesktopSqlDriver(
             val stmt = conn.createStatement()
             stmt.execute("PRAGMA foreign_keys = ON;")
             stmt.execute("PRAGMA journal_mode = WAL;")
+            // STABILITY (G3): wait instead of failing instantly when the DB file is locked
+            // (second app instance, antivirus scan, backup tool, etc.).
+            stmt.execute("PRAGMA busy_timeout = 5000;")
             stmt.close()
             connection = conn
         } catch (t: Throwable) {
@@ -40,24 +52,31 @@ class DesktopSqlDriver(
     }
 
     override fun execute(sql: String, bindArgs: Array<Any?>) {
-        checkNotClosed()
-        val stmt = connection.prepareStatement(sql)
+        opLock.lock()
         try {
-            for (i in bindArgs.indices) {
-                val arg = bindArgs[i]
-                if (arg == null) {
-                    stmt.setNull(i + 1, java.sql.Types.NULL)
-                } else {
-                    stmt.setObject(i + 1, arg)
+            checkNotClosed()
+            val stmt = connection.prepareStatement(sql)
+            try {
+                for (i in bindArgs.indices) {
+                    val arg = bindArgs[i]
+                    if (arg == null) {
+                        stmt.setNull(i + 1, java.sql.Types.NULL)
+                    } else {
+                        stmt.setObject(i + 1, arg)
+                    }
                 }
+                stmt.execute()
+            } finally {
+                stmt.close()
             }
-            stmt.execute()
         } finally {
-            stmt.close()
+            opLock.unlock()
         }
     }
 
     override fun <T> query(sql: String, bindArgs: Array<Any?>, mapper: (SqlCursor) -> T): List<T> {
+        opLock.lock()
+        try {
         checkNotClosed()
         val stmt = connection.prepareStatement(sql)
         val results = mutableListOf<T>()
@@ -83,21 +102,31 @@ class DesktopSqlDriver(
             stmt.close()
         }
         return results
+        } finally {
+            opLock.unlock()
+        }
     }
 
     override fun <T> transaction(block: () -> T): T {
-        checkNotClosed()
-        val prevAutoCommit = connection.autoCommit
-        connection.autoCommit = false
-        return try {
-            val res = block()
-            connection.commit()
-            res
-        } catch (t: Throwable) {
-            connection.rollback()
-            throw t
+        opLock.lock()
+        try {
+            checkNotClosed()
+            // STABILITY (G3): nested transactions would flip autoCommit back to true in the
+            // inner finally while the outer transaction is still open — fail loudly instead.
+            check(connection.autoCommit) { "Nested transactions are not supported by DesktopSqlDriver." }
+            connection.autoCommit = false
+            return try {
+                val res = block()
+                connection.commit()
+                res
+            } catch (t: Throwable) {
+                connection.rollback()
+                throw t
+            } finally {
+                connection.autoCommit = true
+            }
         } finally {
-            connection.autoCommit = prevAutoCommit
+            opLock.unlock()
         }
     }
 

@@ -9,8 +9,11 @@ import {
   loadLocalData,
   saveLocalData,
   clearLocalData,
-  INITIAL_DATA,
+  getDemoData,
+  EMPTY_USER_DATA,
   createGoogleUserProfile,
+  sanitizeUserAppData,
+  LOCAL_STORAGE_KEY,
 } from './lib/firebase.ts';
 import {
   UserAppData,
@@ -99,8 +102,22 @@ export default function App() {
         const unsubsDoc = subscribeToUserDoc(
           user.uid,
           (cloudData) => {
-            setAppData(cloudData);
-            saveLocalData(cloudData);
+            // Conflict guard: do not clobber local edits.
+            //  - If a debounced cloud save is in flight, this snapshot predates it: skip.
+            //  - If local state is strictly newer, push local up instead of applying remote.
+            if (saveTimerRef.current) return;
+            setAppData((prev) => {
+              const localTs = prev.lastUpdated || 0;
+              const remoteTs = cloudData.lastUpdated || 0;
+              if (localTs > remoteTs) {
+                saveUserDataToCloud(user.uid, prev).catch((err) => {
+                  console.warn('Reconcile push after newer-local snapshot failed:', err);
+                });
+                return prev;
+              }
+              saveLocalData(cloudData);
+              return cloudData;
+            });
           },
           (err) => {
             console.warn('Cloud sync note:', err);
@@ -128,6 +145,10 @@ export default function App() {
         docUnsubscribeRef.current();
         docUnsubscribeRef.current = null;
       }
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
       unsubscribe();
     };
   }, []);
@@ -144,17 +165,46 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Cross-tab consistency (local mode): another tab persisted newer data → adopt it.
+  // Without this, two tabs silently diverge and the last writer wipes the other's edits.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== LOCAL_STORAGE_KEY || !e.newValue) return;
+      if (saveTimerRef.current) return; // this tab has an in-flight local save; do not clobber
+      try {
+        const parsed = JSON.parse(e.newValue);
+        const { data } = sanitizeUserAppData(parsed);
+        setAppData(data);
+      } catch {
+        // Ignore malformed cross-tab payloads; ErrorBoundary + sanitizer protect rendering.
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Storage-quota surfacing: saveLocalData dispatches this when persistence fails.
+  useEffect(() => {
+    const onStorageFull = () => {
+      setSyncNotice('⚠️ Browser storage is full — recent changes are NOT saved. Export a backup in Settings and remove old data.');
+      setTimeout(() => setSyncNotice(null), 8000);
+    };
+    window.addEventListener('lifetrack-storage-full', onStorageFull);
+    return () => window.removeEventListener('lifetrack-storage-full', onStorageFull);
+  }, []);
+
   // 2. Persist data helper (local and cloud)
   const commitAppData = useCallback(
     (updater: (prev: UserAppData) => UserAppData) => {
       setAppData((prev) => {
-        const next = updater(prev);
+        const next = { ...updater(prev), lastUpdated: Date.now() };
         saveLocalData(next);
 
         // Only sync to Firestore cloud if real Firebase Auth session is active
         if (currentUser && auth.currentUser) {
           if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
           saveTimerRef.current = setTimeout(() => {
+            saveTimerRef.current = null; // save no longer pending — remote snapshots may apply again
             saveUserDataToCloud(currentUser.uid, next)
               .then(() => setIsCloudSynced(true))
               .catch((err) => {
@@ -425,14 +475,19 @@ export default function App() {
   };
 
   const handleRestoreData = (restored: UserAppData) => {
-    commitAppData(() => restored);
+    // STABILITY: imported JSON is untrusted input — sanitize before it becomes app state,
+    // otherwise one malformed backup file can crash rendering (previously: white screen).
+    const { data } = sanitizeUserAppData(restored);
+    commitAppData(() => ({ ...data, lastUpdated: Date.now() }));
   };
 
   const handleResetData = () => {
     clearLocalData();
-    commitAppData(() => INITIAL_DATA);
-    setSyncNotice('All local data reset to default template.');
-    setTimeout(() => setSyncNotice(null), 3000);
+    // Reset means EMPTY, not "refill with fictional demo records".
+    // Sample data is available explicitly via Settings → Load Sample Data.
+    commitAppData(() => ({ ...EMPTY_USER_DATA, lastUpdated: Date.now() }));
+    setSyncNotice('All local data cleared. Use "Load Sample Data" in Settings for a demo dataset.');
+    setTimeout(() => setSyncNotice(null), 4000);
   };
 
   // Focus modal helpers
@@ -631,6 +686,11 @@ export default function App() {
             onLogout={handleLogout}
             onRestoreData={handleRestoreData}
             onResetData={handleResetData}
+            onLoadDemoData={() => {
+              commitAppData(() => ({ ...getDemoData(), lastUpdated: Date.now() }));
+              setSyncNotice('Sample data loaded locally. Sign in and sync to keep it.');
+              setTimeout(() => setSyncNotice(null), 3500);
+            }}
             onForceSync={handleForceSync}
             onOpenAuthDomainModal={() => setIsAuthDomainModalOpen(true)}
           />

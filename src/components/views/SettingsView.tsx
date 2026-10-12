@@ -37,6 +37,7 @@ interface SettingsViewProps {
   onLogout: () => void;
   onRestoreData: (data: UserAppData) => void;
   onResetData: () => void;
+  onLoadDemoData?: () => void;
   onForceSync?: () => void;
   onOpenAuthDomainModal?: () => void;
 }
@@ -49,6 +50,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onLogout,
   onRestoreData,
   onResetData,
+  onLoadDemoData,
   onForceSync,
   onOpenAuthDomainModal,
 }) => {
@@ -338,6 +340,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             Import JSON Backup
           </Button>
+
+          {onLoadDemoData && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Database className="w-4 h-4" />}
+              onClick={onLoadDemoData}
+            >
+              Load Sample Data
+            </Button>
+          )}
+
           <input
             type="file"
             ref={fileInputRef}
@@ -370,7 +384,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="pt-2 space-y-3 text-xs">
             <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs space-y-2.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                <span className="text-slate-500 flex items-center gap-1.5">
+                 <span className="text-slate-500 flex items-center gap-1.5">
                   <Database className="w-3.5 h-3.5 text-slate-400" />
                   <span>Target Firestore Database:</span>
                 </span>
@@ -383,7 +397,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
                   <span>Cloud Project ID:</span>
                 </span>
-                <span className="font-mono text-slate-800">galvanic-oarlock-43skh</span>
+                <span className="font-mono text-slate-800">quadratic-chimera-skx2q</span>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                 <span className="text-slate-500 flex items-center gap-1.5">

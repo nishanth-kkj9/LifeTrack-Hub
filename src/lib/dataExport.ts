@@ -16,6 +16,14 @@ export function downloadFile(filename: string, content: string, mimeType: string
 }
 
 /**
+ * SECURITY: neutralize CSV formula injection. Cells starting with = + - @ (or tab/CR)
+ * are executed as formulas by Excel/Sheets; prefixing a single quote forces literal text.
+ */
+function sanitizeCsvCell(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
+/**
  * Converts array of object records to CSV format string
  */
 export function convertToCsv(records: Record<string, any>[]): string {
@@ -32,7 +40,7 @@ export function convertToCsv(records: Record<string, any>[]): string {
       const val = row[header];
       if (val === null || val === undefined) return '""';
       if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
-      return `"${String(val).replace(/"/g, '""')}"`;
+      return `"${sanitizeCsvCell(String(val)).replace(/"/g, '""')}"`;
     });
     csvRows.push(values.join(','));
   });

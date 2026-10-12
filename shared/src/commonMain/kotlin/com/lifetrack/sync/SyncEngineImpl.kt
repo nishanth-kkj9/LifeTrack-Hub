@@ -6,12 +6,15 @@ import com.lifetrack.core.SystemTimeProvider
 import com.lifetrack.core.TimeProvider
 import com.lifetrack.data.local.PersistentTaskLocalDataSource
 import com.lifetrack.data.repository.TaskPayloadSerializer
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Production implementation of the distributed synchronization engine for Android, Desktop, and Web.
@@ -37,12 +40,25 @@ class SyncEngineImpl(
     private val deviceId: String = "local-device",
     private val deviceName: String = "Local Device",
     private val maxRetries: Int = 5,
-    private val inFlightLeaseMs: Long = 60_000L
+    private val inFlightLeaseMs: Long = 60_000L,
+    /**
+     * STABILITY (G2/G3): all engine work runs on this dispatcher. Production wiring passes a
+     * single-threaded dispatcher (Dispatchers.Default.limitedParallelism(1)) SHARED with the
+     * TasksViewModel scope, which serializes every SQLite/HLC access in the process —
+     * StandardHlcClock and DesktopSqlDriver are not internally synchronized.
+     */
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : SyncEngine {
 
     companion object {
         const val CURRENT_PROTOCOL_VERSION: Int = 1
         const val CURRENT_SCHEMA_VERSION: Int = 1
+
+        /**
+         * Cumulative failed-validation attempts allowed for one remote delta before it is
+         * permanently quarantined and the checkpoint advances past it (poison-pill guard).
+         */
+        const val MAX_INVALID_DELTA_ATTEMPTS: Int = 3
     }
 
     private val mutex = Mutex()
@@ -73,7 +89,7 @@ class SyncEngineImpl(
         }
     }
 
-    override suspend fun setOffline(offline: Boolean) {
+    override suspend fun setOffline(offline: Boolean) = withContext(ioDispatcher) {
         mutex.withLock {
             isOfflineMode = offline
             if (offline) {
@@ -94,19 +110,28 @@ class SyncEngineImpl(
         }
     }
 
-    override suspend fun retryFailedRecord(recordId: String) {
+    override suspend fun retryFailedRecord(recordId: String) = withContext(ioDispatcher) {
         syncRepository.retryFailedRecord(recordId)
         val pending = syncRepository.getPendingOutboxRecords().first().size
         _syncStatus.value = _syncStatus.value.copy(pendingOutboxCount = pending)
     }
 
-    override suspend fun retryAllFailed() {
+    override suspend fun retryAllFailed() = withContext(ioDispatcher) {
         syncRepository.retryAllFailed()
         val pending = syncRepository.getPendingOutboxRecords().first().size
         _syncStatus.value = _syncStatus.value.copy(pendingOutboxCount = pending)
     }
 
     override suspend fun triggerSync() {
+        // Confine all engine work to the injected (single-threaded in production) dispatcher.
+        // Body lives in doTriggerSync() because withContext's lambda is crossinline and the
+        // engine uses early returns.
+        withContext(ioDispatcher) {
+            doTriggerSync()
+        }
+    }
+
+    private suspend fun doTriggerSync() {
         mutex.withLock {
             val now = timeProvider.nowEpochMs()
             val pendingCount = syncRepository.getPendingOutboxRecords().first().size
@@ -201,54 +226,37 @@ class SyncEngineImpl(
             var deltaProcessingError: String? = null
 
             for (delta in remoteDeltas) {
-                // Validation 1: Protocol & Schema version compatibility
-                if (delta.protocolVersion > CURRENT_PROTOCOL_VERSION) {
-                    deltaProcessingError = "Unsupported protocol version ${delta.protocolVersion} on event ${delta.id}"
-                    break
-                }
-                if (delta.schemaVersion > CURRENT_SCHEMA_VERSION) {
-                    deltaProcessingError = "Unsupported schema version ${delta.schemaVersion} on event ${delta.id}"
+                // Validation (single source of truth: validateRemoteDelta)
+                val validationError = validateRemoteDelta(delta)
+                if (validationError != null) {
+                    // POISON-PILL GUARD (stability pass): fail-stop at first, but after
+                    // MAX_INVALID_DELTA_ATTEMPTS cumulative attempts, permanently quarantine
+                    // the record and advance the checkpoint past it. Remote deltas are
+                    // immutable (rules forbid update/delete), so without quarantine ONE bad
+                    // record stalls sync on every device forever with no recovery path.
+                    val quarantined = syncRepository.recordInvalidRemoteDelta(
+                        record = delta,
+                        error = validationError,
+                        currentTimeMs = now,
+                        maxAttempts = MAX_INVALID_DELTA_ATTEMPTS
+                    )
+                    if (quarantined) {
+                        // Merge causality when the HLC itself is parseable, then step over.
+                        HlcTimestamp.fromString(delta.hlcTimestamp)?.let { hlcClock.receive(it) }
+                        advancedCheckpoint = SyncCursor(delta.hlcTimestamp, delta.id).toCheckpointString()
+                        deltaProcessingError =
+                            "Quarantined unprocessable delta '${delta.id}' after $MAX_INVALID_DELTA_ATTEMPTS attempts: $validationError"
+                        continue
+                    }
+                    deltaProcessingError = validationError
                     break
                 }
 
-                // Validation 2: Valid HLC format & Redundant Field Verification (Section 9)
                 val remoteHlc = HlcTimestamp.fromString(delta.hlcTimestamp)
                 if (remoteHlc == null) {
+                    // Defensive only — validateRemoteDelta already guaranteed parseability.
                     deltaProcessingError = "Malformed HLC timestamp '${delta.hlcTimestamp}' on event ${delta.id}"
                     break
-                }
-                if (remoteHlc.physicalTimeMs != delta.hlcPhysicalTimeMs ||
-                    remoteHlc.logicalCounter != delta.hlcLogicalCounter ||
-                    remoteHlc.nodeId != delta.hlcNodeId) {
-                    deltaProcessingError = "HLC redundant field mismatch on event ${delta.id}: hlcTimestamp='${delta.hlcTimestamp}' vs fields=(${delta.hlcPhysicalTimeMs}, ${delta.hlcLogicalCounter}, '${delta.hlcNodeId}')"
-                    break
-                }
-
-                // Validation 3: Known operation and entity types
-                if (delta.operation != "UPSERT" && delta.operation != "DELETE") {
-                    deltaProcessingError = "Unknown sync operation '${delta.operation}' on event ${delta.id}"
-                    break
-                }
-                if (delta.entityType != "TASK" && delta.entityType != "SUBTASK") {
-                    deltaProcessingError = "Unknown sync entity type '${delta.entityType}' on event ${delta.id}"
-                    break
-                }
-
-                // Validation 4: Payload deserialization correctness
-                if (delta.operation == "UPSERT") {
-                    if (delta.entityType == "TASK") {
-                        val parsedTask = TaskPayloadSerializer.deserializeTask(delta.payload)
-                        if (parsedTask == null) {
-                            deltaProcessingError = "Malformed task payload on event ${delta.id}"
-                            break
-                        }
-                    } else if (delta.entityType == "SUBTASK") {
-                        val parsedSubtask = TaskPayloadSerializer.deserializeSubtask(delta.payload)
-                        if (parsedSubtask == null) {
-                            deltaProcessingError = "Malformed subtask payload on event ${delta.id}"
-                            break
-                        }
-                    }
                 }
 
                 // Merge causality into local logical clock
@@ -312,6 +320,7 @@ class SyncEngineImpl(
 
             val remainingPending = syncRepository.getPendingOutboxRecords().first().size
             val previousSuccessTime = _syncStatus.value.lastSyncedTimestamp
+            val quarantinedTotal = syncRepository.getQuarantinedCount()
 
             if (deltaProcessingError != null) {
                 _syncStatus.value = SyncStatus(
@@ -320,7 +329,8 @@ class SyncEngineImpl(
                     pendingOutboxCount = remainingPending,
                     activeDeviceName = deviceName,
                     lastCheckpointHlc = advancedCheckpoint,
-                    errorMessage = deltaProcessingError
+                    errorMessage = deltaProcessingError,
+                    quarantinedCount = quarantinedTotal
                 )
             } else {
                 _syncStatus.value = SyncStatus(
@@ -329,10 +339,48 @@ class SyncEngineImpl(
                     pendingOutboxCount = remainingPending,
                     activeDeviceName = deviceName,
                     lastCheckpointHlc = advancedCheckpoint,
-                    errorMessage = null
+                    errorMessage = null,
+                    quarantinedCount = quarantinedTotal
                 )
             }
         }
+    }
+
+    /**
+     * Consolidated remote-delta validation. Returns a human-readable error when the delta
+     * cannot be safely processed, or null when it passes every contract check
+     * (protocol/schema version bounds, HLC format + redundant-field consistency,
+     * known operation/entity types, payload deserialization).
+     */
+    private fun validateRemoteDelta(delta: SyncRecord): String? {
+        if (delta.protocolVersion > CURRENT_PROTOCOL_VERSION) {
+            return "Unsupported protocol version ${delta.protocolVersion} on event ${delta.id}"
+        }
+        if (delta.schemaVersion > CURRENT_SCHEMA_VERSION) {
+            return "Unsupported schema version ${delta.schemaVersion} on event ${delta.id}"
+        }
+        val remoteHlc = HlcTimestamp.fromString(delta.hlcTimestamp)
+            ?: return "Malformed HLC timestamp '${delta.hlcTimestamp}' on event ${delta.id}"
+        if (remoteHlc.physicalTimeMs != delta.hlcPhysicalTimeMs ||
+            remoteHlc.logicalCounter != delta.hlcLogicalCounter ||
+            remoteHlc.nodeId != delta.hlcNodeId) {
+            return "HLC redundant field mismatch on event ${delta.id}: hlcTimestamp='${delta.hlcTimestamp}' vs fields=(${delta.hlcPhysicalTimeMs}, ${delta.hlcLogicalCounter}, '${delta.hlcNodeId}')"
+        }
+        if (delta.operation != "UPSERT" && delta.operation != "DELETE") {
+            return "Unknown sync operation '${delta.operation}' on event ${delta.id}"
+        }
+        if (delta.entityType != "TASK" && delta.entityType != "SUBTASK") {
+            return "Unknown sync entity type '${delta.entityType}' on event ${delta.id}"
+        }
+        if (delta.operation == "UPSERT") {
+            if (delta.entityType == "TASK" && TaskPayloadSerializer.deserializeTask(delta.payload) == null) {
+                return "Malformed task payload on event ${delta.id}"
+            }
+            if (delta.entityType == "SUBTASK" && TaskPayloadSerializer.deserializeSubtask(delta.payload) == null) {
+                return "Malformed subtask payload on event ${delta.id}"
+            }
+        }
+        return null
     }
 }
 

@@ -16,9 +16,6 @@ import com.lifetrack.domain.model.TaskCategory
 import com.lifetrack.domain.model.TaskPriority
 import com.lifetrack.domain.model.TaskStatus
 import com.lifetrack.sync.AuthSessionProvider
-import com.lifetrack.sync.DesktopFirebaseAuthSessionProvider
-import com.lifetrack.sync.DesktopFirestoreRestTransport
-import com.lifetrack.sync.FirebaseConfig
 import com.lifetrack.sync.InMemoryRemoteDeltaStore
 import com.lifetrack.sync.PersistentSyncRepository
 import com.lifetrack.sync.RemoteSyncTransport
@@ -35,13 +32,37 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/**
+ * Injectable AuthSessionProvider stub.
+ *
+ * NOTE (stability pass): this file previously referenced a fictional
+ * sync-package auth provider constructor (currentUserUid / currentIdToken / tokenRefresher)
+ * that does not exist — the real DesktopFirebaseAuthSessionProvider lives in com.lifetrack.auth
+ * and performs live REST authentication. desktopTest therefore never compiled. These tests
+ * target transport/engine behavior, so a stub is the correct fixture.
+ */
+private class StubAuthSessionProvider(
+    private val currentUserUid: String? = null,
+    private var currentIdToken: String? = null,
+    private val tokenRefresher: ((forceRefresh: Boolean) -> String?)? = null
+) : com.lifetrack.sync.AuthSessionProvider {
+    override fun getCurrentUserUid(): String? = currentUserUid
+    override fun getIdTokenSync(): String? = currentIdToken
+    override suspend fun getIdToken(forceRefresh: Boolean): String? {
+        if (forceRefresh && tokenRefresher != null) {
+            currentIdToken = tokenRefresher?.invoke(forceRefresh)
+        }
+        return currentIdToken
+    }
+}
+
 class RealFirestoreTransportProductionTest {
 
     private val timeProvider = TestTimeProvider(1720000000000L)
 
     @Test
     fun testAuthenticatedPushAndPullSuccess() = runTest {
-        val authProvider = DesktopFirebaseAuthSessionProvider(
+        val authProvider = StubAuthSessionProvider(
             currentUserUid = "user_prod_123",
             currentIdToken = "valid_token_xyz"
         )
@@ -84,7 +105,7 @@ class RealFirestoreTransportProductionTest {
 
     @Test
     fun testUnauthenticatedPushThrowsCleanly() = runTest {
-        val authProvider = DesktopFirebaseAuthSessionProvider() // null uid & token
+        val authProvider = StubAuthSessionProvider() // null uid & token
         val transport = object : RemoteSyncTransport {
             override suspend fun pushRecords(records: List<SyncRecord>): List<String> {
                 val uid = authProvider.getCurrentUserUid() ?: throw IllegalStateException("Cannot push: Unauthenticated")
@@ -197,14 +218,16 @@ class RealFirestoreTransportProductionTest {
 
         syncEngine.triggerSync()
 
-        assertEquals("1720000002000:0:remote", syncRepo.getSyncCheckpoint("nodeA"))
+        // Checkpoint format is "hlc|eventId" (SyncCursor.toCheckpointString) — the eventId
+        // component disambiguates pagination when several deltas share one HLC.
+        assertEquals("1720000002000:0:remote|evt-2", syncRepo.getSyncCheckpoint("nodeA"))
         assertEquals(2, localDataSource.observeTasks().first().size)
     }
 
     @Test
     fun testAuthTokenExpirationAndRecovery() = runTest {
         var callCount = 0
-        val authProvider = DesktopFirebaseAuthSessionProvider(
+        val authProvider = StubAuthSessionProvider(
             currentUserUid = "user_exp_1",
             currentIdToken = "expired_token",
             tokenRefresher = { forceRefresh ->
@@ -287,7 +310,7 @@ class RealFirestoreTransportProductionTest {
             override suspend fun pullRecords(sinceHlc: String?): List<SyncRecord> =
                 sharedRemoteStore.fetchDeltas(uid, sinceHlc)
         }
-        val syncEngineA = SyncEngineImpl(syncRepoA, localA, transportA, hlcA, timeA, "deviceA")
+        val syncEngineA = SyncEngineImpl(syncRepoA, localA, transportA, hlcA, timeA, deviceId = "deviceA")
 
         // Device B setup
         val driverB = MemorySqlDriver()
@@ -306,7 +329,7 @@ class RealFirestoreTransportProductionTest {
             override suspend fun pullRecords(sinceHlc: String?): List<SyncRecord> =
                 sharedRemoteStore.fetchDeltas(uid, sinceHlc)
         }
-        val syncEngineB = SyncEngineImpl(syncRepoB, localB, transportB, hlcB, timeB, "deviceB")
+        val syncEngineB = SyncEngineImpl(syncRepoB, localB, transportB, hlcB, timeB, deviceId = "deviceB")
 
         // Step 1: Device A creates task
         val taskA = taskRepoA.saveTask(

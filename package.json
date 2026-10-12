@@ -10,11 +10,12 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx test/browser_ui_workflows.test.ts && tsx test/api_router_robustness.test.ts && tsx test/firestore.rules.emulator.test.ts",
+    "test": "tsx test/browser_ui_workflows.test.ts && tsx test/api_router_robustness.test.ts && tsx test/firestore.rules.emulator.test.ts && tsx test/stability_corrupted_data.test.ts && tsx test/stability_gemini_timeout.test.ts",
     "test:ui": "tsx test/browser_ui_workflows.test.ts",
     "test:api": "tsx test/api_router_robustness.test.ts",
     "test:rules": "tsx test/firestore.rules.emulator.test.ts",
-    "test:firebase": "firebase emulators:exec --only firestore 'tsx test/firestore.rules.emulator.test.ts'"
+    "test:firebase": "firebase emulators:exec --only firestore 'tsx test/firestore.rules.emulator.test.ts'",
+    "test:stability": "tsx test/stability_corrupted_data.test.ts && tsx test/stability_gemini_timeout.test.ts"
   },
   "engines": {
     "node": ">=20.19.0"

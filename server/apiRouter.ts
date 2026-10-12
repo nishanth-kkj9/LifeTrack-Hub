@@ -58,6 +58,24 @@ function rateLimiter(req: Request, res: Response, next: NextFunction) {
 
 apiRouter.use(rateLimiter);
 
+// STABILITY: Gemini calls previously had NO timeout — a hung upstream would keep
+// sockets and request handlers pinned indefinitely. Every model call is now bounded;
+// on timeout the endpoint falls through to its deterministic heuristic fallback.
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 30_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    if (typeof timer.unref === 'function') timer.unref();
+  });
+  try {
+    return await Promise.race([promise, guard]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -177,10 +195,10 @@ Respond ONLY with a valid JSON array of objects with the exact schema:
 ]
 Do not wrap in markdown quotes or codeblocks.`;
 
-      const response = await ai.models.generateContent({
+      const response = await withTimeout(ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-      });
+      }), GEMINI_TIMEOUT_MS, 'gemini.generateContent');
 
       let rawText = response.text || '';
       rawText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -246,10 +264,10 @@ Provide a concise, highly practical financial diagnosis in valid JSON with:
 }
 Ensure output is clean JSON only.`;
 
-      const response = await ai.models.generateContent({
+      const response = await withTimeout(ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-      });
+      }), GEMINI_TIMEOUT_MS, 'gemini.generateContent');
 
       let rawText = response.text || '';
       rawText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -352,13 +370,13 @@ Provide an actionable, structured exam study roadmap including:
 3. Recommended authoritative study resources / references
 4. A countdown revision strategy (spaced repetition advice)`;
 
-      const response = await ai.models.generateContent({
+      const response = await withTimeout(ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
         },
-      });
+      }), GEMINI_TIMEOUT_MS, 'gemini.generateContent');
 
       const guide = response.text || 'Study guide generated successfully.';
       const searchChunks = (response.candidates?.[0]?.groundingMetadata as any)?.groundingChunks || [];
@@ -377,7 +395,11 @@ Provide an actionable, structured exam study roadmap including:
 
     const topicList = safeTopics.length > 0 ? safeTopics.join(', ') : 'Core modules and foundational theories';
     return res.json({
+      // HONEST FALLBACK: AI service unavailable — this is a static template, NOT research.
+      // `sources` is intentionally empty: fabricating grounding links is worse than none.
+      isFallbackTemplate: true,
       guide:
+        `> ⚠️ **Offline template** — the AI research service was unavailable, so this is a generic revision blueprint (no live sources).\n\n` +
         `### Comprehensive Revision Blueprint: ${safeSubject}\n\n` +
         `**Target Goal:** ${safeTargetGrade} | **Exam Timeline:** ${safeExamDate}\n\n` +
         `#### 1. High-Yield Focus Modules\n` +
@@ -391,10 +413,7 @@ Provide an actionable, structured exam study roadmap including:
         `- **Days 3-4:** Problem solving, code/circuit trace, and formula drill.\n` +
         `- **Days 5-6:** Full mock test review and CIE mark gap remediation.\n` +
         `- **Day 7:** Lightweight review, formula sheet glance, and rest.`,
-      sources: [
-        { title: 'VTU Model Question Papers & Scheme', uri: 'https://vtu.ac.in/model-question-paper' },
-        { title: 'VTU CBCS Syllabus Portal', uri: 'https://vtu.ac.in/cbcs-syllabus' },
-      ],
+      sources: [],
     });
   } catch (outerErr: any) {
     console.error('Unhandled error in /gemini/study-guide:', outerErr);
@@ -463,10 +482,10 @@ Provide a deep, multi-phase master action plan:
 3. **Daily Rhythm & Energy Management**: Time blocks for deep work, habit maintenance, and cognitive recovery.
 4. **Quick Administrative Wins**: Fast 10-minute tasks to remove mental friction.`;
 
-      const response = await ai.models.generateContent({
+      const response = await withTimeout(ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-      });
+      }), GEMINI_TIMEOUT_MS, 'gemini.generateContent');
 
       if (response.text) {
         return res.json({ plan: response.text });
@@ -479,7 +498,10 @@ Provide a deep, multi-phase master action plan:
     const examCount = safeExams.length;
 
     return res.json({
+      // HONEST FALLBACK: static template plan generated without AI.
+      isFallbackTemplate: true,
       plan:
+        `> ⚠️ **Offline template plan** — generated without the AI planner service.\n\n` +
         `### Executive Action Plan & Focus Roadmap\n\n` +
         `**Current Workload:** ${activeTaskCount} pending tasks | ${examCount} scheduled examinations\n\n` +
         `#### 1. Critical Path & Immediate Triage (Next 24 Hours)\n` +
@@ -568,10 +590,10 @@ Extract and return ONLY a valid JSON object matching this schema:
 }
 If marks or data are not present in the input text, DO NOT fabricate them. Ensure output is strict valid JSON without code blocks.`;
 
-      const response = await ai.models.generateContent({
+      const response = await withTimeout(ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-      });
+      }), GEMINI_TIMEOUT_MS, 'gemini.generateContent');
 
       let textOut = response.text || '';
       textOut = textOut.replace(/```json/gi, '').replace(/```/g, '').trim();
