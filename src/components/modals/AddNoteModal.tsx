@@ -100,8 +100,10 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="Formulas">Formulas & Math</option>
-              <option value="Finance">Finance Rules</option>
-              <option value="Study">Study Key Points</option>
+              <option value="Study">Study & Exams</option>
+              <option value="Ideas">Ideas & Concepts</option>
+              <option value="Checklist">Checklists</option>
+              <option value="Finance">Finance & Life</option>
               <option value="General">General / Scratchpad</option>
             </select>
           </div>

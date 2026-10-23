@@ -12,6 +12,8 @@ import {
   ArrowRight,
   Sparkles,
   BookOpen,
+  CheckSquare,
+  Wallet,
 } from 'lucide-react';
 import { Task, ExamReminder, Habit, Transaction, BudgetSettings, VtuProfile, DailyLifeMetric } from '../../types/index.ts';
 import { QuickAddBar } from '../todo/QuickAddBar.tsx';
@@ -299,6 +301,98 @@ export const TodayView: React.FC<TodayViewProps> = ({
         </div>
       </div>
 
+      {/* Executive Metric Cards Strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+        <div
+          onClick={() => onNavigateTab('tasks')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Tasks Due</span>
+            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 group-hover:scale-105 transition-transform">
+              <CheckSquare className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+              {allRemainingToday.length}
+            </span>
+            <span className="text-xs text-slate-500">
+              {completedTodayTasks.length > 0 ? `(${completedTodayTasks.length} done)` : 'remaining'}
+            </span>
+          </div>
+        </div>
+
+        <div
+          onClick={() => onNavigateTab('habits')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Habits Kept</span>
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600 group-hover:scale-105 transition-transform">
+              <Flame className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+              {habitsDoneTodayCount}
+            </span>
+            <span className="text-xs text-slate-500">of {habits.length} target</span>
+          </div>
+        </div>
+
+        <div
+          onClick={() => onNavigateTab('calendar')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Day Velocity</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:scale-105 transition-transform">
+              <CheckCircle2 className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tabular-nums text-emerald-600">
+              {dayProgressPercent}%
+            </span>
+            <span className="text-xs text-slate-500">day clear</span>
+          </div>
+        </div>
+
+        <div
+          onClick={() => onNavigateTab(nextExam ? 'academics' : 'finances')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">
+              {nextExam ? 'Next Exam' : 'Monthly Cash'}
+            </span>
+            <span className={`p-1.5 rounded-lg ${nextExam ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'} group-hover:scale-105 transition-transform`}>
+              {nextExam ? <GraduationCap className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            {nextExam ? (
+              <>
+                <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+                  {examDaysLeft === 0 ? 'Today' : `${examDaysLeft}d`}
+                </span>
+                <span className="text-xs text-slate-500 truncate max-w-[90px]">
+                  {nextExam.subject}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+                  Healthy
+                </span>
+                <span className="text-xs text-slate-500">on budget</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* 2. Quick Add Bar */}
       <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors">
         <QuickAddBar
@@ -572,12 +666,13 @@ export const TodayView: React.FC<TodayViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100/80 text-amber-800">
+                      <div className="flex items-center gap-2 shrink-0 text-xs font-mono tabular-nums">
+                        <span className="text-slate-600 font-semibold">
                           {score.currentStrength}%
                         </span>
-                        <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-700">
-                          <Flame className="w-3 h-3 fill-amber-500 text-amber-500" />
+                        <span aria-hidden="true" className="text-slate-300">·</span>
+                        <div className="flex items-center gap-1 font-semibold text-amber-700">
+                          <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
                           <span>{habit.streak || 0}d</span>
                         </div>
                       </div>

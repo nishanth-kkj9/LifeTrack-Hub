@@ -60,147 +60,89 @@ export function LifeInsightsPanel({
   );
 
   return (
-    <div className={className} style={{ display: 'grid', gap: 20 }}>
+    <div className={`space-y-4 ${className}`}>
       {/* Weekly Summary Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            background: 'rgba(139, 92, 246, 0.1)',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
-            borderRadius: 12,
-            padding: 14,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 6 }}>Habits</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#8b5cf6' }}>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
+          <div className="text-[11px] font-medium text-slate-400">Habits</div>
+          <div className="text-2xl font-bold font-mono tabular-nums text-purple-400 mt-1">
             {summary.totalHabits}
           </div>
-          <div style={{ fontSize: 9, opacity: 0.5, marginTop: 4 }}>Active</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Active</div>
         </div>
 
-        <div
-          style={{
-            background: 'rgba(34, 197, 94, 0.1)',
-            border: '1px solid rgba(34, 197, 94, 0.3)',
-            borderRadius: 12,
-            padding: 14,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 6 }}>Completion</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#22c55e' }}>
+        <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
+          <div className="text-[11px] font-medium text-slate-400">Completion</div>
+          <div className="text-2xl font-bold font-mono tabular-nums text-emerald-400 mt-1">
             {summary.completionRate.toFixed(0)}%
           </div>
-          <div style={{ fontSize: 9, opacity: 0.5, marginTop: 4 }}>Weekly</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Weekly</div>
         </div>
 
-        <div
-          style={{
-            background: 'rgba(245, 158, 11, 0.1)',
-            border: '1px solid rgba(245, 158, 11, 0.3)',
-            borderRadius: 12,
-            padding: 14,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 6 }}>Mood</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#f59e0b' }}>
+        <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
+          <div className="text-[11px] font-medium text-slate-400">Mood</div>
+          <div className="text-2xl font-bold font-mono tabular-nums text-amber-400 mt-1">
             {summary.averageMood.toFixed(1)}/5
           </div>
-          <div style={{ fontSize: 9, opacity: 0.5, marginTop: 4 }}>Avg</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
         </div>
 
-        <div
-          style={{
-            background: 'rgba(6, 182, 212, 0.1)',
-            border: '1px solid rgba(6, 182, 212, 0.3)',
-            borderRadius: 12,
-            padding: 14,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 6 }}>Energy</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#06b6d4' }}>
+        <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
+          <div className="text-[11px] font-medium text-slate-400">Energy</div>
+          <div className="text-2xl font-bold font-mono tabular-nums text-cyan-400 mt-1">
             {summary.averageEnergy.toFixed(1)}/5
           </div>
-          <div style={{ fontSize: 9, opacity: 0.5, marginTop: 4 }}>Avg</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
         </div>
 
-        <div
-          style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: 12,
-            padding: 14,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 6 }}>Sleep</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444' }}>
+        <div className="col-span-2 sm:col-span-1 bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
+          <div className="text-[11px] font-medium text-slate-400">Sleep</div>
+          <div className="text-2xl font-bold font-mono tabular-nums text-rose-400 mt-1">
             {summary.averageSleep.toFixed(1)}h
           </div>
-          <div style={{ fontSize: 9, opacity: 0.5, marginTop: 4 }}>Avg</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
         </div>
       </div>
 
       {/* Insights Section */}
-      <div
-        style={{
-          background: 'rgba(15, 23, 42, 0.6)',
-          border: '1px solid rgba(148, 163, 184, 0.2)',
-          borderRadius: 14,
-          padding: 18,
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>📊 This Week's Insights</div>
-        <div style={{ display: 'grid', gap: 10 }}>
+      <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+        <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
+          Weekly Correlations & Recommendations
+        </h3>
+        <div className="space-y-2">
           {insights.length ? (
             insights.map((insight, idx) => (
               <div
                 key={`insight-${idx}`}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: 8,
-                  padding: 12,
-                  fontSize: 12,
-                  lineHeight: '1.5',
-                }}
+                className="bg-slate-900/60 border border-slate-700/60 rounded-lg p-3 text-xs text-slate-300 leading-relaxed"
               >
                 {insight}
               </div>
             ))
           ) : (
-            <div style={{ opacity: 0.6, fontSize: 12 }}>Track more data to see personalized insights</div>
+            <p className="text-xs text-slate-400 py-1">
+              Track more daily habits and logs to generate personalized correlations.
+            </p>
           )}
         </div>
       </div>
 
       {/* Highlights */}
-      <div
-        style={{
-          background: 'rgba(15, 23, 42, 0.6)',
-          border: '1px solid rgba(148, 163, 184, 0.2)',
-          borderRadius: 14,
-          padding: 18,
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>✨ Weekly Highlights</div>
-        <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 8 }}>
-          {summary.weeklyHighlights.map((highlight, idx) => (
-            <li key={`highlight-${idx}`} style={{ fontSize: 12, opacity: 0.85 }}>
-              {highlight}
-            </li>
-          ))}
-        </ul>
-      </div>
+      {summary.weeklyHighlights && summary.weeklyHighlights.length > 0 && (
+        <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+          <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2.5">
+            Key Highlights
+          </h3>
+          <ul className="space-y-1.5 text-xs text-slate-300">
+            {summary.weeklyHighlights.map((highlight, idx) => (
+              <li key={`highlight-${idx}`} className="flex items-start gap-2">
+                <span className="text-purple-400 shrink-0 font-bold">·</span>
+                <span>{highlight}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
