@@ -254,6 +254,48 @@ class PersistentSyncRepository(
         }
     }
 
+    override suspend fun recordInvalidRemoteDelta(
+        record: SyncRecord,
+        error: String,
+        currentTimeMs: Long,
+        maxAttempts: Int
+    ): Boolean = mutex.withLock {
+        val existingAttempts = driver.query(
+            "SELECT attempt_count FROM sync_quarantine WHERE delta_id = ?;",
+            arrayOf(record.id)
+        ) { cursor -> cursor.getInt(0) ?: 1 }.firstOrNull()
+
+        if (existingAttempts == null) {
+            driver.execute(
+                """
+                INSERT INTO sync_quarantine (
+                    delta_id, entity_id, entity_type, payload, failure_reason,
+                    attempt_count, first_seen_ms, last_seen_ms
+                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?);
+                """.trimIndent(),
+                arrayOf(record.id, record.entityId, record.entityType, record.payload, error, currentTimeMs, currentTimeMs)
+            )
+            maxAttempts <= 1
+        } else {
+            val newAttempts = existingAttempts + 1
+            driver.execute(
+                """
+                UPDATE sync_quarantine
+                SET attempt_count = ?, failure_reason = ?, last_seen_ms = ?
+                WHERE delta_id = ?;
+                """.trimIndent(),
+                arrayOf(newAttempts, error, currentTimeMs, record.id)
+            )
+            newAttempts >= maxAttempts
+        }
+    }
+
+    override suspend fun getQuarantinedCount(): Int = mutex.withLock {
+        driver.query("SELECT COUNT(*) FROM sync_quarantine;") { cursor ->
+            cursor.getInt(0) ?: 0
+        }.firstOrNull() ?: 0
+    }
+
     private fun refreshFlow() {
         pendingOutboxFlow.value = queryPendingRecords()
     }

@@ -535,8 +535,8 @@ export function subscribeToUserDoc(
     userRef,
     (snapshot) => {
       if (snapshot.exists()) {
-        const cloudData = snapshot.data() as UserAppData;
-        onUpdate(cloudData);
+        const { data: sanitizedCloudData } = sanitizeUserAppData(snapshot.data());
+        onUpdate(sanitizedCloudData);
       } else {
         // First time cloud user: if local storage has explicit user data, migrate it;
         // otherwise initialize a clean user account without injecting mock demo records into cloud.

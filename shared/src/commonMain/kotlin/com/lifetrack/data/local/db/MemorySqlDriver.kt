@@ -252,6 +252,32 @@ class MemorySqlDriver : SqlDriver {
                     "last_error" to bindArgs.getOrNull(3)
                 )
             }
+            upper.startsWith("INSERT INTO SYNC_QUARANTINE") || upper.startsWith("INSERT OR REPLACE INTO SYNC_QUARANTINE") -> {
+                val table = tables.getOrPut("sync_quarantine") { mutableMapOf() }
+                val deltaId = bindArgs[0]?.toString() ?: return
+                table[deltaId] = mutableMapOf(
+                    "delta_id" to bindArgs.getOrNull(0),
+                    "entity_id" to bindArgs.getOrNull(1),
+                    "entity_type" to bindArgs.getOrNull(2),
+                    "payload" to bindArgs.getOrNull(3),
+                    "failure_reason" to bindArgs.getOrNull(4),
+                    "attempt_count" to (bindArgs.getOrNull(5) ?: 1),
+                    "first_seen_ms" to bindArgs.getOrNull(6),
+                    "last_seen_ms" to bindArgs.getOrNull(7)
+                )
+            }
+            upper.startsWith("UPDATE SYNC_QUARANTINE") -> {
+                val table = tables.getOrPut("sync_quarantine") { mutableMapOf() }
+                val attempts = bindArgs.getOrNull(0)
+                val reason = bindArgs.getOrNull(1)
+                val lastSeen = bindArgs.getOrNull(2)
+                val deltaId = bindArgs.getOrNull(3)?.toString() ?: return
+                table[deltaId]?.let {
+                    it["attempt_count"] = attempts
+                    it["failure_reason"] = reason
+                    it["last_seen_ms"] = lastSeen
+                }
+            }
             upper.startsWith("INSERT OR REPLACE INTO ENTITY_SYNC_METADATA") || upper.startsWith("INSERT INTO ENTITY_SYNC_METADATA") -> {
                 val table = tables.getOrPut("entity_sync_metadata") { mutableMapOf() }
                 val type = bindArgs[0]?.toString() ?: return
@@ -481,6 +507,36 @@ class MemorySqlDriver : SqlDriver {
                     val cursor = MemoryCursor(listOf(values))
                     while (cursor.next()) {
                         results.add(mapper(cursor))
+                    }
+                }
+            }
+            upper.contains("FROM SYNC_QUARANTINE") -> {
+                val quarantineTable = tables["sync_quarantine"] ?: emptyMap()
+                if (upper.contains("SELECT COUNT(*) FROM SYNC_QUARANTINE") || upper.contains("COUNT(*)")) {
+                    val cursor = MemoryCursor(listOf(listOf(quarantineTable.size)))
+                    while (cursor.next()) {
+                        results.add(mapper(cursor))
+                    }
+                } else if (upper.contains("ATTEMPT_COUNT")) {
+                    val deltaId = bindArgs.getOrNull(0)?.toString()
+                    val row = if (deltaId != null) quarantineTable[deltaId] else quarantineTable.values.firstOrNull()
+                    if (row != null) {
+                        val cursor = MemoryCursor(listOf(listOf(row["attempt_count"])))
+                        while (cursor.next()) {
+                            results.add(mapper(cursor))
+                        }
+                    }
+                } else {
+                    for (row in quarantineTable.values) {
+                        val values = listOf(
+                            row["delta_id"], row["entity_id"], row["entity_type"],
+                            row["payload"], row["failure_reason"], row["attempt_count"],
+                            row["first_seen_ms"], row["last_seen_ms"]
+                        )
+                        val cursor = MemoryCursor(listOf(values))
+                        while (cursor.next()) {
+                            results.add(mapper(cursor))
+                        }
                     }
                 }
             }

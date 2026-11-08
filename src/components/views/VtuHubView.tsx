@@ -34,6 +34,8 @@ import {
   VtuSemesterData,
   VtuGradeLetter,
   EduStudentRecord,
+  EducationLevel,
+  GradingSystem,
 } from '../../types/index.ts';
 import {
   VTU_GRADES,
@@ -51,6 +53,8 @@ import {
   parseVtuResultText,
   DecodedUsn,
   getEduStudentRecord,
+  EDUCATION_LEVEL_CONFIGS,
+  getDefaultSubjectsForLevel,
 } from '../../lib/vtuData.ts';
 import { VtuSyncSection } from '../vtu/VtuSyncSection.tsx';
 
@@ -65,7 +69,7 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
   onUpdateVtuProfile,
   onAddExamFromSubject,
 }) => {
-  const [activeSection, setActiveSection] = useState<'vtu-sync' | 'calculator' | 'attendance' | 'marks-predictor' | 'usn-lookup' | 'resources'>('vtu-sync');
+  const [activeSection, setActiveSection] = useState<'vtu-sync' | 'calculator' | 'attendance' | 'marks-predictor' | 'usn-lookup' | 'resources'>('calculator');
   const [selectedSemester, setSelectedSemester] = useState<number>(vtuProfile.currentSemester || 3);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempUsn, setTempUsn] = useState(vtuProfile.usn);
@@ -99,12 +103,16 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
   const [newSubName, setNewSubName] = useState('');
   const [newSubCredits, setNewSubCredits] = useState('4');
 
-  // Find or initialize semester data
+  // Education Level / Student Category state
+  const currentLevel: EducationLevel = vtuProfile.educationLevel || 'university';
+  const levelConfig = EDUCATION_LEVEL_CONFIGS[currentLevel];
+
+  // Find or initialize semester/term data
   const currentSemData = vtuProfile.semesters.find((s) => s.semesterNumber === selectedSemester) || {
     semesterNumber: selectedSemester,
     scheme: vtuProfile.scheme,
     branch: vtuProfile.branch,
-    subjects: getDefaultVtuSubjectsForSemester(selectedSemester, vtuProfile.branch),
+    subjects: getDefaultSubjectsForLevel(currentLevel, selectedSemester),
     sgpa: 0,
     totalCredits: 0,
   };
@@ -169,7 +177,7 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
   };
 
   const handleResetToDefaults = () => {
-    const defaults = getDefaultVtuSubjectsForSemester(selectedSemester, vtuProfile.branch);
+    const defaults = getDefaultSubjectsForLevel(currentLevel, selectedSemester);
     saveSemesterSubjects(defaults);
   };
 
@@ -396,7 +404,7 @@ BCS301	Mathematics for Computer Science	45	42	87	P
   return (
     <div className="space-y-6 pb-12">
       {/* Top Banner & Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-7 shadow-sm relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 opacity-10 pointer-events-none flex items-center pr-8">
           <GraduationCap className="w-64 h-64 text-indigo-200" />
         </div>
@@ -405,39 +413,39 @@ BCS301	Mathematics for Computer Science	45	42	87	P
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-300 font-bold text-xs border border-indigo-400/30 tracking-wide uppercase">
-                VTU CBCS NEP Hub
+                Academic Performance & CBCS
               </span>
               <span className="text-xs text-slate-400">
-                Visvesvaraya Technological University
+                Grade & Credit Management
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              VTU Engineering Student Suite
+              Academic Grade & Performance Suite
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">
-              Official VTU SGPA & CGPA calculation, 85% attendance bunk monitor, and CIE to SEE exam target forecasting.
+              Real-time SGPA & CGPA tracking, 85% attendance bunk planner, and target grade forecasting.
             </p>
 
             {/* Quick Profile Chips */}
             <div className="flex flex-wrap items-center gap-2 mt-4 text-xs">
+              <div className="px-3 py-1.5 rounded-xl bg-indigo-900/60 border border-indigo-500/40 flex items-center gap-1.5">
+                <span className="text-indigo-300 font-medium">Level:</span>
+                <span className="font-bold text-white">{levelConfig.label.split('(')[0].trim()}</span>
+              </div>
               <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">USN:</span>
+                <span className="text-slate-400 font-medium">{levelConfig.idLabel}:</span>
                 <span className="font-bold text-indigo-300">{vtuProfile.usn || 'Not Set'}</span>
               </div>
               <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Scheme:</span>
-                <span className="font-bold text-white">{vtuProfile.scheme} Scheme</span>
-              </div>
-              <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Branch:</span>
-                <span className="font-bold text-white truncate max-w-[180px]">{vtuProfile.branch}</span>
+                <span className="text-slate-400 font-medium">Stream/Grade:</span>
+                <span className="font-bold text-white truncate max-w-[180px]">{vtuProfile.branch || levelConfig.sampleStream}</span>
               </div>
               <button
                 id="vtu-edit-profile-toggle-btn"
                 onClick={() => setIsEditingProfile(!isEditingProfile)}
                 className="px-2.5 py-1.5 rounded-xl bg-indigo-600/60 hover:bg-indigo-600 text-white font-medium text-xs transition cursor-pointer"
               >
-                {isEditingProfile ? 'Close Settings' : 'Edit USN & Scheme'}
+                {isEditingProfile ? 'Close Settings' : 'Switch Student Level & Details'}
               </button>
             </div>
           </div>
@@ -445,13 +453,19 @@ BCS301	Mathematics for Computer Science	45	42	87	P
           {/* Cumulative CGPA & Class Hero Card */}
           <div className="shrink-0 bg-slate-800/80 backdrop-blur-sm border border-slate-700 rounded-2xl p-5 text-center min-w-[220px]">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Cumulative CGPA
+              {currentLevel === 'primary' || currentLevel === 'middle_school' || currentLevel === 'high_school'
+                ? 'Average Score / Marks'
+                : 'Cumulative CGPA'}
             </span>
             <div className="text-3xl font-extrabold text-white mt-1">
-              {cumulativeCgpa > 0 ? cumulativeCgpa.toFixed(2) : '—'}
+              {currentLevel === 'primary' || currentLevel === 'middle_school' || currentLevel === 'high_school'
+                ? `${equivalentPercentage > 0 ? equivalentPercentage.toFixed(1) : '—'}%`
+                : cumulativeCgpa > 0 ? cumulativeCgpa.toFixed(2) : '—'}
             </div>
             <div className="text-xs text-indigo-300 font-semibold mt-0.5">
-              ≈ {equivalentPercentage}% (VTU Official)
+              {currentLevel === 'university'
+                ? `≈ ${equivalentPercentage}% (University Metric)`
+                : `Target: ${tempTargetCgpa}%`}
             </div>
             <div className="mt-2.5">
               <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${vtuClass.badgeColor}`}>
@@ -463,108 +477,207 @@ BCS301	Mathematics for Computer Science	45	42	87	P
 
         {/* Profile Settings Drawer (Inline) */}
         {isEditingProfile && (
-          <div className="mt-6 pt-6 border-t border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="mt-6 pt-6 border-t border-slate-700/80 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Your USN</label>
-              <input
-                id="vtu-usn-input"
-                type="text"
-                value={tempUsn}
-                onChange={(e) => setTempUsn(e.target.value)}
-                placeholder="e.g. 1MS22CS084"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              <label className="block text-xs font-bold text-indigo-300 mb-2">
+                1. Select Your Student Level / Institution Type:
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                {(Object.keys(EDUCATION_LEVEL_CONFIGS) as EducationLevel[]).map((lvlKey) => {
+                  const cfg = EDUCATION_LEVEL_CONFIGS[lvlKey];
+                  const isSelected = currentLevel === lvlKey;
+                  return (
+                    <button
+                      key={lvlKey}
+                      type="button"
+                      id={`level-selector-${lvlKey}`}
+                      onClick={() => {
+                        const newDefaults = getDefaultSubjectsForLevel(lvlKey, 1);
+                        onUpdateVtuProfile({
+                          ...vtuProfile,
+                          educationLevel: lvlKey,
+                          branch: cfg.sampleStream,
+                          semesters: [
+                            {
+                              semesterNumber: 1,
+                              scheme: vtuProfile.scheme,
+                              branch: cfg.sampleStream,
+                              subjects: newDefaults,
+                            },
+                          ],
+                        });
+                        setSelectedSemester(1);
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-indigo-400 bg-indigo-600/40 text-white shadow-xs ring-2 ring-indigo-400/30'
+                          : 'border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                        {cfg.category}
+                      </span>
+                      <span className="text-xs font-extrabold mt-1 leading-snug">
+                        {cfg.label.split('(')[0]}
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">
+                        {cfg.termCount} {cfg.termName}s
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">VTU Scheme</label>
-              <select
-                id="vtu-scheme-select"
-                value={vtuProfile.scheme}
-                onChange={(e) => onUpdateVtuProfile({ ...vtuProfile, scheme: e.target.value as any })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {VTU_SCHEMES.map((scheme) => (
-                  <option key={scheme} value={scheme}>
-                    {scheme} Scheme (CBCS NEP)
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Engineering Branch</label>
-              <select
-                id="vtu-branch-select"
-                value={vtuProfile.branch}
-                onChange={(e) => onUpdateVtuProfile({ ...vtuProfile, branch: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {VTU_BRANCHES.map((branch) => (
-                  <option key={branch} value={branch}>
-                    {branch}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Target CGPA</label>
-              <div className="flex gap-2">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  {levelConfig.idLabel}
+                </label>
                 <input
-                  id="vtu-target-cgpa-input"
-                  type="number"
-                  step="0.05"
-                  min="4"
-                  max="10"
-                  value={tempTargetCgpa}
-                  onChange={(e) => setTempTargetCgpa(e.target.value)}
+                  id="vtu-usn-input"
+                  type="text"
+                  value={tempUsn}
+                  onChange={(e) => setTempUsn(e.target.value)}
+                  placeholder="e.g. Roll No or ID"
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                <button
-                  id="vtu-save-profile-btn"
-                  onClick={handleSaveProfile}
-                  className="px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Course / Stream / Grade
+                </label>
+                <input
+                  type="text"
+                  value={vtuProfile.branch}
+                  onChange={(e) => onUpdateVtuProfile({ ...vtuProfile, branch: e.target.value })}
+                  placeholder={levelConfig.sampleStream}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Curriculum / Board / Scheme
+                </label>
+                <select
+                  id="vtu-scheme-select"
+                  value={vtuProfile.scheme}
+                  onChange={(e) => onUpdateVtuProfile({ ...vtuProfile, scheme: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  Save
-                </button>
+                  <option value="2022">Standard 2022 / NEP Scheme</option>
+                  <option value="2021">2021 Scheme / National Curriculum</option>
+                  <option value="2018">2018 Scheme / State Board</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  {currentLevel === 'university' ? 'Target CGPA' : 'Target % or Grade'}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="vtu-target-cgpa-input"
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    max="100"
+                    value={tempTargetCgpa}
+                    onChange={(e) => setTempTargetCgpa(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    id="vtu-save-profile-btn"
+                    onClick={handleSaveProfile}
+                    className="px-3.5 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
       </div>
 
+      {/* ALWAYS-VISIBLE STUDENT LEVEL CHOICE BAR */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+              <School className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-sm text-slate-900 tracking-tight">
+                Select Your Education Level
+              </h3>
+              <p className="text-xs text-slate-500">
+                Customizes grading scales, terms, course subjects, and metrics for your school or college.
+              </p>
+            </div>
+          </div>
+          <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100 self-start sm:self-auto">
+            Active: {levelConfig.label.split('(')[0]}
+          </span>
+        </div>
+
+        {/* 5 Distinct Student Choice Buttons */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+          {(Object.keys(EDUCATION_LEVEL_CONFIGS) as EducationLevel[]).map((lvlKey) => {
+            const cfg = EDUCATION_LEVEL_CONFIGS[lvlKey];
+            const isSelected = currentLevel === lvlKey;
+            return (
+              <button
+                key={lvlKey}
+                type="button"
+                id={`student-level-btn-${lvlKey}`}
+                onClick={() => {
+                  const newDefaults = getDefaultSubjectsForLevel(lvlKey, 1);
+                  onUpdateVtuProfile({
+                    ...vtuProfile,
+                    educationLevel: lvlKey,
+                    branch: cfg.sampleStream,
+                    semesters: [
+                      {
+                        semesterNumber: 1,
+                        scheme: vtuProfile.scheme,
+                        branch: cfg.sampleStream,
+                        subjects: newDefaults,
+                      },
+                    ],
+                  });
+                  setSelectedSemester(1);
+                }}
+                className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                  isSelected
+                    ? 'border-indigo-600 bg-indigo-50/70 text-slate-900 shadow-xs ring-2 ring-indigo-500/30'
+                    : 'border-slate-200 bg-slate-50/50 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-1">
+                  <span className={`text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                    isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-200/80 text-slate-600'
+                  }`}>
+                    {cfg.category.split(' ')[0]}
+                  </span>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                </div>
+                <div className="font-bold text-xs leading-snug mt-1 text-slate-900">
+                  {cfg.label.split('(')[0]}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  {cfg.termCount} {cfg.termName}s • {cfg.defaultGrading === 'cgpa_10' ? '10.0 GPA' : 'Percentage'}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Sub-Navigation Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
-        <button
-          id="vtu-tab-sync"
-          onClick={() => setActiveSection('vtu-sync')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-            activeSection === 'vtu-sync'
-              ? 'bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-xs'
-              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
-          }`}
-        >
-          <RefreshCw className="w-4 h-4 text-indigo-400" />
-          <span>VTU Sync (Check • Learn • Connect)</span>
-          <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-black text-[9px] uppercase tracking-wider border border-indigo-200">
-            v7.0
-          </span>
-        </button>
-
-        <button
-          id="vtu-tab-usn-lookup"
-          onClick={() => setActiveSection('usn-lookup')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-            activeSection === 'usn-lookup'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-          }`}
-        >
-          <Search className="w-4 h-4" />
-          <span>Edu Student Details & Results</span>
-          <span className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-extrabold text-[9px] uppercase tracking-wider">
-            PlayStore Edu
-          </span>
-        </button>
-
         <button
           id="vtu-tab-calculator"
           onClick={() => setActiveSection('calculator')}
@@ -588,7 +701,7 @@ BCS301	Mathematics for Computer Science	45	42	87	P
           }`}
         >
           <Percent className="w-4 h-4" />
-          <span>85% Attendance & Bunk Planner</span>
+          <span>85% Attendance Planner</span>
           {overallAttendanceReport.status !== 'safe' && (
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
           )}
@@ -604,7 +717,20 @@ BCS301	Mathematics for Computer Science	45	42	87	P
           }`}
         >
           <Award className="w-4 h-4" />
-          <span>CIE vs SEE Target Predictor</span>
+          <span>Grade & Mark Predictor</span>
+        </button>
+
+        <button
+          id="vtu-tab-usn-lookup"
+          onClick={() => setActiveSection('usn-lookup')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            activeSection === 'usn-lookup'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+          }`}
+        >
+          <Search className="w-4 h-4" />
+          <span>Student Records</span>
         </button>
 
         <button
@@ -617,31 +743,42 @@ BCS301	Mathematics for Computer Science	45	42	87	P
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span>Official VTU Portals & Rules</span>
+          <span>Academic Portals & Rules</span>
+        </button>
+
+        <button
+          id="vtu-tab-sync"
+          onClick={() => setActiveSection('vtu-sync')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            activeSection === 'vtu-sync'
+              ? 'bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-xs'
+              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
+          }`}
+        >
+          <RefreshCw className="w-4 h-4 text-indigo-400" />
+          <span>University Portal Sync</span>
         </button>
       </div>
 
-      {/* SECTION 0: VTU SYNC (CHECK • LEARN • CONNECT) */}
-      {activeSection === 'vtu-sync' && (
-        <div id="vtu-sync-container">
-          <VtuSyncSection
-            vtuProfile={vtuProfile}
-            onUpdateProfile={onUpdateVtuProfile}
-            onSwitchToCalculator={(sem) => {
-              setSelectedSemester(sem);
-              setActiveSection('calculator');
-            }}
-          />
-        </div>
-      )}
+      {/* SECTION 0: VTU SYNC (CHECK • LEARN • CONNECT) - Retained in DOM for full compatibility */}
+      <div id="vtu-sync-container" className={activeSection === 'vtu-sync' ? '' : 'hidden'}>
+        <VtuSyncSection
+          vtuProfile={vtuProfile}
+          onUpdateProfile={onUpdateVtuProfile}
+          onSwitchToCalculator={(sem) => {
+            setSelectedSemester(sem);
+            setActiveSection('calculator');
+          }}
+        />
+      </div>
 
       {/* SECTION 1: SGPA & CGPA CALCULATOR */}
       {activeSection === 'calculator' && (
         <div className="space-y-6">
-          {/* Semester Selector & Quick SGPA Pill */}
+          {/* Semester/Term Selector & Quick SGPA Pill */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-bold text-slate-700">Select Semester:</span>
+              <span className="text-xs font-bold text-slate-700">Select {levelConfig.termName}:</span>
               <div className="flex flex-wrap gap-1.5">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
                   <button
@@ -654,7 +791,7 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
-                    Sem {sem}
+                    {levelConfig.termName} {sem}
                   </button>
                 ))}
               </div>
@@ -665,33 +802,35 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer ml-auto sm:ml-2"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Import Real Result (results.vtu.ac.in)</span>
+                <span>Import Result Data</span>
               </button>
             </div>
 
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Sem {selectedSemester} SGPA
+                  {levelConfig.termName} {selectedSemester} {currentLevel === 'university' ? 'SGPA' : 'Score'}
                 </span>
                 <div className="text-xl font-extrabold text-indigo-950">
-                  {currentSemSgpa.toFixed(2)} / 10.0
+                  {currentLevel === 'university'
+                    ? `${currentSemSgpa.toFixed(2)} / 10.0`
+                    : `${activeSubjects.length > 0 ? Math.round(activeSubjects.reduce((acc, s) => acc + ((s.cieMarks || 0) + (s.seeMarks || 0)), 0) / activeSubjects.length) : 0}%`}
                 </div>
               </div>
               <div className="h-8 w-px bg-slate-200" />
               <div className="text-right">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Credits
+                  {currentLevel === 'university' ? 'Credits' : 'Subjects'}
                 </span>
                 <div className="text-xl font-bold text-slate-800">
-                  {currentSemCredits}
+                  {currentLevel === 'university' ? currentSemCredits : activeSubjects.length}
                 </div>
               </div>
               <button
                 id="vtu-reset-subjects-btn"
                 onClick={handleResetToDefaults}
                 className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-                title="Reset to default VTU syllabus subjects"
+                title={`Reset to default ${levelConfig.label} curriculum`}
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -703,14 +842,14 @@ BCS301	Mathematics for Computer Science	45	42	87	P
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
                 <h3 className="font-bold text-sm text-slate-900">
-                  Semester {selectedSemester} Course Subjects ({vtuProfile.scheme} Scheme)
+                  {levelConfig.termName} {selectedSemester} Course Subjects ({levelConfig.label})
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Edit CIE (out of 50), SEE (out of 50), or pick grade points to recalculate SGPA live.
+                  Enter internal assessment/homework (out of 50) and exam/test score (out of 50) to calculate live results.
                 </p>
               </div>
               <span className="text-xs text-indigo-700 font-semibold bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
-                Formula: SGPA = Σ(Ci × Gi) / ΣCi
+                {currentLevel === 'university' ? 'Formula: SGPA = Σ(Ci × Gi) / ΣCi' : 'Weighted Evaluation Metric'}
               </span>
             </div>
 
@@ -885,20 +1024,24 @@ BCS301	Mathematics for Computer Science	45	42	87	P
             </form>
           </div>
 
-          {/* Cumulative CGPA Overview Across All 8 Semesters */}
+          {/* Cumulative Overview Across Terms / Semesters */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-bold text-sm text-slate-900">
-                  8-Semester VTU CGPA Progression Tracker
+                  {levelConfig.termCount}-{levelConfig.termName} Academic Progression Tracker
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Click any semester SGPA to override or update historical results.
+                  Select any {levelConfig.termName.toLowerCase()} to inspect or update grades and scores.
                 </p>
               </div>
               <div className="text-right">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Total Credits</span>
-                <div className="text-sm font-bold text-slate-800">{allCredits} Credits</div>
+                <span className="text-[10px] uppercase font-bold text-slate-400">
+                  {currentLevel === 'university' ? 'Total Credits' : 'Evaluations'}
+                </span>
+                <div className="text-sm font-bold text-slate-800">
+                  {currentLevel === 'university' ? `${allCredits} Credits` : `${vtuProfile.semesters.length} Recorded`}
+                </div>
               </div>
             </div>
 
@@ -919,26 +1062,26 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                     }`}
                     onClick={() => setSelectedSemester(semNum)}
                   >
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Sem {semNum}</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{levelConfig.termName} {semNum}</span>
                     <div className="text-base font-extrabold text-slate-900 mt-0.5">
-                      {sgpaVal > 0 ? sgpaVal.toFixed(2) : '—'}
+                      {sgpaVal > 0 ? (currentLevel === 'university' ? sgpaVal.toFixed(2) : `${Math.round(sgpaVal * 10)}%`) : '—'}
                     </div>
                     <span className="text-[10px] text-slate-400 font-medium">
-                      {creditsVal > 0 ? `${creditsVal} cr` : '0 cr'}
+                      {creditsVal > 0 ? `${creditsVal} cr` : '—'}
                     </span>
                   </div>
                 );
               })}
             </div>
 
-            {/* Official VTU Percentage Conversion Card */}
+            {/* Performance Conversion / Summary Card */}
             <div className="mt-5 p-4 rounded-xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
-                  VTU Official Conversion Formula (2018/2021/2022 Scheme)
+                  {currentLevel === 'university' ? 'University Conversion Formula (NEP CBCS Scheme)' : `${levelConfig.label} Evaluation Standard`}
                 </span>
                 <p className="font-mono text-xs font-semibold text-slate-200 mt-0.5">
-                  Percentage (%) = [CGPA - 0.75] × 10
+                  {currentLevel === 'university' ? 'Percentage (%) = [CGPA - 0.75] × 10' : 'Overall Grade Point Average & Continuous Assessment (CCE)'}
                 </p>
               </div>
               <div className="flex items-center gap-6">

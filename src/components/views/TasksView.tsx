@@ -629,7 +629,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
               subtasks: [],
               createdAt: Date.now(),
             };
-            onUpdateTask(newTask);
+            if (onAddTask) {
+              onAddTask(newTask);
+            } else {
+              onUpdateTask(newTask);
+            }
             setActiveDetailTask(newTask);
           }}
           onStartFocus={(task) => setActiveFocusTask(task)}
@@ -639,7 +643,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* B. EISENHOWER MATRIX VIEW */}
       {viewMode === 'matrix' && (
         <EisenhowerMatrixView
-          tasks={tasks}
+          tasks={filteredTasks}
           onUpdateTask={onUpdateTask}
           onSelectTask={(task) => setActiveDetailTask(task)}
           onOpenQuickAddWithPriority={(priority) => {
@@ -654,7 +658,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
               subtasks: [],
               createdAt: Date.now(),
             };
-            onUpdateTask(newTask);
+            if (onAddTask) {
+              onAddTask(newTask);
+            } else {
+              onUpdateTask(newTask);
+            }
             setActiveDetailTask(newTask);
           }}
         />
@@ -663,7 +671,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* C. DAILY SCHEDULE VIEW */}
       {viewMode === 'schedule' && (
         <DailyScheduleView
-          tasks={tasks}
+          tasks={filteredTasks}
           onUpdateTask={onUpdateTask}
           onSelectTask={(task) => setActiveDetailTask(task)}
           onStartFocus={(task) => setActiveFocusTask(task)}
@@ -937,7 +945,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           {isExpanded && (
                             <div
                               onClick={(e) => e.stopPropagation()}
-                              className="border-t border-slate-150 bg-slate-50/60 p-4 sm:p-5 rounded-b-2xl space-y-3"
+                              className="border-t border-slate-200 bg-slate-50/60 p-4 sm:p-5 rounded-b-2xl space-y-3"
                             >
                               <div className="flex items-center justify-between">
                                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">

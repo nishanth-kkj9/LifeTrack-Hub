@@ -44,7 +44,7 @@ data class SyncRecord(
     val operation: String, // "UPSERT" or "DELETE"
     val payload: String,
     val hlcTimestamp: String,
-    val createdAt: Long,
+    val createdAt: Long = 0L,
     val originDeviceId: String = "unknown-device",
     val protocolVersion: Int = 1,
     val schemaVersion: Int = 1,
@@ -52,22 +52,16 @@ data class SyncRecord(
     val inFlightAt: Long? = null,
     val retryCount: Int = 0,
     val nextRetryAt: Long = 0L,
-    val lastError: String? = null
+    val lastError: String? = null,
+    val hlcPhysicalTimeMs: Long = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.physicalTimeMs ?: createdAt,
+    val hlcLogicalCounter: Int = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.logicalCounter ?: 0,
+    val hlcNodeId: String = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.nodeId ?: originDeviceId
 ) {
     /**
      * Backward-compatibility accessor for tests or legacy code expecting byte array.
      */
     val payloadEncrypted: ByteArray
         get() = payload.encodeToByteArray()
-
-    val hlcPhysicalTimeMs: Long
-        get() = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.physicalTimeMs ?: createdAt
-
-    val hlcLogicalCounter: Int
-        get() = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.logicalCounter ?: 0
-
-    val hlcNodeId: String
-        get() = com.lifetrack.core.HlcTimestamp.fromString(hlcTimestamp)?.nodeId ?: originDeviceId
 }
 
 /**
@@ -146,4 +140,11 @@ interface SyncRepository {
     suspend fun getSyncCheckpoint(deviceId: String): String?
     suspend fun updateSyncCheckpoint(deviceId: String, lastPulledHlc: String, syncTimeMs: Long, error: String? = null)
     suspend fun getAllRecords(): List<SyncRecord>
+    suspend fun recordInvalidRemoteDelta(
+        record: SyncRecord,
+        error: String,
+        currentTimeMs: Long,
+        maxAttempts: Int = 3
+    ): Boolean
+    suspend fun getQuarantinedCount(): Int
 }

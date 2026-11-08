@@ -74,7 +74,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     .filter((tx) => tx.type === 'expense')
     .reduce((sum, tx) => sum + tx.amount, 0);
   const netBalance = totalIncome - totalExpense;
-  const budgetPercentage = budget.monthlyBudget > 0 ? Math.min(Math.round((totalExpense / budget.monthlyBudget) * 100), 100) : 0;
+  const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+  const currentMonthExpense = transactions
+    .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const budgetPercentage = budget.monthlyBudget > 0 ? Math.min(Math.round((currentMonthExpense / budget.monthlyBudget) * 100), 100) : 0;
 
   // Upcoming Exams sorted by date
   const sortedExams = [...exams]
@@ -405,7 +409,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   <div
                     key={task.id}
                     id={`overview-task-item-${task.id}`}
-                    className="p-3 rounded-xl border border-slate-150 hover:border-slate-300 bg-slate-50/50 flex items-start gap-3 transition"
+                    className="p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50/50 flex items-start gap-3 transition"
                   >
                     <button
                       id={`overview-toggle-task-${task.id}`}
@@ -541,7 +545,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   <div
                     key={exam.id}
                     id={`overview-exam-card-${exam.id}`}
-                    className="p-3.5 rounded-xl border border-slate-150 bg-slate-50/70 hover:border-indigo-200 transition"
+                    className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-indigo-200 transition"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>

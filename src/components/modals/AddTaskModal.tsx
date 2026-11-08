@@ -148,7 +148,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between pb-3 border-b border-slate-150">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <h2 id="add-task-modal-title" className="text-base font-black text-slate-900">Create New Task</h2>
             <span className="text-xs px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold">
@@ -410,7 +410,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-150">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
             <button
               type="button"
               onClick={onClose}

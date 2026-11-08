@@ -5,7 +5,7 @@ package com.lifetrack.data.local.db
  */
 object TaskDatabaseSchema {
 
-    const val CURRENT_VERSION: Int = 4
+    const val CURRENT_VERSION: Int = 5
 
     val MIGRATIONS: List<DatabaseMigration> = listOf(
         object : DatabaseMigration {
@@ -89,6 +89,27 @@ object TaskDatabaseSchema {
                     );
                     """.trimIndent()
                 )
+            }
+        },
+        object : DatabaseMigration {
+            override val startVersion: Int = 4
+            override val endVersion: Int = 5
+            override fun migrate(driver: SqlDriver) {
+                driver.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS sync_quarantine (
+                        delta_id TEXT PRIMARY KEY NOT NULL,
+                        entity_id TEXT NOT NULL,
+                        entity_type TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        failure_reason TEXT NOT NULL,
+                        attempt_count INTEGER NOT NULL DEFAULT 1,
+                        first_seen_ms INTEGER NOT NULL,
+                        last_seen_ms INTEGER NOT NULL
+                    );
+                    """.trimIndent()
+                )
+                driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_quarantine_entity ON sync_quarantine(entity_id);")
             }
         }
     )
@@ -242,6 +263,21 @@ object TaskDatabaseSchema {
             """.trimIndent()
         )
 
+        driver.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_quarantine (
+                delta_id TEXT PRIMARY KEY NOT NULL,
+                entity_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                failure_reason TEXT NOT NULL,
+                attempt_count INTEGER NOT NULL DEFAULT 1,
+                first_seen_ms INTEGER NOT NULL,
+                last_seen_ms INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+
         driver.execute("CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);")
         driver.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);")
         driver.execute("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);")
@@ -254,5 +290,6 @@ object TaskDatabaseSchema {
         driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_outbox_entity ON sync_outbox(entity_type, entity_id);")
 
         driver.execute("CREATE INDEX IF NOT EXISTS idx_entity_sync_hlc ON entity_sync_metadata(entity_type, entity_id, hlc_timestamp);")
+        driver.execute("CREATE INDEX IF NOT EXISTS idx_sync_quarantine_entity ON sync_quarantine(entity_id);")
     }
 }

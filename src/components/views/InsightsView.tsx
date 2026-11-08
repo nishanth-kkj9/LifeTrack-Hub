@@ -145,9 +145,13 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
       .reduce((sum, tx) => sum + tx.amount, 0);
     const savings = totalIncome - totalExpense;
     const savingsRate = totalIncome > 0 ? Math.round((savings / totalIncome) * 100) : 0;
+    const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+    const monthlyExpense = transactions
+      .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
+      .reduce((sum, tx) => sum + tx.amount, 0);
     const budgetUsage =
       budget.monthlyBudget > 0
-        ? Math.round((totalExpense / budget.monthlyBudget) * 100)
+        ? Math.round((monthlyExpense / budget.monthlyBudget) * 100)
         : 0;
 
     return { totalIncome, totalExpense, savings, savingsRate, budgetUsage };

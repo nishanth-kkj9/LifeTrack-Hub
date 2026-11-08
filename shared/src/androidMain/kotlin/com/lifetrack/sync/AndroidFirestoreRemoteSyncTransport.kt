@@ -18,8 +18,8 @@ import kotlinx.coroutines.tasks.await
 class AndroidFirestoreRemoteSyncTransport(
     private val authSessionProvider: AuthSessionProvider,
     customFirestore: FirebaseFirestore? = null,
-    val projectId: String = "galvanic-oarlock-43skh",
-    val databaseId: String = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+    val projectId: String = FirebaseConfig.PROJECT_ID,
+    val databaseId: String = FirebaseConfig.FIRESTORE_DATABASE_ID
 ) : RemoteSyncTransport {
 
     val firestore: FirebaseFirestore = customFirestore ?: run {

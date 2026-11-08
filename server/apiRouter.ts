@@ -33,8 +33,8 @@ if (cleanupInterval.unref) {
 }
 
 function rateLimiter(req: Request, res: Response, next: NextFunction) {
-  // Use genuine network connection address to prevent header-spoofing rate limit bypass
-  const ip = req.socket.remoteAddress || req.ip || 'anonymous-client';
+  // Use client IP (honoring trusted reverse proxy) before falling back to socket address
+  const ip = req.ip || req.socket.remoteAddress || 'anonymous-client';
   const now = Date.now();
   const record = rateLimitMap.get(ip);
 

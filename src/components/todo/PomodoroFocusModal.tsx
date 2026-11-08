@@ -29,6 +29,7 @@ interface PomodoroFocusModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdateTask: (task: Task) => void;
+  onAddFocusMinutes?: (taskId: string, minutes: number) => void;
 }
 
 type TimerMode = 'focus' | 'short_break' | 'long_break';
@@ -38,6 +39,7 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   isOpen,
   onClose,
   onUpdateTask,
+  onAddFocusMinutes,
 }) => {
   const accumulatedFocusSecondsRef = useRef(0);
 
@@ -114,8 +116,6 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            handleTimerComplete();
             return 0;
           }
           if (timerMode === 'focus') {
@@ -134,6 +134,14 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
     };
   }, [isRunning, timerMode]);
 
+  // Completion effect when countdown reaches 0
+  useEffect(() => {
+    if (timeLeft === 0 && isRunning) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      handleTimerComplete();
+    }
+  }, [timeLeft, isRunning]);
+
   if (!isOpen) return null;
 
   const handleTimerComplete = () => {
@@ -144,11 +152,15 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
     if (timerMode === 'focus') {
       if (task) {
         const elapsedMinutes = Math.max(1, Math.round(accumulatedFocusSecondsRef.current / 60));
-        const currentActual = task.actualMinutes || 0;
-        onUpdateTask({
-          ...task,
-          actualMinutes: currentActual + elapsedMinutes,
-        });
+        if (onAddFocusMinutes) {
+          onAddFocusMinutes(task.id, elapsedMinutes);
+        } else {
+          const currentActual = task.actualMinutes || 0;
+          onUpdateTask({
+            ...task,
+            actualMinutes: currentActual + elapsedMinutes,
+          });
+        }
         accumulatedFocusSecondsRef.current = 0;
       }
       setTimerMode('short_break');
@@ -436,7 +448,7 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
                           className={`flex items-center gap-2 p-2 rounded-xl transition cursor-pointer ${
                             st.completed
                               ? 'bg-slate-800/40 text-slate-500 line-through'
-                              : 'bg-slate-800 text-slate-200 hover:bg-slate-750'
+                              : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
                           }`}
                         >
                           <div

@@ -323,13 +323,27 @@ export default function App() {
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
-    commitAppData((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t)),
-    }));
+    commitAppData((prev) => {
+      const exists = prev.tasks.some((t) => t.id === updatedTask.id);
+      return {
+        ...prev,
+        tasks: exists
+          ? prev.tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+          : [updatedTask, ...prev.tasks],
+      };
+    });
     if (selectedDetailTask?.id === updatedTask.id) {
       setSelectedDetailTask(updatedTask);
     }
+  };
+
+  const handleAddFocusMinutes = (taskId: string, minutes: number) => {
+    commitAppData((prev) => ({
+      ...prev,
+      tasks: prev.tasks.map((t) =>
+        t.id === taskId ? { ...t, actualMinutes: (t.actualMinutes || 0) + minutes } : t
+      ),
+    }));
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -431,16 +445,17 @@ export default function App() {
 
   // Full Data Restoration
   const handleRestoreAppData = (restoredData: UserAppData) => {
+    const { data } = sanitizeUserAppData(restoredData);
     commitAppData((prev) => ({
       ...prev,
-      tasks: restoredData.tasks || prev.tasks,
-      transactions: restoredData.transactions || prev.transactions,
-      budget: restoredData.budget || prev.budget,
-      exams: restoredData.exams || prev.exams,
-      habits: restoredData.habits || prev.habits,
-      notes: restoredData.notes || prev.notes,
-      dailyMetrics: restoredData.dailyMetrics || prev.dailyMetrics,
-      vtuProfile: restoredData.vtuProfile || prev.vtuProfile,
+      tasks: data.tasks && data.tasks.length ? data.tasks : prev.tasks,
+      transactions: data.transactions && data.transactions.length ? data.transactions : prev.transactions,
+      budget: data.budget || prev.budget,
+      exams: data.exams && data.exams.length ? data.exams : prev.exams,
+      habits: data.habits && data.habits.length ? data.habits : prev.habits,
+      notes: data.notes && data.notes.length ? data.notes : prev.notes,
+      dailyMetrics: data.dailyMetrics && data.dailyMetrics.length ? data.dailyMetrics : prev.dailyMetrics,
+      vtuProfile: data.vtuProfile || prev.vtuProfile,
       lastUpdated: Date.now(),
     }));
   };
@@ -725,6 +740,7 @@ export default function App() {
           setFocusTask(null);
         }}
         onUpdateTask={handleUpdateTask}
+        onAddFocusMinutes={handleAddFocusMinutes}
       />
 
       <TaskDetailDrawer

@@ -59,7 +59,7 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
       >
-        <div className="flex items-center justify-between pb-3 border-b border-slate-150">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-indigo-600" />
             <h2 id="add-note-modal-title" className="text-base font-bold text-slate-900">Add Scratchpad Note</h2>
@@ -137,7 +137,7 @@ export const AddNoteModal: React.FC<AddNoteModalProps> = ({
             </label>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-150">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
             <button
               type="button"
               onClick={onClose}

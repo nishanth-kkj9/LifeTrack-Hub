@@ -45,8 +45,13 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
     .filter((tx) => tx.type === 'expense')
     .reduce((sum, tx) => sum + tx.amount, 0);
   const netSavings = totalIncome - totalExpense;
+
+  const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+  const currentMonthExpense = transactions
+    .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
+    .reduce((sum, tx) => sum + tx.amount, 0);
   const budgetSpentPercent =
-    budget.monthlyBudget > 0 ? Math.min(Math.round((totalExpense / budget.monthlyBudget) * 100), 100) : 0;
+    budget.monthlyBudget > 0 ? Math.min(Math.round((currentMonthExpense / budget.monthlyBudget) * 100), 100) : 0;
 
   // Category breakdown for expenses
   const expenseByCategory: Record<string, number> = {};
@@ -162,20 +167,38 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
 
           {isEditingBudget ? (
             <div className="space-y-2">
-              <input
-                id="finances-budget-input"
-                type="number"
-                value={budgetInput}
-                onChange={(e) => setBudgetInput(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold focus:ring-2 focus:ring-slate-900 focus:outline-hidden"
-                placeholder="Budget cap (₹)"
-              />
+              <div>
+                <label htmlFor="finances-budget-input" className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                  Monthly Cap (₹)
+                </label>
+                <input
+                  id="finances-budget-input"
+                  type="number"
+                  value={budgetInput}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold focus:ring-2 focus:ring-slate-900 focus:outline-hidden"
+                  placeholder="Budget cap (₹)"
+                />
+              </div>
+              <div>
+                <label htmlFor="finances-savings-input" className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                  Monthly Savings Goal (₹)
+                </label>
+                <input
+                  id="finances-savings-input"
+                  type="number"
+                  value={savingsInput}
+                  onChange={(e) => setSavingsInput(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold focus:ring-2 focus:ring-slate-900 focus:outline-hidden"
+                  placeholder="Savings target (₹)"
+                />
+              </div>
               <button
                 id="finances-budget-save-btn"
                 onClick={handleSaveBudget}
-                className="w-full py-1 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                className="w-full py-1.5 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
               >
-                Save
+                Save Budget & Goal
               </button>
             </div>
           ) : (

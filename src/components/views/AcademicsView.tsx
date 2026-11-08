@@ -48,10 +48,10 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
             </span>
             <div>
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                Academics & Study Hub
+                Academic & Study Hub
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                Exam countdowns, syllabus tracking, CBCS grading, and VTU engineering tools.
+                Exams, syllabus progress, grade tracking, and academic performance.
               </p>
             </div>
           </div>
@@ -59,7 +59,7 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
 
         {/* Tab Switcher */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center bg-slate-100/80 p-1 rounded-xl border border-slate-200/70 text-xs font-semibold">
+          <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 text-xs font-semibold">
             <button
               type="button"
               id="subtab-academics-exams"
@@ -90,9 +90,9 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
               }`}
             >
               <Award className="w-4 h-4 text-indigo-600" />
-              <span>VTU Hub (CBCS)</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
-                Scheme
+              <span>Grades & Performance</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold">
+                CBCS
               </span>
             </button>
           </div>

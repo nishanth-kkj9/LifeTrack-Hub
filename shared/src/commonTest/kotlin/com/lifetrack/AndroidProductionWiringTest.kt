@@ -55,11 +55,11 @@ class AndroidProductionWiringTest {
 
     @Test
     fun testNamedFirestoreDatabaseConfigurationConstant() {
-        val canonicalDatabaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
-        val canonicalProjectId = "galvanic-oarlock-43skh"
+        val canonicalDatabaseId = com.lifetrack.sync.FirebaseConfig.FIRESTORE_DATABASE_ID
+        val canonicalProjectId = com.lifetrack.sync.FirebaseConfig.PROJECT_ID
 
         // Asserts configured constants are consistent across all platforms
         kotlin.test.assertEquals("ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd", canonicalDatabaseId)
-        kotlin.test.assertEquals("galvanic-oarlock-43skh", canonicalProjectId)
+        kotlin.test.assertEquals("quadratic-chimera-skx2q", canonicalProjectId)
     }
 }

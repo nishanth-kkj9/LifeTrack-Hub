@@ -17,10 +17,12 @@ import com.lifetrack.domain.usecase.GetTasksUseCase
 import com.lifetrack.domain.usecase.ParseNaturalLanguageTaskUseCase
 import com.lifetrack.domain.usecase.ToggleSubtaskUseCase
 import com.lifetrack.domain.usecase.ToggleTaskCompletionUseCase
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -65,8 +67,12 @@ class TasksViewModel(
     private val deleteSubtaskUseCase: DeleteSubtaskUseCase,
     private val getTaskMetricsUseCase: GetTaskMetricsUseCase,
     private val parseNaturalLanguageTaskUseCase: ParseNaturalLanguageTaskUseCase = ParseNaturalLanguageTaskUseCase(),
-    private val viewModelScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scopeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val viewModelScope: CoroutineScope = CoroutineScope(SupervisorJob() + scopeDispatcher)
 ) {
+    fun dispose() {
+        viewModelScope.cancel()
+    }
     private val _filterState = MutableStateFlow(TaskFilterState())
     private val _naturalLanguageInput = MutableStateFlow("")
     private val _userFeedbackMessage = MutableStateFlow<String?>(null)

@@ -56,14 +56,9 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   return (
     <div
       style={{
-        background: 'rgba(255, 255, 255, 0.04)',
-        border: `1px solid ${accentColor}30`,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 12,
-        transition: 'all 0.2s',
+        borderLeft: `4px solid ${accentColor}`,
       }}
-      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md"
+      className="bg-white rounded-2xl border border-slate-200 p-4 mb-3 transition shadow-xs hover:shadow-sm"
     >
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

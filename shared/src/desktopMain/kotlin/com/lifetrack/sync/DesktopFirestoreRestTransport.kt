@@ -25,8 +25,8 @@ import java.net.URL
  */
 class DesktopFirestoreRestTransport(
     private val authSessionProvider: AuthSessionProvider,
-    private val projectId: String = "galvanic-oarlock-43skh",
-    private val databaseId: String = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd",
+    private val projectId: String = FirebaseConfig.PROJECT_ID,
+    private val databaseId: String = FirebaseConfig.FIRESTORE_DATABASE_ID,
     private val connectTimeoutMs: Int = 15_000,
     private val readTimeoutMs: Int = 20_000
 ) : RemoteSyncTransport {

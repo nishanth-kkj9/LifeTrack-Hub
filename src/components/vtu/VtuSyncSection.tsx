@@ -200,8 +200,13 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
   // Handle Sync Trigger
   const handlePerformSync = () => {
+    const confirmed = window.confirm(
+      'Notice: Simulated academic sync will load demonstration records for your USN schema. Continue to load demo data?'
+    );
+    if (!confirmed) return;
+
     setIsSyncing(true);
-    setSyncFeedback('Querying VTU Student & Academic Node for live records...');
+    setSyncFeedback('Loading demonstration records for USN...');
 
     setTimeout(() => {
       const syncedProfile = syncVtuProfileFromStudentRecord(vtuProfile.usn, {
@@ -215,7 +220,7 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
       onUpdateProfile(syncedProfile);
       setIsSyncing(false);
-      setSyncFeedback('Academic Record & Marksheets Synchronized with VTU Karnataka Database!');
+      setSyncFeedback('Simulated Demonstration Record Loaded Successfully.');
       setTimeout(() => setSyncFeedback(null), 3500);
     }, 800);
   };
@@ -1864,6 +1869,9 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                 </p>
                 <div className="mt-2 inline-block px-4 py-1 rounded-full bg-slate-100 border border-slate-300 text-xs font-black uppercase tracking-widest text-slate-800">
                   PROVISIONAL GRADE CARD - CBCS / NEP SCHEME
+                </div>
+                <div className="mt-1 text-[10px] font-bold text-amber-800 bg-amber-50 inline-block px-3 py-0.5 rounded-full border border-amber-200">
+                  SAMPLE / UNOFFICIAL TRANSCRIPT — FOR PERSONAL STUDY TRACKING ONLY
                 </div>
               </div>
 

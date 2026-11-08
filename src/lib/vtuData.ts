@@ -6,6 +6,8 @@ import {
   EduStudentRecord,
   EduSemesterResult,
   EduSubjectResult,
+  EducationLevel,
+  GradingSystem,
 } from '../types/index.ts';
 
 // VTU Grading Scale
@@ -1185,6 +1187,110 @@ export function syncVtuProfileFromStudentRecord(
     activeBacklogs: record.activeBacklogs,
     rankInClass: record.rankInClass,
   };
+}
+
+export interface EducationLevelConfig {
+  id: EducationLevel;
+  label: string;
+  category: string;
+  termName: string; // e.g. "Term", "Quarter", "Semester", "Trimester"
+  termCount: number;
+  idLabel: string; // e.g. "Roll No / Student ID", "USN / Registration No"
+  defaultGrading: GradingSystem;
+  sampleStream: string;
+}
+
+export const EDUCATION_LEVEL_CONFIGS: Record<EducationLevel, EducationLevelConfig> = {
+  primary: {
+    id: 'primary',
+    label: 'Primary School (Grades 1–5)',
+    category: 'Elementary Education',
+    termName: 'Term',
+    termCount: 3,
+    idLabel: 'Roll No / Student ID',
+    defaultGrading: 'percentage',
+    sampleStream: 'General Primary Curriculum',
+  },
+  middle_school: {
+    id: 'middle_school',
+    label: 'Middle School (Grades 6–8)',
+    category: 'Secondary Education',
+    termName: 'Term',
+    termCount: 3,
+    idLabel: 'Roll No / Admission No',
+    defaultGrading: 'percentage',
+    sampleStream: 'Standard Middle Curriculum',
+  },
+  high_school: {
+    id: 'high_school',
+    label: 'High School (Grades 9–12 / K-12 / Pre-University)',
+    category: 'Higher Secondary',
+    termName: 'Quarter / Sem',
+    termCount: 4,
+    idLabel: 'Student ID / Roll No',
+    defaultGrading: 'percentage',
+    sampleStream: 'Science / Arts / Commerce',
+  },
+  college: {
+    id: 'college',
+    label: 'Undergraduate College (BA / BSc / BCom / BBA)',
+    category: 'Undergraduate College',
+    termName: 'Semester',
+    termCount: 6,
+    idLabel: 'College Registration / Roll No',
+    defaultGrading: 'cgpa_10',
+    sampleStream: 'B.Sc Computer Science / B.Com',
+  },
+  university: {
+    id: 'university',
+    label: 'University & Engineering (B.E / B.Tech / PG / VTU)',
+    category: 'Higher Education / Engineering',
+    termName: 'Semester',
+    termCount: 8,
+    idLabel: 'University Seat Number (USN)',
+    defaultGrading: 'cgpa_10',
+    sampleStream: 'Computer Science & Engineering',
+  },
+};
+
+export function getDefaultSubjectsForLevel(level: EducationLevel, termNumber: number): VtuSubject[] {
+  if (level === 'primary') {
+    return [
+      { id: `pri-${termNumber}-1`, code: 'ENG', name: 'English Language & Reading', credits: 1, cieMarks: 45, seeMarks: 48, gradeLetter: 'O', gradePoint: 10, attendedClasses: 48, totalClasses: 50 },
+      { id: `pri-${termNumber}-2`, code: 'MATH', name: 'Mathematics & Mental Arithmetic', credits: 1, cieMarks: 46, seeMarks: 47, gradeLetter: 'O', gradePoint: 10, attendedClasses: 49, totalClasses: 50 },
+      { id: `pri-${termNumber}-3`, code: 'EVS', name: 'Environmental Studies & Science', credits: 1, cieMarks: 44, seeMarks: 45, gradeLetter: 'A+', gradePoint: 9, attendedClasses: 46, totalClasses: 50 },
+      { id: `pri-${termNumber}-4`, code: 'LAN', name: 'Second Language / Mother Tongue', credits: 1, cieMarks: 42, seeMarks: 43, gradeLetter: 'A', gradePoint: 8, attendedClasses: 45, totalClasses: 50 },
+      { id: `pri-${termNumber}-5`, code: 'ART', name: 'Creative Arts & Craft', credits: 1, cieMarks: 48, seeMarks: 50, gradeLetter: 'O', gradePoint: 10, attendedClasses: 20, totalClasses: 20 },
+    ];
+  }
+  if (level === 'middle_school') {
+    return [
+      { id: `mid-${termNumber}-1`, code: 'M-ENG', name: 'English Literature & Composition', credits: 1, cieMarks: 42, seeMarks: 44, gradeLetter: 'A+', gradePoint: 9, attendedClasses: 44, totalClasses: 46 },
+      { id: `mid-${termNumber}-2`, code: 'M-MATH', name: 'Mathematics (Algebra & Geometry)', credits: 1, cieMarks: 45, seeMarks: 43, gradeLetter: 'A+', gradePoint: 9, attendedClasses: 45, totalClasses: 46 },
+      { id: `mid-${termNumber}-3`, code: 'M-SCI', name: 'General Science (Physics, Chemistry, Biology)', credits: 1, cieMarks: 40, seeMarks: 42, gradeLetter: 'A', gradePoint: 8, attendedClasses: 42, totalClasses: 46 },
+      { id: `mid-${termNumber}-4`, code: 'M-SOC', name: 'Social Studies (History & Civics, Geography)', credits: 1, cieMarks: 41, seeMarks: 39, gradeLetter: 'B+', gradePoint: 7, attendedClasses: 43, totalClasses: 46 },
+      { id: `mid-${termNumber}-5`, code: 'M-COMP', name: 'Computer Basics & Logic', credits: 1, cieMarks: 46, seeMarks: 48, gradeLetter: 'O', gradePoint: 10, attendedClasses: 22, totalClasses: 24 },
+    ];
+  }
+  if (level === 'high_school') {
+    return [
+      { id: `hs-${termNumber}-1`, code: 'PHYS', name: 'Physics (Mechanics & Waves)', credits: 4, cieMarks: 41, seeMarks: 42, gradeLetter: 'A+', gradePoint: 9, attendedClasses: 38, totalClasses: 42 },
+      { id: `hs-${termNumber}-2`, code: 'CHEM', name: 'Chemistry (Organic & Physical)', credits: 4, cieMarks: 39, seeMarks: 40, gradeLetter: 'A', gradePoint: 8, attendedClasses: 39, totalClasses: 42 },
+      { id: `hs-${termNumber}-3`, code: 'MATH', name: 'Calculus & Vectors', credits: 4, cieMarks: 45, seeMarks: 46, gradeLetter: 'O', gradePoint: 10, attendedClasses: 41, totalClasses: 42 },
+      { id: `hs-${termNumber}-4`, code: 'CS', name: 'Computer Science (Python & Data)', credits: 4, cieMarks: 47, seeMarks: 48, gradeLetter: 'O', gradePoint: 10, attendedClasses: 35, totalClasses: 36 },
+      { id: `hs-${termNumber}-5`, code: 'ENG', name: 'English Core & Communication', credits: 2, cieMarks: 43, seeMarks: 44, gradeLetter: 'A+', gradePoint: 9, attendedClasses: 30, totalClasses: 32 },
+    ];
+  }
+  if (level === 'college') {
+    return [
+      { id: `col-${termNumber}-1`, code: 'DSC101', name: 'Major Core Subject I', credits: 4, cieMarks: 42, seeMarks: 40, gradeLetter: 'A+', gradePoint: 9, attendedClasses: 36, totalClasses: 40 },
+      { id: `col-${termNumber}-2`, code: 'DSC102', name: 'Major Core Subject II', credits: 4, cieMarks: 44, seeMarks: 43, gradeLetter: 'O', gradePoint: 10, attendedClasses: 38, totalClasses: 40 },
+      { id: `col-${termNumber}-3`, code: 'MIN101', name: 'Minor Elective Subject', credits: 3, cieMarks: 39, seeMarks: 38, gradeLetter: 'A', gradePoint: 8, attendedClasses: 28, totalClasses: 32 },
+      { id: `col-${termNumber}-4`, code: 'AEC101', name: 'Skill Enhancement Course (Digital Tools)', credits: 2, cieMarks: 46, seeMarks: 45, gradeLetter: 'O', gradePoint: 10, attendedClasses: 20, totalClasses: 22 },
+      { id: `col-${termNumber}-5`, code: 'LAB101', name: 'Practical Lab & Field Work', credits: 2, cieMarks: 48, seeMarks: 49, gradeLetter: 'O', gradePoint: 10, attendedClasses: 18, totalClasses: 18 },
+    ];
+  }
+  return getDefaultVtuSubjectsForSemester(termNumber, 'Computer Science & Engg (CSE)');
 }
 
 

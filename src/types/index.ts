@@ -296,6 +296,9 @@ export interface VtuOpportunity {
   tags: string[];
 }
 
+export type EducationLevel = 'primary' | 'middle_school' | 'high_school' | 'college' | 'university';
+export type GradingSystem = 'cgpa_10' | 'gpa_4' | 'percentage' | 'letter_grades';
+
 export interface VtuProfile {
   usn: string;
   studentName?: string;
@@ -306,6 +309,9 @@ export interface VtuProfile {
   scheme: '2022' | '2021' | '2018';
   currentSemester: number;
   branch: string;
+  educationLevel?: EducationLevel;
+  gradingSystem?: GradingSystem;
+  gradeOrTermLabel?: string;
   admissionYear?: number;
   batch?: string;
   semesters: VtuSemesterData[];

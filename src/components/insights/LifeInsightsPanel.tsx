@@ -4,7 +4,7 @@
  * Based on FxLifeSheet pattern: correlations + recommendations
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DailyLifeMetric, Habit } from '../../types/index.ts';
 import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
 
@@ -19,45 +19,42 @@ export function LifeInsightsPanel({
   dailyMetrics,
   className = '',
 }: LifeInsightsPanelProps) {
-  const summary = buildWeeklySummary(
-    habits.map((h) => ({
-      id: h.id,
-      name: h.name,
-      score: {
-        currentStrength: h.habitScore || 50,
-        completionRate: (h.completedDates?.length || 0) / (h.targetDaysPerWeek * 4) * 100,
-      },
-    })),
-    dailyMetrics.map((m) => ({
-      date: m.date,
-      mood: m.moodLevel,
-      energy: m.energyLevel,
-      stress: m.stressLevel,
-      sleepHours: m.sleepHours,
-      steps: m.stepsCount,
-      workoutDone: m.workoutDone,
-    }))
+  const habitItems = useMemo(
+    () =>
+      habits.map((h) => {
+        const targetDays = Math.max(1, h.targetDaysPerWeek || 7);
+        const completionRate = Math.min(
+          100,
+          Math.round(((h.completedDates?.length || 0) / (targetDays * 4)) * 100)
+        );
+        return {
+          id: h.id,
+          name: h.name,
+          score: {
+            currentStrength: h.habitScore ?? 50,
+            completionRate,
+          },
+        };
+      }),
+    [habits]
   );
 
-  const insights = generateInsights(
-    habits.map((h) => ({
-      id: h.id,
-      name: h.name,
-      score: {
-        currentStrength: h.habitScore || 50,
-        completionRate: (h.completedDates?.length || 0) / (h.targetDaysPerWeek * 4) * 100,
-      },
-    })),
-    dailyMetrics.map((m) => ({
-      date: m.date,
-      mood: m.moodLevel,
-      energy: m.energyLevel,
-      stress: m.stressLevel,
-      sleepHours: m.sleepHours,
-      steps: m.stepsCount,
-      workoutDone: m.workoutDone,
-    }))
+  const metricsItems = useMemo(
+    () =>
+      dailyMetrics.map((m) => ({
+        date: m.date,
+        mood: m.moodLevel,
+        energy: m.energyLevel,
+        stress: m.stressLevel,
+        sleepHours: m.sleepHours,
+        steps: m.stepsCount,
+        workoutDone: m.workoutDone,
+      })),
+    [dailyMetrics]
   );
+
+  const summary = useMemo(() => buildWeeklySummary(habitItems, metricsItems), [habitItems, metricsItems]);
+  const insights = useMemo(() => generateInsights(habitItems, metricsItems), [habitItems, metricsItems]);
 
   return (
     <div className={`space-y-4 ${className}`}>

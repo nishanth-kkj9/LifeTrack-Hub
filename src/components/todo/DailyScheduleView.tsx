@@ -68,6 +68,16 @@ export const DailyScheduleView: React.FC<DailyScheduleViewProps> = ({
   const scheduledTasks = dayTasks.filter((t) => !!t.dueTime);
   const unscheduledTasks = dayTasks.filter((t) => !t.dueTime);
 
+  // Early (<7 AM) and Late (>10 PM) overflow tasks
+  const earlyTasks = scheduledTasks.filter((t) => {
+    const h = parseInt(t.dueTime!.split(':')[0], 10);
+    return h < 7;
+  });
+  const lateTasks = scheduledTasks.filter((t) => {
+    const h = parseInt(t.dueTime!.split(':')[0], 10);
+    return h > 22;
+  });
+
   // Group tasks by hour (07 to 22)
   const getTasksForHour = (hour: number) => {
     return scheduledTasks.filter((t) => {
@@ -132,6 +142,35 @@ export const DailyScheduleView: React.FC<DailyScheduleViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
         {/* Left 3 cols: Hour-by-hour Timeline */}
         <div className="lg:col-span-3 bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden divide-y divide-slate-100">
+          {/* Early Morning Overflow Tray */}
+          {earlyTasks.length > 0 && (
+            <div className="flex items-start min-h-[68px] bg-slate-50/60 hover:bg-slate-50 transition">
+              <div className="w-24 sm:w-28 p-3 text-[11px] font-mono font-bold text-slate-500 border-r border-slate-100 shrink-0 text-right pr-4">
+                &lt; 7:00 AM
+              </div>
+              <div className="flex-1 p-2 space-y-1.5">
+                {earlyTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    onClick={() => onSelectTask(task)}
+                    className="p-2.5 rounded-2xl border transition flex items-center justify-between gap-3 cursor-pointer bg-slate-100/80 border-slate-200"
+                  >
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <button
+                        onClick={(e) => handleToggleComplete(task, e)}
+                        className="text-slate-400 hover:text-emerald-600 transition cursor-pointer shrink-0"
+                      >
+                        {task.completed ? <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" /> : <Circle className="w-4 h-4" />}
+                      </button>
+                      <span className={`font-bold text-xs truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-900'}`}>{task.title}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/80 border border-slate-200/60 text-slate-600">{task.dueTime}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {HOURS.map((hour) => {
             const hourTasks = getTasksForHour(hour);
 
@@ -204,6 +243,35 @@ export const DailyScheduleView: React.FC<DailyScheduleViewProps> = ({
               </div>
             );
           })}
+
+          {/* Late Night Overflow Tray */}
+          {lateTasks.length > 0 && (
+            <div className="flex items-start min-h-[68px] bg-slate-50/60 hover:bg-slate-50 transition">
+              <div className="w-24 sm:w-28 p-3 text-[11px] font-mono font-bold text-slate-500 border-r border-slate-100 shrink-0 text-right pr-4">
+                &gt; 10:00 PM
+              </div>
+              <div className="flex-1 p-2 space-y-1.5">
+                {lateTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    onClick={() => onSelectTask(task)}
+                    className="p-2.5 rounded-2xl border transition flex items-center justify-between gap-3 cursor-pointer bg-slate-100/80 border-slate-200"
+                  >
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <button
+                        onClick={(e) => handleToggleComplete(task, e)}
+                        className="text-slate-400 hover:text-emerald-600 transition cursor-pointer shrink-0"
+                      >
+                        {task.completed ? <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" /> : <Circle className="w-4 h-4" />}
+                      </button>
+                      <span className={`font-bold text-xs truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-900'}`}>{task.title}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/80 border border-slate-200/60 text-slate-600">{task.dueTime}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right 1 col: Unscheduled Day Tasks Tray */}

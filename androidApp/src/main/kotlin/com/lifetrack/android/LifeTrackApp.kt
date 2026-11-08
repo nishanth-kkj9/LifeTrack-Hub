@@ -52,10 +52,10 @@ class LifeTrackApp : Application() {
         try {
             if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
                 val options = com.google.firebase.FirebaseOptions.Builder()
-                    .setProjectId("galvanic-oarlock-43skh")
-                    .setApplicationId("1:1076639107192:android:8c221e4caff37ff375858d")
-                    .setApiKey("AIzaSyA3Qd0EdAPWUslmC75YI_mga4KD9Df9eAs")
-                    .setStorageBucket("galvanic-oarlock-43skh.firebasestorage.app")
+                    .setProjectId(com.lifetrack.sync.FirebaseConfig.PROJECT_ID)
+                    .setApplicationId(com.lifetrack.sync.FirebaseConfig.ANDROID_APPLICATION_ID)
+                    .setApiKey(com.lifetrack.sync.FirebaseConfig.CLIENT_API_KEY)
+                    .setStorageBucket(com.lifetrack.sync.FirebaseConfig.STORAGE_BUCKET)
                     .build()
                 com.google.firebase.FirebaseApp.initializeApp(this, options)
             }
@@ -96,8 +96,8 @@ class LifeTrackApp : Application() {
         val remoteTransport: com.lifetrack.sync.RemoteSyncTransport = if (firebaseAvailable) {
             com.lifetrack.sync.AndroidFirestoreRemoteSyncTransport(
                 authSessionProvider = authSessionProvider,
-                projectId = "galvanic-oarlock-43skh",
-                databaseId = "ai-studio-a7fbef00-eef0-48a1-a3ab-2cd9aa399fbd"
+                projectId = com.lifetrack.sync.FirebaseConfig.PROJECT_ID,
+                databaseId = com.lifetrack.sync.FirebaseConfig.FIRESTORE_DATABASE_ID
             )
         } else {
             // Local fallback remote transport if Firebase initialization fails

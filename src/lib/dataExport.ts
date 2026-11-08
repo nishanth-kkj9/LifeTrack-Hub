@@ -1,4 +1,5 @@
 import { UserAppData, Task, Transaction, Habit, DailyLifeMetric } from '../types/index.ts';
+import { sanitizeUserAppData } from './firebase.ts';
 
 /**
  * Triggers browser download of text content as file
@@ -163,7 +164,8 @@ export function parseAppDataJsonFile(file: File): Promise<UserAppData> {
         if (!parsed || typeof parsed !== 'object') {
           throw new Error('Invalid JSON structure');
         }
-        resolve(parsed as UserAppData);
+        const { data } = sanitizeUserAppData(parsed);
+        resolve(data);
       } catch (err) {
         reject(err);
       }
