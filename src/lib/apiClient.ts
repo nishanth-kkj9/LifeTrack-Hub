@@ -1,20 +1,19 @@
 import { Subtask, Transaction, ExamReminder, Habit } from '../types/index.ts';
+import { auth } from './firebase.ts';
 
-function getApiHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  try {
-    let clientId = localStorage.getItem('lifetrack_client_instance_id');
-    if (!clientId) {
-      clientId = `cli_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      localStorage.setItem('lifetrack_client_instance_id', clientId);
-    }
-    headers['x-lifetrack-client-id'] = clientId;
-  } catch {
-    // Non-browser fallback
+/**
+ * Returns Authorization headers with current user's Firebase ID token.
+ * Throws a user-friendly error if the user is not authenticated.
+ */
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (!auth.currentUser) {
+    throw new Error('Sign in to use AI features');
   }
-  return headers;
+  const idToken = await auth.currentUser.getIdToken();
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${idToken}`,
+  };
 }
 
 export interface FinanceInsightResponse {
@@ -27,6 +26,16 @@ export interface FinanceInsightResponse {
 export interface StudyGuideResponse {
   guide: string;
   sources?: Array<{ title: string; uri: string }>;
+  isFallbackTemplate?: boolean;
+}
+
+export interface MarksheetParseResponse {
+  success: boolean;
+  errorCode?: string;
+  message?: string;
+  data?: any;
+  partialData?: any;
+  requiresManualVerification?: boolean;
 }
 
 export async function requestTaskBreakdown(
@@ -35,9 +44,15 @@ export async function requestTaskBreakdown(
   category?: string
 ): Promise<Subtask[]> {
   try {
+    if (!auth.currentUser) {
+      // Return deterministic heuristic subtasks when operating offline / signed out
+      return getOfflineFallbackSubtasks(title);
+    }
+
+    const headers = await getAuthHeaders();
     const response = await fetch('/api/gemini/breakdown', {
       method: 'POST',
-      headers: getApiHeaders(),
+      headers,
       body: JSON.stringify({ title, description, category }),
     });
 
@@ -53,15 +68,33 @@ export async function requestTaskBreakdown(
         }));
       }
     }
-  } catch (e) {
-    console.warn('Network breakdown request error, using client fallback:', e);
+  } catch (e: any) {
+    console.warn('Task breakdown request fell back to local heuristics:', e?.message || e);
   }
 
-  // Client-side fallback if server is offline or unreachable
+  return getOfflineFallbackSubtasks(title);
+}
+
+function getOfflineFallbackSubtasks(title: string): Subtask[] {
   return [
-    { id: `st-${Date.now()}-1`, title: `Review prerequisites and gather resources for ${title}`, completed: false, estimatedMinutes: 25 },
-    { id: `st-${Date.now()}-2`, title: `Execute primary objective for ${title}`, completed: false, estimatedMinutes: 45 },
-    { id: `st-${Date.now()}-3`, title: `Verify output and mark completion`, completed: false, estimatedMinutes: 20 },
+    {
+      id: `st-${Date.now()}-1`,
+      title: `Review prerequisites and gather resources for ${title}`,
+      completed: false,
+      estimatedMinutes: 25,
+    },
+    {
+      id: `st-${Date.now()}-2`,
+      title: `Execute primary objective for ${title}`,
+      completed: false,
+      estimatedMinutes: 45,
+    },
+    {
+      id: `st-${Date.now()}-3`,
+      title: `Verify output and mark completion`,
+      completed: false,
+      estimatedMinutes: 20,
+    },
   ];
 }
 
@@ -73,9 +106,10 @@ export async function requestFinanceInsights(
   totalIncome: number,
   totalExpense: number
 ): Promise<FinanceInsightResponse> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/finance-insights', {
     method: 'POST',
-    headers: getApiHeaders(),
+    headers,
     body: JSON.stringify({ transactions, budget, totalIncome, totalExpense }),
   });
 
@@ -93,9 +127,10 @@ export async function requestStudyGuide(
   examDate: string,
   targetScore?: string
 ): Promise<StudyGuideResponse> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/study-guide', {
     method: 'POST',
-    headers: getApiHeaders(),
+    headers,
     body: JSON.stringify({
       subject,
       topics,
@@ -119,9 +154,10 @@ export async function requestDeepPlan(params: {
   habits: any[];
   userQuery?: string;
 }): Promise<string> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/deep-plan', {
     method: 'POST',
-    headers: getApiHeaders(),
+    headers,
     body: JSON.stringify(params),
   });
 
@@ -132,4 +168,23 @@ export async function requestDeepPlan(params: {
 
   const data = await response.json();
   return data.plan;
+}
+
+export async function requestParseMarksheet(
+  rawText: string,
+  usnHint?: string
+): Promise<MarksheetParseResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch('/api/vtu/parse-marksheet', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ rawText, usnHint }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || err.error || 'Failed to parse marksheet');
+  }
+
+  return response.json();
 }

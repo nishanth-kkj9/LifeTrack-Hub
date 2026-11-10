@@ -467,9 +467,11 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
                     onRestoreAppData(restored);
                     setBackupStatusMessage('Data restored successfully!');
                     setTimeout(() => setBackupStatusMessage(null), 3000);
-                  } catch (err) {
-                    setBackupStatusMessage('Failed to parse JSON backup file.');
-                    setTimeout(() => setBackupStatusMessage(null), 3500);
+                  } catch (err: any) {
+                    setBackupStatusMessage(err?.message || 'Failed to parse JSON backup file.');
+                    setTimeout(() => setBackupStatusMessage(null), 4000);
+                  } finally {
+                    e.target.value = '';
                   }
                 }}
               />

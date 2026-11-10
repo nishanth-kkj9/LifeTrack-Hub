@@ -30,13 +30,21 @@ import { Header } from './components/Header.tsx';
 import { Navigation, ActiveTab } from './components/Navigation.tsx';
 import { TodayView } from './components/views/TodayView.tsx';
 import { TasksView } from './components/views/TasksView.tsx';
-import { CalendarView } from './components/views/CalendarView.tsx';
 import { AcademicsView } from './components/views/AcademicsView.tsx';
-import { FinancesView } from './components/views/FinancesView.tsx';
 import { HabitsView } from './components/views/HabitsView.tsx';
 import { NotesView } from './components/views/NotesView.tsx';
-import { InsightsView } from './components/views/InsightsView.tsx';
 import { SettingsView } from './components/views/SettingsView.tsx';
+import { ViewSkeleton } from './components/common/ViewSkeleton.tsx';
+
+const CalendarView = React.lazy(() =>
+  import('./components/views/CalendarView.tsx').then((m) => ({ default: m.CalendarView }))
+);
+const FinancesView = React.lazy(() =>
+  import('./components/views/FinancesView.tsx').then((m) => ({ default: m.FinancesView }))
+);
+const InsightsView = React.lazy(() =>
+  import('./components/views/InsightsView.tsx').then((m) => ({ default: m.InsightsView }))
+);
 import { INITIAL_VTU_PROFILE } from './lib/vtuData.ts';
 import { AddTaskModal } from './components/modals/AddTaskModal.tsx';
 import { AddTransactionModal } from './components/modals/AddTransactionModal.tsx';
@@ -616,13 +624,15 @@ export default function App() {
 
         {/* 3. Calendar View */}
         {activeTab === 'calendar' && (
-          <CalendarView
-            tasks={appData.tasks}
-            exams={appData.exams}
-            onToggleTask={handleToggleTask}
-            onSelectTask={(task) => setSelectedDetailTask(task)}
-            onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
-          />
+          <React.Suspense fallback={<ViewSkeleton />}>
+            <CalendarView
+              tasks={appData.tasks}
+              exams={appData.exams}
+              onToggleTask={handleToggleTask}
+              onSelectTask={(task) => setSelectedDetailTask(task)}
+              onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
+            />
+          </React.Suspense>
         )}
 
         {/* 4. Academics View (Unifies Exams & VTU Hub) */}
@@ -642,14 +652,16 @@ export default function App() {
 
         {/* 5. Finances View */}
         {activeTab === 'finances' && (
-          <FinancesView
-            transactions={appData.transactions}
-            budget={appData.budget}
-            onAddTransaction={handleAddTransaction}
-            onDeleteTransaction={handleDeleteTransaction}
-            onUpdateBudget={handleUpdateBudget}
-            onOpenAddTransactionModal={() => setIsAddTxOpen(true)}
-          />
+          <React.Suspense fallback={<ViewSkeleton />}>
+            <FinancesView
+              transactions={appData.transactions}
+              budget={appData.budget}
+              onAddTransaction={handleAddTransaction}
+              onDeleteTransaction={handleDeleteTransaction}
+              onUpdateBudget={handleUpdateBudget}
+              onOpenAddTransactionModal={() => setIsAddTxOpen(true)}
+            />
+          </React.Suspense>
         )}
 
         {/* 6. Habits View */}
@@ -678,17 +690,19 @@ export default function App() {
 
         {/* 8. Insights View */}
         {activeTab === 'insights' && (
-          <InsightsView
-            tasks={appData.tasks}
-            habits={appData.habits}
-            transactions={appData.transactions}
-            budget={appData.budget}
-            exams={appData.exams}
-            dailyMetrics={appData.dailyMetrics || []}
-            onSaveDailyMetric={handleSaveDailyMetric}
-            appData={appData}
-            onRestoreAppData={handleRestoreAppData}
-          />
+          <React.Suspense fallback={<ViewSkeleton />}>
+            <InsightsView
+              tasks={appData.tasks}
+              habits={appData.habits}
+              transactions={appData.transactions}
+              budget={appData.budget}
+              exams={appData.exams}
+              dailyMetrics={appData.dailyMetrics || []}
+              onSaveDailyMetric={handleSaveDailyMetric}
+              appData={appData}
+              onRestoreAppData={handleRestoreAppData}
+            />
+          </React.Suspense>
         )}
 
         {/* 9. Settings View */}

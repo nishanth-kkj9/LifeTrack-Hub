@@ -300,9 +300,12 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
             <textarea
               rows={2}
               value={editedTitle}
-              onChange={(e) => {
-                setEditedTitle(e.target.value);
-                handleFieldChange({ title: e.target.value });
+              onChange={(e) => setEditedTitle(e.target.value)}
+              onBlur={() => {
+                const trimmed = editedTitle.trim();
+                if (trimmed && trimmed !== task.title) {
+                  handleFieldChange({ title: trimmed });
+                }
               }}
               placeholder="Task Title..."
               className={`w-full font-black text-lg sm:text-xl text-slate-900 border-none bg-transparent focus:outline-hidden resize-none ${
@@ -446,9 +449,11 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
             <textarea
               rows={4}
               value={editedDescription}
-              onChange={(e) => {
-                setEditedDescription(e.target.value);
-                handleFieldChange({ description: e.target.value });
+              onChange={(e) => setEditedDescription(e.target.value)}
+              onBlur={() => {
+                if (editedDescription !== task.description) {
+                  handleFieldChange({ description: editedDescription });
+                }
               }}
               placeholder="Add key criteria, formulas, meeting links, or reference material..."
               className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 leading-relaxed resize-none text-slate-800"

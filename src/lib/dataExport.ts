@@ -156,6 +156,9 @@ export function exportDailyMetricsCsv(metrics: DailyLifeMetric[]) {
  */
 export function parseAppDataJsonFile(file: File): Promise<UserAppData> {
   return new Promise((resolve, reject) => {
+    if (file.size > 2 * 1024 * 1024) {
+      return reject(new Error('Backup file exceeds the 2 MB limit.'));
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       try {

@@ -49,7 +49,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (!title.trim() || isNaN(parsedAmount) || parsedAmount <= 0) return;
 
     const tx: Transaction = {
-      id: `tx-${Date.now()}`,
+      id: `tx-${crypto.randomUUID()}`,
       title: title.trim(),
       amount: parsedAmount,
       type,
@@ -100,7 +100,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <button
             type="button"
             id="tx-toggle-expense-btn"
-            onClick={() => setType('expense')}
+            onClick={() => {
+              setType('expense');
+              if (category === 'Salary & Wages' || category === 'Freelance & Gigs' || category === 'Allowance & Grants') {
+                setCategory('Food & Dining');
+              }
+            }}
             className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               type === 'expense'
                 ? 'bg-rose-600 text-white shadow-xs'
@@ -112,7 +117,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <button
             type="button"
             id="tx-toggle-income-btn"
-            onClick={() => setType('income')}
+            onClick={() => {
+              setType('income');
+              if (category === 'Food & Dining' || category === 'Shopping' || category === 'Housing & Rent') {
+                setCategory('Salary & Wages');
+              }
+            }}
             className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               type === 'income'
                 ? 'bg-emerald-600 text-white shadow-xs'
@@ -142,7 +152,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="tx-amount-input" className="block text-xs font-bold text-slate-700 mb-1">
-                Amount ($) *
+                Amount (₹) *
               </label>
               <input
                 id="tx-amount-input"

@@ -87,6 +87,10 @@ export function getVtuClassFromCgpa(cgpa: number): {
 }
 
 // Calculate SGPA for a semester
+// Minimum SEE marks to pass: 18 / 50. Minimum aggregate marks: 40 / 100.
+export const MIN_SEE_TO_PASS = 18;
+export const MIN_TOTAL_TO_PASS = 40;
+
 export function calculateSemesterSgpa(subjects: VtuSubject[]): { sgpa: number; totalCredits: number } {
   let totalCredits = 0;
   let totalCreditPoints = 0;
@@ -95,15 +99,20 @@ export function calculateSemesterSgpa(subjects: VtuSubject[]): { sgpa: number; t
     const credits = s.credits || 0;
     // Determine grade points either from direct gradePoint or calculate from CIE + SEE
     let gp = s.gradePoint;
-    if (gp === undefined && (s.cieMarks !== undefined || s.seeMarks !== undefined)) {
+    if (s.cieMarks !== undefined || s.seeMarks !== undefined) {
       const cie = s.cieMarks || 0;
       const see = s.seeMarks || 0; // scaled out of 50
       const total = cie + see;
-      gp = getGradeFromTotalMarks(total).points;
-    }
-    if (gp === undefined) {
+      // VTU Passing Criterion: Student MUST score at least 18 in SEE and at least 40 overall
+      if (see < MIN_SEE_TO_PASS || total < MIN_TOTAL_TO_PASS) {
+        gp = 0;
+      } else if (gp === undefined) {
+        gp = getGradeFromTotalMarks(total).points;
+      }
+    } else if (gp === undefined) {
       continue; // Exclude subjects with missing grade from calculation rather than assuming fabricated grade
     }
+
     totalCredits += credits;
     totalCreditPoints += credits * gp;
   }
@@ -126,7 +135,8 @@ export function calculateCumulativeCgpa(semesters: VtuSemesterData[]): {
       ? { sgpa: sem.sgpa, totalCredits: sem.totalCredits }
       : calculateSemesterSgpa(sem.subjects);
 
-    if (semCredits > 0 && sgpa > 0) {
+    // Semesters with credits must be included even if SGPA is 0 (failing semesters count towards credits)
+    if (semCredits > 0) {
       totalCredits += semCredits;
       totalWeightedPoints += semCredits * sgpa;
     }
@@ -137,7 +147,7 @@ export function calculateCumulativeCgpa(semesters: VtuSemesterData[]): {
   return { cgpa, totalCredits, percentage };
 }
 
-// VTU Attendance Calculations
+// Attendance Calculations
 export interface AttendanceReport {
   percentage: number;
   status: 'safe' | 'warning' | 'danger';
@@ -157,38 +167,35 @@ export function calculateAttendanceReport(attended: number, total: number, thres
     };
   }
 
-  const currentPct = (attended / total) * 100;
-  const roundedPct = Math.round(currentPct * 10) / 10;
+  const rawPct = (attended / total) * 100;
+  const roundedPct = Math.round(rawPct * 10) / 10;
 
   let status: 'safe' | 'warning' | 'danger' = 'safe';
-  if (roundedPct < 75) {
+  // Use raw percentage to prevent premature round-up false passes
+  if (rawPct < 75) {
     status = 'danger'; // Detained / NSAR risk
-  } else if (roundedPct < threshold) {
+  } else if (rawPct < threshold) {
     status = 'warning'; // Condonation zone
   }
 
   // How many more classes can student miss while maintaining >= threshold %:
-  // (attended) / (total + x) >= threshold / 100
-  // total + x <= (attended * 100) / threshold
-  // x <= (attended * 100) / threshold - total
   let classesCanBunk = 0;
-  if (roundedPct >= threshold) {
+  if (rawPct >= threshold && threshold > 0) {
     classesCanBunk = Math.floor((attended * 100) / threshold - total);
     if (classesCanBunk < 0) classesCanBunk = 0;
   }
 
   // If below threshold, how many consecutive classes must student attend to reach threshold %:
-  // (attended + y) / (total + y) >= threshold / 100
-  // 100 * (attended + y) >= threshold * (total + y)
-  // 100 * attended + 100 * y >= threshold * total + threshold * y
-  // (100 - threshold) * y >= threshold * total - 100 * attended
-  // y >= (threshold * total - 100 * attended) / (100 - threshold)
   let classesToAttend = 0;
-  if (roundedPct < threshold) {
-    const numerator = threshold * total - 100 * attended;
-    const denominator = 100 - threshold;
-    classesToAttend = Math.ceil(numerator / denominator);
-    if (classesToAttend < 0) classesToAttend = 0;
+  if (rawPct < threshold) {
+    if (threshold >= 100) {
+      // If threshold is 100% and any class was missed, 100% is mathematically unachievable
+      classesToAttend = attended < total ? -1 : 0;
+    } else {
+      const numerator = threshold * total - 100 * attended;
+      const denominator = 100 - threshold;
+      classesToAttend = denominator > 0 ? Math.max(0, Math.ceil(numerator / denominator)) : 0;
+    }
   }
 
   return {
@@ -494,48 +501,24 @@ export function getDefaultVtuSubjectsForSemester(semester: number, branch: strin
 }
 
 export const INITIAL_VTU_PROFILE: VtuProfile = {
-  usn: '1MS22CS084',
-  studentName: 'Rahul Sharma',
-  fatherName: 'Manoj Sharma',
-  collegeCode: 'MS',
-  collegeName: 'Ramaiah Institute of Technology, Bengaluru',
-  branchCode: 'CS',
+  usn: '',
+  studentName: '',
+  fatherName: '',
+  collegeCode: '',
+  collegeName: '',
+  branchCode: '',
   scheme: '2022',
-  currentSemester: 3,
-  branch: 'Computer Science & Engg (CSE)',
-  admissionYear: 2022,
-  batch: '2022 - 2026',
-  targetCgpa: 8.75,
+  currentSemester: 1,
+  branch: 'General Studies',
+  educationLevel: 'college',
+  gradingSystem: 'cgpa_10',
+  gradeOrTermLabel: 'Semester 1',
+  admissionYear: new Date().getFullYear(),
+  batch: `${new Date().getFullYear()} - ${new Date().getFullYear() + 4}`,
+  targetCgpa: 8.5,
   attendanceThreshold: 85,
   activeBacklogs: 0,
-  rankInClass: 8,
-  lastSyncedAt: Date.now(),
-  semesters: [
-    {
-      semesterNumber: 1,
-      scheme: '2022',
-      branch: 'Computer Science & Engg (CSE)',
-      sgpa: 8.65,
-      totalCredits: 20,
-      subjects: [],
-    },
-    {
-      semesterNumber: 2,
-      scheme: '2022',
-      branch: 'Computer Science & Engg (CSE)',
-      sgpa: 8.82,
-      totalCredits: 20,
-      subjects: [],
-    },
-    {
-      semesterNumber: 3,
-      scheme: '2022',
-      branch: 'Computer Science & Engg (CSE)',
-      sgpa: 8.87,
-      totalCredits: 22,
-      subjects: getDefaultVtuSubjectsForSemester(3, 'Computer Science & Engg (CSE)'),
-    },
-  ],
+  semesters: [],
 };
 
 // Known VTU College Codes Lookup
@@ -603,10 +586,31 @@ export interface DecodedUsn {
   rollNumber?: string;
 }
 
-// Decode VTU USN (e.g., 1MS22CS084)
+// Estimate current academic semester based on admission year and calendar month
+// (VTU odd semesters: Aug-Dec, even semesters: Jan-July)
+export function estimateCurrentSemester(admissionYear: number, referenceDate: Date = new Date()): number {
+  if (!admissionYear || admissionYear < 1990 || admissionYear > 2100) return 1;
+  const currentYear = referenceDate.getFullYear();
+  const currentMonth = referenceDate.getMonth(); // 0-indexed: 0 = Jan, 7 = Aug
+  const yearsSinceAdmission = currentYear - admissionYear;
+  if (yearsSinceAdmission < 0) return 1;
+
+  let semester = 1;
+  if (currentMonth >= 7) {
+    // Odd semester (Aug - Dec): sem 1, 3, 5, 7
+    semester = yearsSinceAdmission * 2 + 1;
+  } else {
+    // Even semester (Jan - Jul): sem 2, 4, 6, 8
+    semester = Math.max(1, yearsSinceAdmission * 2);
+  }
+
+  return Math.min(8, Math.max(1, semester));
+}
+
+// Decode VTU USN (e.g., 1MS22CS084 or 1RV21CSE042 - allows 2 or 3 letter branch codes)
 export function decodeVtuUsn(usnRaw: string): DecodedUsn {
   const cleaned = usnRaw.trim().toUpperCase();
-  const match = cleaned.match(/^([1-4])([A-Z]{2})([0-9]{2})([A-Z]{2})([0-9]{3})$/);
+  const match = cleaned.match(/^([1-4])([A-Z]{2})([0-9]{2})([A-Z]{2,3})([0-9]{3})$/);
 
   if (!match) {
     return {
@@ -675,7 +679,7 @@ export function parseVtuResultText(text: string): {
   let extractedResultStatus: string | undefined;
 
   // Look for USN in text
-  const usnMatch = text.match(/([1-4][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3})/i);
+  const usnMatch = text.match(/([1-4][A-Z]{2}[0-9]{2}[A-Z]{2,3}[0-9]{3})/i);
   if (usnMatch) {
     extractedUsn = usnMatch[1].toUpperCase();
   }
@@ -749,7 +753,7 @@ export function parseVtuResultText(text: string): {
       .replace(/[\t|\-,]/g, ' ')
       .trim();
 
-    const finalName = cleanName.length > 3 ? cleanName : `VTU Course ${code}`;
+    const finalName = cleanName.length > 3 ? cleanName : `Course ${code}`;
     const total = cie + see;
     const grade = getGradeFromTotalMarks(total);
 
@@ -762,8 +766,9 @@ export function parseVtuResultText(text: string): {
       seeMarks: see,
       gradeLetter: grade.letter,
       gradePoint: grade.points,
-      attendedClasses: 32,
-      totalClasses: 36,
+      // Honest default: attendance is not part of marksheet, leave as 0 (not entered)
+      attendedClasses: 0,
+      totalClasses: 0,
     });
   }
 
@@ -771,6 +776,10 @@ export function parseVtuResultText(text: string): {
     extractedSubjects,
     extractedUsn,
     extractedSem,
+    extractedStudentName,
+    extractedFatherName,
+    extractedCollege,
+    extractedResultStatus,
   };
 }
 
@@ -1036,95 +1045,42 @@ const SAMPLE_FATHERS = [
 export function getEduStudentRecord(rawUsn: string): EduStudentRecord {
   const cleanUsn = rawUsn.trim().toUpperCase();
 
-  // Check pre-seeded official database
+  // Check pre-seeded database
   if (PRESEEDED_EDU_STUDENTS[cleanUsn]) {
     return PRESEEDED_EDU_STUDENTS[cleanUsn];
   }
 
-  // Fallback: Dynamically decode and generate realistic VTU transcript
+  // Fallback: Dynamically decode real VTU USN structure without fabricating names or marks
   const decoded = decodeVtuUsn(cleanUsn);
-  const rollNum = parseInt(decoded.rollNumber || '1', 10) || 1;
-  const nameIdx = (cleanUsn.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) + rollNum) % SAMPLE_NAMES.length;
-  const fatherIdx = (rollNum + 3) % SAMPLE_FATHERS.length;
-
   const admissionYr = decoded.admissionYear || 2022;
   const scheme = decoded.estimatedScheme || '2022';
-  const branchName = decoded.branchName || 'Computer Science & Engineering';
-
-  // Calculate current semester based on admission year (relative to 2026)
-  const yearsIn = 2026 - admissionYr;
-  const currentSemester = Math.min(8, Math.max(1, yearsIn * 2));
-
-  // Determine realistic marks based on roll number
-  const baseScore = 78 + (rollNum % 17); // 78 to 94
-  const semesterResults: EduSemesterResult[] = [];
-
-  for (let sem = 1; sem < currentSemester; sem++) {
-    const semSubjects = getDefaultVtuSubjectsForSemester(sem, branchName);
-    const subResults: EduSubjectResult[] = semSubjects.map((s, idx) => {
-      const offset = ((rollNum * 7 + sem * 13 + idx * 5) % 15) - 6; // -6 to +8
-      const totalMarks = Math.min(98, Math.max(52, baseScore + offset));
-      const cieMarks = Math.round(totalMarks * 0.51);
-      const seeMarks = totalMarks - cieMarks;
-      const grade = getGradeFromTotalMarks(totalMarks);
-
-      return {
-        code: s.code,
-        name: s.name,
-        credits: s.credits,
-        cieMarks: Math.min(50, Math.max(22, cieMarks)),
-        seeMarks: Math.min(50, Math.max(20, seeMarks)),
-        totalMarks,
-        gradeLetter: grade.letter,
-        gradePoint: grade.points,
-        result: grade.letter === 'F' ? 'FAIL' : 'PASS',
-      };
-    });
-
-    const totalCreds = subResults.reduce((sum, s) => sum + s.credits, 0);
-    const totalPoints = subResults.reduce((sum, s) => sum + s.credits * s.gradePoint, 0);
-    const sgpa = totalCreds > 0 ? parseFloat((totalPoints / totalCreds).toFixed(2)) : 8.5;
-
-    semesterResults.push({
-      semester: sem,
-      sgpa,
-      totalCredits: totalCreds,
-      resultDate: sem % 2 === 1 ? `July ${admissionYr + Math.floor((sem - 1) / 2)}` : `Jan ${admissionYr + Math.floor(sem / 2)}`,
-      subjects: subResults,
-    });
-  }
-
-  const overallCgpa = semesterResults.length > 0
-    ? parseFloat((semesterResults.reduce((sum, s) => sum + s.sgpa, 0) / semesterResults.length).toFixed(2))
-    : 8.65;
-  const percentage = vtuCgpaToPercentage(overallCgpa);
-  const degreeClass = getVtuClassFromCgpa(overallCgpa).title;
+  const branchName = decoded.branchName || 'Not available';
+  const currentSemester = estimateCurrentSemester(admissionYr);
 
   return {
-    usn: cleanUsn,
-    studentName: SAMPLE_NAMES[nameIdx],
-    fatherName: SAMPLE_FATHERS[fatherIdx],
-    collegeCode: decoded.collegeCode || 'MS',
-    collegeName: decoded.collegeName || 'VTU Affiliated College',
-    branchCode: decoded.branchCode || 'CS',
+    usn: cleanUsn || 'Not available',
+    studentName: 'Not available',
+    fatherName: 'Not available',
+    collegeCode: decoded.collegeCode || 'Not available',
+    collegeName: decoded.collegeName || 'Not available',
+    branchCode: decoded.branchCode || 'Not available',
     branchName,
     scheme,
     admissionYear: admissionYr,
     batch: decoded.batch || `${admissionYr} - ${admissionYr + 4}`,
     currentSemester,
-    overallCgpa,
-    percentage,
-    degreeClass,
+    overallCgpa: 0,
+    percentage: 0,
+    degreeClass: 'Not available',
     activeBacklogs: 0,
-    rankInClass: (rollNum % 25) + 1,
-    semesterResults,
+    rankInClass: undefined,
+    semesterResults: [],
   };
 }
 
 /**
  * Synchronizes any given VTU USN with official student records and marks transcripts.
- * Returns a fully populated VtuProfile with real-time student details, college, branch,
- * and semester marks cards ready for live ranking and calculator synchronization.
+ * Returns a populated VtuProfile ready for calculation without fabricating grades.
  */
 export function syncVtuProfileFromStudentRecord(
   rawUsn: string,
@@ -1147,8 +1103,8 @@ export function syncVtuProfileFromStudentRecord(
       seeMarks: sub.seeMarks,
       gradeLetter: sub.gradeLetter,
       gradePoint: sub.gradePoint,
-      attendedClasses: 34,
-      totalClasses: 38,
+      attendedClasses: 0,
+      totalClasses: 0,
     })),
   }));
 
@@ -1243,8 +1199,18 @@ export const EDUCATION_LEVEL_CONFIGS: Record<EducationLevel, EducationLevelConfi
   },
   university: {
     id: 'university',
-    label: 'University & Engineering (B.E / B.Tech / PG / VTU)',
-    category: 'Higher Education / Engineering',
+    label: 'University & General Degree (BA / BSc / BCom / MSc / PhD)',
+    category: 'Higher Education / University',
+    termName: 'Semester',
+    termCount: 6,
+    idLabel: 'University Reg No / Student ID',
+    defaultGrading: 'cgpa_10',
+    sampleStream: 'Computer Science & Applications',
+  },
+  engineering: {
+    id: 'engineering',
+    label: 'Engineering Degree (B.E / B.Tech / VTU / Autonomous)',
+    category: 'Engineering & Technology',
     termName: 'Semester',
     termCount: 8,
     idLabel: 'University Seat Number (USN)',

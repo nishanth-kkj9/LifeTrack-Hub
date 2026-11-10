@@ -619,7 +619,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           onSelectTask={(task) => setActiveDetailTask(task)}
           onOpenQuickAddWithStatus={(status) => {
             const newTask: Task = {
-              id: `task-${Date.now()}`,
+              id: `task-${crypto.randomUUID()}`,
               title: 'New Kanban Item',
               category: 'study',
               priority: 'medium',
@@ -648,7 +648,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           onSelectTask={(task) => setActiveDetailTask(task)}
           onOpenQuickAddWithPriority={(priority) => {
             const newTask: Task = {
-              id: `task-${Date.now()}`,
+              id: `task-${crypto.randomUUID()}`,
               title: `New P${priority === 'urgent' ? 1 : priority === 'high' ? 2 : 3} Target`,
               category: 'study',
               priority,

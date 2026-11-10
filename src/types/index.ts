@@ -29,6 +29,8 @@ export interface Task {
   recurring?: TaskRecurrence;
   status?: TaskStatus;
   notes?: string;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export type TransactionType = 'income' | 'expense';
@@ -59,6 +61,8 @@ export interface Transaction {
   paymentMethod: 'Card' | 'Cash' | 'Bank Transfer' | 'Online Wallet' | 'Other';
   notes?: string;
   createdAt: number;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface BudgetSettings {
@@ -92,6 +96,8 @@ export interface ExamReminder {
   studyGuide?: string;
   sources?: GroundingSource[];
   createdAt: number;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface VacationPeriod {
@@ -115,6 +121,8 @@ export interface Habit {
   vacationPeriods?: VacationPeriod[];
   habitScore?: number; // 0-100 calculated strength score
   habitHealth?: 'Excellent' | 'Strong' | 'Stable' | 'Needs attention';
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface DailyLifeMetric {
@@ -132,6 +140,7 @@ export interface DailyLifeMetric {
   workoutDone?: boolean;
   journalNotes?: string;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 export interface QuickNote {
@@ -141,6 +150,7 @@ export interface QuickNote {
   category?: string;
   pinned: boolean;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 export type VtuGradeLetter = 'O' | 'A+' | 'A' | 'B+' | 'B' | 'C' | 'P' | 'F';
@@ -296,7 +306,7 @@ export interface VtuOpportunity {
   tags: string[];
 }
 
-export type EducationLevel = 'primary' | 'middle_school' | 'high_school' | 'college' | 'university';
+export type EducationLevel = 'primary' | 'middle_school' | 'high_school' | 'college' | 'university' | 'engineering';
 export type GradingSystem = 'cgpa_10' | 'gpa_4' | 'percentage' | 'letter_grades';
 
 export interface VtuProfile {
@@ -334,4 +344,5 @@ export interface UserAppData {
   vtuProfile?: VtuProfile;
   masterPlan?: string;
   lastUpdated?: number;
+  version?: number;
 }

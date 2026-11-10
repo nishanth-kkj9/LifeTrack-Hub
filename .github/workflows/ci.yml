@@ -24,6 +24,10 @@ jobs:
         # Strict lockfile install — no silent fallback that masks drift
         run: npm ci
 
+      - name: Dependency Security Audit
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
       - name: Web Typecheck & Lint
         run: npm run lint
 

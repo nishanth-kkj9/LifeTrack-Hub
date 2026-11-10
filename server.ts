@@ -1,15 +1,17 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
+import cors from 'cors';
+import helmet from 'helmet';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './server/apiRouter.ts';
 
 dotenv.config();
 
 // Process-level safety nets.
-// unhandledRejection: log and keep serving (request-scoped promise failures).
 process.on('unhandledRejection', (reason) => {
-  console.warn('[Server Warning: Unhandled Rejection]', reason);
+  console.error('[Server Fatal: Unhandled Rejection] Shutting down.', reason);
+  process.exit(1);
 });
 
 // uncaughtException: the process is in an undefined state. Log, then exit
@@ -26,6 +28,53 @@ async function startServer() {
 
   // Set trusted proxy hop for secure IP resolution
   app.set('trust proxy', 1);
+
+  // Security Headers (Helmet) with strict CSP allowing app, Firebase, and Google APIs
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            "'unsafe-eval'",
+            'https://apis.google.com',
+            'https://www.gstatic.com',
+            'https://*.firebaseapp.com',
+          ],
+          connectSrc: [
+            "'self'",
+            'https://*.googleapis.com',
+            'https://*.firebaseio.com',
+            'https://*.cloudfunctions.net',
+            'https://identitytoolkit.googleapis.com',
+            'https://securetoken.googleapis.com',
+            'https://firestore.googleapis.com',
+          ],
+          imgSrc: ["'self'", 'data:', 'blob:', 'https://*.googleusercontent.com', 'https://*.gstatic.com'],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+          frameSrc: ["'self'", 'https://*.firebaseapp.com', 'https://accounts.google.com'],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+    })
+  );
+
+  // Strict CORS policy: Allow app origin or dev
+  const allowedOrigin = process.env.APP_ORIGIN || `http://localhost:${PORT}`;
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin || origin === allowedOrigin || process.env.NODE_ENV !== 'production') {
+          return callback(null, true);
+        }
+        return callback(new Error('CORS origin denied'));
+      },
+      credentials: true,
+    })
+  );
 
   // NOTE: JSON body parsing is registered once, inside apiRouter (scoped to /api).
   // Registering express.json() here too would parse every request body twice.

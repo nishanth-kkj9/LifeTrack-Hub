@@ -330,6 +330,8 @@ export const INITIAL_DATA: UserAppData = {
     }
   ],
   vtuProfile: INITIAL_VTU_PROFILE,
+  version: 1,
+  lastUpdated: Date.now(),
 };
 
 export const EMPTY_USER_DATA: UserAppData = {
@@ -343,7 +345,92 @@ export const EMPTY_USER_DATA: UserAppData = {
   habits: [],
   notes: [],
   vtuProfile: INITIAL_VTU_PROFILE,
+  version: 1,
+  lastUpdated: 0,
 };
+
+/**
+ * Known seed item IDs shipped with demo sample data.
+ */
+export const SEED_IDS = new Set<string>([
+  'task-1', 'task-2', 'task-3', 'task-4',
+  'tx-1', 'tx-2', 'tx-3', 'tx-4',
+  'exam-1', 'exam-2', 'exam-3',
+  'habit-1', 'habit-2', 'habit-3', 'habit-4',
+  'note-1', 'note-2',
+  'top-1', 'top-2', 'top-3', 'top-4', 'top-5', 'top-6', 'top-7', 'top-8', 'top-9', 'top-10',
+  'st-1', 'st-2', 'st-3', 'st-4', 'st-5', 'st-6', 'st-7', 'st-8', 'st-9'
+]);
+
+/**
+ * Checks if the dataset contains genuine user-created content (items with non-seed IDs).
+ * Toggling completion state on a demo item does NOT classify it as user-created.
+ */
+export function hasUserCreatedContent(data: UserAppData | null | undefined): boolean {
+  if (!data) return false;
+  const hasTask = Array.isArray(data.tasks) && data.tasks.some((t) => t && t.id && !SEED_IDS.has(t.id));
+  const hasTx = Array.isArray(data.transactions) && data.transactions.some((tx) => tx && tx.id && !SEED_IDS.has(tx.id));
+  const hasExam = Array.isArray(data.exams) && data.exams.some((e) => e && e.id && !SEED_IDS.has(e.id));
+  const hasHabit = Array.isArray(data.habits) && data.habits.some((h) => h && h.id && !SEED_IDS.has(h.id));
+  const hasNote = Array.isArray(data.notes) && data.notes.some((n) => n && n.id && !SEED_IDS.has(n.id));
+  const hasMetric = Array.isArray(data.dailyMetrics) && data.dailyMetrics.length > 0;
+  return hasTask || hasTx || hasExam || hasHabit || hasNote || hasMetric;
+}
+
+/**
+ * Merges two entity arrays by ID keeping the item with the newer updatedAt timestamp.
+ * Respects tombstone deletions (items with deletedAt are filtered out).
+ */
+export function mergeArraysById<T extends { id: string; updatedAt?: number; deletedAt?: number }>(
+  cloudItems: T[] = [],
+  localItems: T[] = []
+): T[] {
+  const map = new Map<string, T>();
+
+  for (const item of cloudItems) {
+    if (item && item.id) {
+      map.set(item.id, item);
+    }
+  }
+
+  for (const localItem of localItems) {
+    if (localItem && localItem.id) {
+      const existing = map.get(localItem.id);
+      if (!existing) {
+        map.set(localItem.id, localItem);
+      } else {
+        const localTime = localItem.updatedAt || 0;
+        const cloudTime = existing.updatedAt || 0;
+        if (localTime >= cloudTime) {
+          map.set(localItem.id, localItem);
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values()).filter((item) => !item.deletedAt);
+}
+
+/**
+ * Merges cloud snapshot and local data without replacing whole arrays with stale copies.
+ */
+export function mergeUserAppData(cloudData: UserAppData, localData: UserAppData): UserAppData {
+  const isLocalNewer = (localData.lastUpdated || 0) > (cloudData.lastUpdated || 0);
+  return {
+    ...cloudData,
+    tasks: mergeArraysById(cloudData.tasks, localData.tasks),
+    transactions: mergeArraysById(cloudData.transactions, localData.transactions),
+    exams: mergeArraysById(cloudData.exams, localData.exams),
+    habits: mergeArraysById(cloudData.habits, localData.habits),
+    notes: mergeArraysById(cloudData.notes, localData.notes),
+    dailyMetrics: mergeArraysById(cloudData.dailyMetrics || [], localData.dailyMetrics || []),
+    budget: isLocalNewer ? localData.budget : cloudData.budget,
+    vtuProfile: isLocalNewer ? localData.vtuProfile : cloudData.vtuProfile,
+    masterPlan: isLocalNewer ? localData.masterPlan : cloudData.masterPlan,
+    version: Math.max(cloudData.version || 1, localData.version || 1) + 1,
+    lastUpdated: Math.max(cloudData.lastUpdated || 0, localData.lastUpdated || 0, Date.now()),
+  };
+}
 
 /**
  * Demo/sample dataset. NEVER auto-loaded as the default app state anymore:
@@ -357,46 +444,87 @@ export function getDemoData(): UserAppData {
 
 /**
  * Defensive sanitizer for persisted/imported app data.
- *
- * STABILITY: a single malformed entry (e.g. `tasks: [null]` from an interrupted
- * save, a bad import, or an older schema) used to crash the whole React tree
- * (no ErrorBoundary, no validation) — an empirically reproduced white screen.
- * This strips non-object entries and coerces required shapes so rendering can
- * never dereference null. When anything had to be repaired, the original raw
- * payload is quarantined under a backup key (never deleted).
+ * Coerces required shapes, ensures updatedAt is populated on items, and ensures version number.
  */
 export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: boolean } {
   let repaired = false;
   const src = input && typeof input === 'object' ? input : {};
 
-  const cleanArray = <T,>(v: any, ok: (item: any) => boolean): T[] => {
+  const cleanArray = <T,>(v: any, ok: (item: any) => boolean, assignDefaults?: (item: any) => any): T[] => {
     if (!Array.isArray(v)) {
       repaired = true;
       return [];
     }
-    const out = v.filter(ok);
-    if (out.length !== v.length) repaired = true;
-    return out as T[];
+    const out: T[] = [];
+    for (const item of v) {
+      if (ok(item)) {
+        out.push(assignDefaults ? assignDefaults(item) : item);
+      } else {
+        repaired = true;
+      }
+    }
+    return out;
   };
 
   const isRecord = (x: any) => x !== null && typeof x === 'object';
+  const now = Date.now();
 
-  const tasks = cleanArray<Task>(src.tasks, (t) => isRecord(t) && typeof t.id === 'string' && typeof t.title === 'string')
-    .map((t) => {
-      if (!Array.isArray(t.subtasks)) {
-        repaired = true;
-        return { ...t, subtasks: [] };
-      }
-      return t;
-    });
+  const tasks = cleanArray<Task>(
+    src.tasks,
+    (t) => isRecord(t) && typeof t.id === 'string' && typeof t.title === 'string',
+    (t) => ({
+      ...t,
+      subtasks: Array.isArray(t.subtasks) ? t.subtasks : (repaired = true, []),
+      updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : now,
+    })
+  );
 
-  const transactions = cleanArray<Transaction>(src.transactions, (t) => isRecord(t) && typeof t.id === 'string' && typeof t.amount === 'number');
-  const exams = cleanArray<ExamReminder>(src.exams, (e) => isRecord(e) && typeof e.id === 'string')
-    .map((e) => (Array.isArray(e.topics) ? e : { ...e, topics: [] }));
-  const habits = cleanArray<Habit>(src.habits, (h) => isRecord(h) && typeof h.id === 'string')
-    .map((h) => (Array.isArray(h.completedDates) ? h : { ...h, completedDates: [] }));
-  const notes = cleanArray<QuickNote>(src.notes, (n) => isRecord(n) && typeof n.id === 'string');
-  const dailyMetrics = cleanArray<DailyLifeMetric>(src.dailyMetrics, (m) => isRecord(m) && typeof m.date === 'string');
+  const transactions = cleanArray<Transaction>(
+    src.transactions,
+    (t) => isRecord(t) && typeof t.id === 'string' && typeof t.amount === 'number',
+    (t) => ({
+      ...t,
+      updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : now,
+    })
+  );
+
+  const exams = cleanArray<ExamReminder>(
+    src.exams,
+    (e) => isRecord(e) && typeof e.id === 'string',
+    (e) => ({
+      ...e,
+      topics: Array.isArray(e.topics) ? e.topics : (repaired = true, []),
+      updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : now,
+    })
+  );
+
+  const habits = cleanArray<Habit>(
+    src.habits,
+    (h) => isRecord(h) && typeof h.id === 'string',
+    (h) => ({
+      ...h,
+      completedDates: Array.isArray(h.completedDates) ? h.completedDates : (repaired = true, []),
+      updatedAt: typeof h.updatedAt === 'number' ? h.updatedAt : now,
+    })
+  );
+
+  const notes = cleanArray<QuickNote>(
+    src.notes,
+    (n) => isRecord(n) && typeof n.id === 'string',
+    (n) => ({
+      ...n,
+      updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : now,
+    })
+  );
+
+  const dailyMetrics = cleanArray<DailyLifeMetric>(
+    src.dailyMetrics,
+    (m) => isRecord(m) && typeof m.date === 'string',
+    (m) => ({
+      ...m,
+      updatedAt: typeof m.updatedAt === 'number' ? m.updatedAt : now,
+    })
+  );
 
   const budget: BudgetSettings =
     isRecord(src.budget) && typeof src.budget.monthlyBudget === 'number'
@@ -413,6 +541,8 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     dailyMetrics,
     budget,
     vtuProfile: isRecord(src.vtuProfile) ? src.vtuProfile : INITIAL_VTU_PROFILE,
+    version: typeof src.version === 'number' ? src.version : 1,
+    lastUpdated: typeof src.lastUpdated === 'number' ? src.lastUpdated : now,
   };
   return { data, repaired };
 }
@@ -427,7 +557,6 @@ export function loadLocalData(): UserAppData {
       if (parsed && typeof parsed === 'object') {
         const { data, repaired } = sanitizeUserAppData(parsed);
         if (repaired) {
-          // Quarantine the original payload for forensic recovery; keep the repaired data in use.
           console.error('[Data Integrity] Persisted app data was malformed and has been repaired. Original saved to', CORRUPT_BACKUP_KEY);
           try {
             localStorage.setItem(CORRUPT_BACKUP_KEY, raw);
@@ -449,8 +578,6 @@ export function saveLocalData(data: UserAppData): boolean {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
     return true;
   } catch (e) {
-    // QuotaExceededError lands here. Historically this was a console.warn only,
-    // i.e. SILENT data loss: the UI kept working while nothing was persisted.
     console.error('[Persistence] Failed to save to localStorage (quota exceeded?):', e);
     try {
       window.dispatchEvent(new CustomEvent('lifetrack-storage-full'));
@@ -470,7 +597,6 @@ export async function loginWithGoogle(): Promise<User | null> {
       console.info('Google sign-in popup was dismissed by the user.');
       return null;
     }
-    // Re-throw authentic errors so UI can honestly handle them
     throw err;
   }
 }
@@ -479,7 +605,7 @@ export async function logoutUser(): Promise<void> {
   await signOut(auth);
 }
 
-export function createGoogleUserProfile(email = 'chataiwithcode@gmail.com', displayName?: string): User {
+export function createGoogleUserProfile(email = 'user@example.com', displayName?: string): User {
   const name = displayName || email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1);
   const safeId = email.replace(/[^a-zA-Z0-9]/g, '_');
   return {
@@ -522,30 +648,36 @@ export function subscribeToUserDoc(
   onUpdate: (data: UserAppData) => void,
   onError: (err: any) => void
 ) {
-  // If Firebase Auth is not active on SDK level, use local storage safely
   if (!auth.currentUser) {
     const local = loadLocalData();
     onUpdate(local);
     return () => {};
   }
 
-  const path = `users/${userId}`;
   const userRef = doc(db, 'users', userId);
   return onSnapshot(
     userRef,
     (snapshot) => {
       if (snapshot.exists()) {
         const { data: sanitizedCloudData } = sanitizeUserAppData(snapshot.data());
-        onUpdate(sanitizedCloudData);
+        const localData = loadLocalData();
+        const merged = mergeUserAppData(sanitizedCloudData, localData);
+        saveLocalData(merged);
+        onUpdate(merged);
       } else {
-        // First time cloud user: if local storage has explicit user data, migrate it;
-        // otherwise initialize a clean user account without injecting mock demo records into cloud.
-        const hasCustomLocalData = Boolean(localStorage.getItem(LOCAL_STORAGE_KEY));
-        const initialToSave = hasCustomLocalData ? loadLocalData() : EMPTY_USER_DATA;
-        setDoc(userRef, { ...initialToSave, lastUpdated: Date.now() }).catch((err) => {
+        const localData = loadLocalData();
+        const shouldMigrate = hasUserCreatedContent(localData);
+        const initialToSave = shouldMigrate ? localData : EMPTY_USER_DATA;
+        const initialDoc: UserAppData = {
+          ...initialToSave,
+          version: 1,
+          lastUpdated: Date.now(),
+        };
+        setDoc(userRef, initialDoc).catch((err) => {
           console.warn('Initial cloud seed notice:', err?.message || err);
         });
-        onUpdate(initialToSave);
+        saveLocalData(initialDoc);
+        onUpdate(initialDoc);
       }
     },
     (err) => {
@@ -556,8 +688,13 @@ export function subscribeToUserDoc(
 }
 
 export async function saveUserDataToCloud(userId: string, data: UserAppData): Promise<void> {
-  // Always maintain local persistence
-  saveLocalData(data);
+  const nextVersion = (data.version || 1) + 1;
+  const dataToSave: UserAppData = {
+    ...data,
+    version: nextVersion,
+    lastUpdated: Date.now(),
+  };
+  saveLocalData(dataToSave);
 
   if (!auth.currentUser) {
     throw new Error('Not signed into Firebase Authentication. Cloud sync requires an active cloud session.');
@@ -568,6 +705,5 @@ export async function saveUserDataToCloud(userId: string, data: UserAppData): Pr
   }
 
   const userRef = doc(db, 'users', userId);
-  // Re-throw any Firestore errors so UI reports true status
-  await setDoc(userRef, { ...data, lastUpdated: Date.now() }, { merge: true });
+  await setDoc(userRef, dataToSave, { merge: true });
 }

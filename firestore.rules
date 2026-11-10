@@ -19,6 +19,35 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isValidUserDoc(data) {
+      return data.keys().hasOnly(['tasks', 'transactions', 'budget', 'exams', 'habits', 'notes', 'dailyMetrics', 'vtuProfile', 'masterPlan', 'lastUpdated', 'version'])
+        && (!('tasks' in data) || (data.tasks is list && data.tasks.size() <= 5000))
+        && (!('transactions' in data) || (data.transactions is list && data.transactions.size() <= 5000))
+        && (!('exams' in data) || (data.exams is list && data.exams.size() <= 5000))
+        && (!('habits' in data) || (data.habits is list && data.habits.size() <= 5000))
+        && (!('notes' in data) || (data.notes is list && data.notes.size() <= 5000))
+        && (!('dailyMetrics' in data) || (data.dailyMetrics is list && data.dailyMetrics.size() <= 5000))
+        && ('lastUpdated' in data && data.lastUpdated is number)
+        && (!('version' in data) || (data.version is number));
+    }
+
+    function isValidHabitDoc(data, habitId) {
+      return data.keys().hasOnly(['id', 'name', 'category', 'targetDaysPerWeek', 'frequency', 'reminderTime', 'completedDates', 'streak', 'bestStreak', 'createdAt', 'scheduleType', 'customDays', 'vacationPeriods', 'habitScore', 'habitHealth', 'updatedAt', 'deletedAt'])
+        && data.id is string && data.id == habitId && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && (!('completedDates' in data) || (data.completedDates is list && data.completedDates.size() <= 5000))
+        && (!('customDays' in data) || (data.customDays is list && data.customDays.size() <= 7))
+        && (!('vacationPeriods' in data) || (data.vacationPeriods is list && data.vacationPeriods.size() <= 100))
+        && (!('updatedAt' in data) || (data.updatedAt is number));
+    }
+
+    function isValidMetricDoc(data, date) {
+      return data.keys().hasOnly(['id', 'date', 'sleepHours', 'sleepQuality', 'energyLevel', 'moodLevel', 'stressLevel', 'waterLitres', 'stepsCount', 'focusHours', 'screenTimeHours', 'workoutDone', 'journalNotes', 'updatedAt', 'deletedAt'])
+        && data.date is string && data.date == date && data.date.size() <= 32
+        && (!('journalNotes' in data) || (data.journalNotes is string && data.journalNotes.size() <= 5000))
+        && (!('updatedAt' in data) || (data.updatedAt is number));
+    }
+
     function isValidSyncDelta(data, deltaId) {
       return data.keys().hasAll(['id', 'entityType', 'entityId', 'operation', 'payload', 'hlcTimestamp', 'createdAt', 'originDeviceId', 'protocolVersion', 'schemaVersion', 'hlcPhysicalTimeMs', 'hlcLogicalCounter', 'hlcNodeId'])
         && data.id is string && data.id == deltaId && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
@@ -44,17 +73,17 @@ service cloud.firestore {
         && (!('lastError' in data) || (data.lastError is string && data.lastError.size() <= 1024));
     }
 
-    // Canonical User Root Document (Legacy Web Compatibility)
+    // Canonical User Root Document
     match /users/{userId} {
       allow get: if isValidId(userId) && isOwner(userId);
       allow list: if false;
-      allow create, update, delete: if isValidId(userId) && isOwner(userId);
+      allow create, update: if isValidId(userId) && isOwner(userId) && isValidUserDoc(request.resource.data);
+      allow delete: if isValidId(userId) && isOwner(userId);
 
       // Canonical KMP Remote Sync Delta Stream
       match /deltas/{deltaId} {
         allow get, list: if isValidId(userId) && isOwner(userId);
         allow create: if isValidId(userId) && isOwner(userId) && isValidId(deltaId) && isValidSyncDelta(request.resource.data, deltaId);
-        // Event sourcing immutability guarantee: deltas can never be mutated or silently deleted
         allow update: if false;
         allow delete: if false;
       }
@@ -69,13 +98,15 @@ service cloud.firestore {
       // Individual Habit with Scoring Subcollection
       match /habits/{habitId} {
         allow get, list: if isValidId(userId) && isOwner(userId);
-        allow create, update, delete: if isValidId(userId) && isOwner(userId) && isValidId(habitId);
+        allow create, update: if isValidId(userId) && isOwner(userId) && isValidId(habitId) && isValidHabitDoc(request.resource.data, habitId);
+        allow delete: if isValidId(userId) && isOwner(userId);
       }
 
       // Daily Life Metrics Subcollection
       match /metrics/{date} {
         allow get, list: if isValidId(userId) && isOwner(userId);
-        allow create, update, delete: if isValidId(userId) && isOwner(userId) && isValidId(date);
+        allow create, update: if isValidId(userId) && isOwner(userId) && isValidId(date) && isValidMetricDoc(request.resource.data, date);
+        allow delete: if isValidId(userId) && isOwner(userId);
       }
     }
   }

@@ -9,8 +9,12 @@ import {
 } from 'lucide-react';
 import { ExamReminder, VtuProfile, Task } from '../../types/index.ts';
 import { ExamsView } from './ExamsView.tsx';
-import { VtuHubView } from './VtuHubView.tsx';
+import { ViewSkeleton } from '../common/ViewSkeleton.tsx';
 import { Button } from '../ui/Button.tsx';
+
+const VtuHubView = React.lazy(() =>
+  import('./VtuHubView.tsx').then((m) => ({ default: m.VtuHubView }))
+);
 
 interface AcademicsViewProps {
   exams: ExamReminder[];
@@ -121,24 +125,26 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
           onDeleteExam={onDeleteExam}
         />
       ) : (
-        <VtuHubView
-          vtuProfile={
-            vtuProfile || {
-              usn: '1MS21CS001',
-              studentName: 'Engineering Scholar',
-              branch: 'Computer Science and Engineering',
-              branchCode: 'CS',
-              collegeCode: '1MS',
-              collegeName: 'M S Ramaiah Institute of Technology',
-              currentSemester: 5,
-              scheme: '2022',
-              targetCgpa: 8.5,
-              attendanceThreshold: 85,
-              semesters: [],
+        <React.Suspense fallback={<ViewSkeleton />}>
+          <VtuHubView
+            vtuProfile={
+              vtuProfile || {
+                usn: '1MS21CS001',
+                studentName: 'Engineering Scholar',
+                branch: 'Computer Science and Engineering',
+                branchCode: 'CS',
+                collegeCode: '1MS',
+                collegeName: 'M S Ramaiah Institute of Technology',
+                currentSemester: 5,
+                scheme: '2022',
+                targetCgpa: 8.5,
+                attendanceThreshold: 85,
+                semesters: [],
+              }
             }
-          }
-          onUpdateVtuProfile={onUpdateVtuProfile || (() => {})}
-        />
+            onUpdateVtuProfile={onUpdateVtuProfile || (() => {})}
+          />
+        </React.Suspense>
       )}
     </div>
   );

@@ -1,10 +1,11 @@
 import express from 'express';
 import http from 'http';
 import { apiRouter } from '../server/apiRouter.ts';
+import { createTestBearerToken } from './testAuthHelper.ts';
 
 /**
  * Automated test harness verifying API router input validation,
- * crash resilience, rate limiting, and accurate financial advice logic.
+ * crash resilience, authentication requirement, rate limiting, and accurate financial advice logic.
  */
 async function runApiRouterTests() {
   console.log('--- Starting API Router Crash Resilience & Logic Tests ---');
@@ -18,10 +19,17 @@ async function runApiRouterTests() {
   const address = server.address() as any;
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
-  async function postJson(path: string, body: any) {
+  const validTokenUser1 = await createTestBearerToken('user-suite-1');
+  const validTokenUser2 = await createTestBearerToken('user-suite-2');
+
+  async function postJson(path: string, body: any, token: string | null = validTokenUser1) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     const res = await fetch(`${baseUrl}/api${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
@@ -43,6 +51,19 @@ async function runApiRouterTests() {
   }
 
   try {
+    // 0a. Test authentication: Missing Authorization header returns 401
+    const unauthRes = await postJson('/gemini/breakdown', { title: 'Test Task' }, null);
+    check('Request without token returns 401 Unauthorized', unauthRes.status === 401);
+
+    // 0b. Test authentication: Malformed / wrong-audience token returns 401
+    const badAudienceToken = await createTestBearerToken('user-bad', 'wrong-audience-id');
+    const badTokenRes = await postJson('/gemini/breakdown', { title: 'Test Task' }, badAudienceToken);
+    check('Request with invalid token returns 401 Unauthorized', badTokenRes.status === 401);
+
+    // 0c. Test authentication: Valid token succeeds with 200
+    const authSuccessRes = await postJson('/gemini/breakdown', { title: 'Valid Authenticated Task' }, validTokenUser1);
+    check('Request with valid Firebase ID token returns 200', authSuccessRes.status === 200);
+
     // 1. Test VTU parse-marksheet with non-string usnHint (prevents .toUpperCase() crash)
     const res1 = await postJson('/vtu/parse-marksheet', {
       rawText: 'VTU Exam Results 2024 BCS301 CIE 45 SEE 48',
@@ -101,25 +122,23 @@ async function runApiRouterTests() {
     });
     check('Valid task returns subtasks', res7.status === 200 && Array.isArray(res7.body.subtasks));
 
-    // 8. Test Rate Limiter anti-spoofing resilience:
-    // Rotating X-Forwarded-For must NOT bypass rate limiter for requests from the same connection
-    let blockedCount = 0;
+    // 8. Test Rate Limiter independence between distinct users:
+    // User 1 exhausts their 30-request bucket. User 2's requests must still succeed.
+    let user1Blocked = false;
     for (let i = 0; i < 35; i++) {
-      const spoofRes = await fetch(`${baseUrl}/api/gemini/breakdown`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Forwarded-For': `198.51.100.${(i % 250) + 1}`, // Rotating spoofed header
-        },
-        body: JSON.stringify({ title: `Rate limit probe ${i}` }),
-      });
-      if (spoofRes.status === 429) {
-        blockedCount++;
+      const u1Res = await postJson('/gemini/breakdown', { title: `Rate limit bucket test ${i}` }, validTokenUser1);
+      if (u1Res.status === 429) {
+        user1Blocked = true;
+        break;
       }
     }
+    check('User 1 reaches rate limit and receives 429', user1Blocked);
+
+    // User 2 sends request on the same connection/IP: User 2 has an independent bucket!
+    const user2Res = await postJson('/gemini/breakdown', { title: 'User 2 Task' }, validTokenUser2);
     check(
-      'Rotating X-Forwarded-For does not bypass rate limiter (excess requests blocked with 429)',
-      blockedCount > 0
+      'User 2 gets independent rate-limit bucket (receives 200 while User 1 is rate limited)',
+      user2Res.status === 200
     );
 
     console.log(`--- All ${passed}/${total} API Router Robustness Tests Passed Successfully ---`);

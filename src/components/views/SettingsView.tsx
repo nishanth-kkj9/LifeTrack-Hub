@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { UserAppData } from '../../types/index.ts';
+import { sanitizeUserAppData } from '../../lib/firebase.ts';
 import { Button } from '../ui/Button.tsx';
 import {
   getTimeFormatPreference,
@@ -82,26 +83,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // Import JSON backup
+  // Import JSON backup with defensive 2MB clamp and shape sanitization
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 2 * 1024 * 1024) {
+      setSyncStatusMsg('Error: Backup file exceeds the 2 MB limit.');
+      setTimeout(() => setSyncStatusMsg(null), 4000);
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (parsed && Array.isArray(parsed.tasks)) {
-          onRestoreData(parsed);
-          setSyncStatusMsg('Data imported successfully!');
+        const raw = event.target?.result as string;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('Invalid JSON format');
+        }
+        const { data: sanitized, repaired } = sanitizeUserAppData(parsed);
+        if (
+          sanitized &&
+          (sanitized.tasks?.length > 0 ||
+            sanitized.habits?.length > 0 ||
+            sanitized.notes?.length > 0 ||
+            sanitized.transactions?.length > 0 ||
+            sanitized.exams?.length > 0)
+        ) {
+          onRestoreData(sanitized);
+          setSyncStatusMsg(repaired ? 'Data imported with integrity repairs.' : 'Data imported successfully!');
           setTimeout(() => setSyncStatusMsg(null), 3000);
         } else {
-          setSyncStatusMsg('Invalid backup format.');
+          setSyncStatusMsg('Error: Backup file contains no valid LifeTrack data.');
+          setTimeout(() => setSyncStatusMsg(null), 4000);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to parse backup:', err);
-        setSyncStatusMsg('Failed to parse JSON file.');
+        setSyncStatusMsg('Error: Failed to parse JSON backup file.');
+        setTimeout(() => setSyncStatusMsg(null), 4000);
+      } finally {
+        e.target.value = '';
       }
+    };
+    reader.onerror = () => {
+      setSyncStatusMsg('Error reading backup file.');
+      setTimeout(() => setSyncStatusMsg(null), 4000);
+      e.target.value = '';
     };
     reader.readAsText(file);
   };

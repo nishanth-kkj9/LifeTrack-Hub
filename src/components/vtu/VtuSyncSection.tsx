@@ -64,6 +64,7 @@ import {
   parseVtuResultText,
   calculateSemesterSgpa,
 } from '../../lib/vtuData.ts';
+import { requestParseMarksheet } from '../../lib/apiClient.ts';
 
 interface VtuSyncSectionProps {
   vtuProfile: VtuProfile;
@@ -254,15 +255,9 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
     setParseFeedback('Extracting VTU grades & course codes...');
 
     try {
-      const res = await fetch('/api/vtu/parse-marksheet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawText: rawPortalText, usnHint: vtuProfile.usn }),
-      });
+      const json = await requestParseMarksheet(rawPortalText, vtuProfile.usn);
 
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data && json.data.subjects?.length > 0) {
+      if (json && json.success && json.data && json.data.subjects?.length > 0) {
           const d = json.data;
           const semNum = d.semester || selectedResultSem || 3;
           const mappedSubs = d.subjects.map((sub: any, idx: number) => ({
@@ -315,7 +310,6 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
           }, 1500);
           return;
         }
-      }
     } catch {
       // Fallback
     }

@@ -41,10 +41,16 @@ async function main() {
     else { console.error(`  ✗ FAIL: ${name}`); }
   }
 
+  const { createTestBearerToken } = await import('./testAuthHelper.ts');
+  const token = await createTestBearerToken('stability-test-user');
+
   const t0 = Date.now();
   const res = await (origFetch as any)(`http://127.0.0.1:${port}/api/gemini/breakdown`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ title: 'Prepare for DBMS exam' }),
   });
   const json = await res.json();
