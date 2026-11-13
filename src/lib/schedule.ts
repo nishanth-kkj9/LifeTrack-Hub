@@ -1,4 +1,4 @@
-import { getLocalDateString } from './dateUtils.ts';
+import { getLocalDateString, parseLocalDate } from './dateUtils.ts';
 
 export type HabitStatus =
   | 'COMPLETED'
@@ -64,49 +64,49 @@ export function generateDueDates({
   daysOfWeek?: number[];
   timesPerWeek?: number;
 }) {
-  const start = new Date(startDate);
+  const start = parseLocalDate(startDate);
   const result: string[] = [];
 
   const dayKeys = daysOfWeek?.length ? daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
   const totalDays = timesPerWeek ?? 1;
 
   for (let i = 0; i < totalDays; i += 1) {
-    const current = new Date(start);
-    current.setDate(start.getDate() + i);
+    const current = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
     const day = current.getDay();
 
     if (dayKeys.includes(day)) {
-      result.push(current.toISOString().slice(0, 10));
+      result.push(getLocalDateString(current));
     }
   }
 
   return result;
 }
 
-export function calculateHabitStreaks(completedDates: string[]): { current: number; longest: number } {
+export function calculateHabitStreaks(
+  completedDates: string[],
+  referenceDate: Date = new Date()
+): { current: number; longest: number } {
   if (!completedDates || !completedDates.length) return { current: 0, longest: 0 };
 
   const sortedAsc = [...new Set(completedDates)].sort();
-  const sortedDesc = [...sortedAsc].reverse();
+  const completionSet = new Set(sortedAsc);
 
   let currentStreak = 0;
   let longestStreak = 0;
   let tempStreak = 0;
 
-  const today = new Date();
-  const todayStr = getLocalDateString(today);
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
+  const todayStr = getLocalDateString(referenceDate);
+  const yesterday = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterday);
 
-  // Check if today or yesterday is completed
-  let checkDate = new Date();
-  if (sortedDesc.includes(todayStr)) {
+  // Check if today or yesterday is completed (grace window)
+  const checkDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  if (completionSet.has(todayStr)) {
     currentStreak = 1;
     checkDate.setDate(checkDate.getDate() - 1);
-  } else if (sortedDesc.includes(yesterdayStr)) {
+  } else if (completionSet.has(yesterdayStr)) {
     currentStreak = 1;
-    checkDate = new Date(yesterday);
+    checkDate.setTime(yesterday.getTime());
     checkDate.setDate(checkDate.getDate() - 1);
   }
 
@@ -114,7 +114,7 @@ export function calculateHabitStreaks(completedDates: string[]): { current: numb
   if (currentStreak > 0) {
     while (true) {
       const dateStr = getLocalDateString(checkDate);
-      if (sortedDesc.includes(dateStr)) {
+      if (completionSet.has(dateStr)) {
         currentStreak++;
         checkDate.setDate(checkDate.getDate() - 1);
       } else {

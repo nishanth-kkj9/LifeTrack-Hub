@@ -22,9 +22,8 @@ import { TimelineItem } from '../ui/TimelineItem.tsx';
 import { Button } from '../ui/Button.tsx';
 import { EmptyState } from '../ui/EmptyState.tsx';
 import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
-import { getLocalDateString } from '../../lib/dateUtils.ts';
-import { calculateHabitScore } from '../../lib/habitScore.ts';
-import { computeHabitStatus } from '../../lib/schedule.ts';
+import { getLocalDateString, parseLocalDate } from '../../lib/dateUtils.ts';
+import { getHabitStats } from '../../lib/habitScoring.ts';
 
 interface TodayViewProps {
   tasks: Task[];
@@ -209,22 +208,24 @@ export const TodayView: React.FC<TodayViewProps> = ({
     return items;
   }, [tasks, exams, todayStr, currentHour, now]);
 
-  // Next upcoming exam (within 14 days)
+  // Next upcoming exam (within 14 days) using local calendar dates
   const nextExam = useMemo(() => {
+    const todayDate = parseLocalDate(todayStr).getTime();
     const upcoming = exams
       .filter((e) => {
-        const diffDays = Math.ceil((new Date(e.examDate).getTime() - new Date(todayStr).getTime()) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.round((parseLocalDate(e.examDate).getTime() - todayDate) / (1000 * 60 * 60 * 24));
         return diffDays >= 0 && diffDays <= 14;
       })
-      .sort((a, b) => new Date(a.examDate).getTime() - new Date(b.examDate).getTime());
+      .sort((a, b) => parseLocalDate(a.examDate).getTime() - parseLocalDate(b.examDate).getTime());
 
     return upcoming[0] || null;
   }, [exams, todayStr]);
 
   const examDaysLeft = useMemo(() => {
     if (!nextExam) return null;
-    const diff = Math.ceil((new Date(nextExam.examDate).getTime() - new Date(todayStr).getTime()) / (1000 * 60 * 60 * 24));
-    return diff;
+    return Math.round(
+      (parseLocalDate(nextExam.examDate).getTime() - parseLocalDate(todayStr).getTime()) / (1000 * 60 * 60 * 24)
+    );
   }, [nextExam, todayStr]);
 
   // Habit metrics using canonical completedDates
@@ -631,13 +632,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
                   const isDoneToday = Boolean(
                     habit.completedDates && habit.completedDates.includes(todayStr)
                   );
-                  const totalDays = Math.max(1, Math.round((Date.now() - habit.createdAt) / (1000 * 60 * 60 * 24)) + 1);
-                  const score = calculateHabitScore({
-                    completions: habit.completedDates?.length || 0,
-                    totalDueDates: totalDays,
-                    currentStreak: habit.streak || 0,
-                    longestStreak: habit.bestStreak || habit.streak || 0,
-                  });
+                  const stats = getHabitStats(habit, todayStr);
 
                   return (
                     <div
@@ -668,12 +663,12 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
                       <div className="flex items-center gap-2 shrink-0 text-xs font-mono tabular-nums">
                         <span className="text-slate-600 font-semibold">
-                          {score.currentStrength}%
+                          {stats.strengthScore}%
                         </span>
                         <span aria-hidden="true" className="text-slate-300">·</span>
                         <div className="flex items-center gap-1 font-semibold text-amber-700">
                           <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                          <span>{habit.streak || 0}d</span>
+                          <span>{stats.currentStreak}d</span>
                         </div>
                       </div>
                     </div>

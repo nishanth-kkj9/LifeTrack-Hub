@@ -11,6 +11,7 @@ import { ExamReminder, VtuProfile, Task } from '../../types/index.ts';
 import { ExamsView } from './ExamsView.tsx';
 import { ViewSkeleton } from '../common/ViewSkeleton.tsx';
 import { Button } from '../ui/Button.tsx';
+import { INITIAL_VTU_PROFILE } from '../../lib/vtuData.ts';
 
 const VtuHubView = React.lazy(() =>
   import('./VtuHubView.tsx').then((m) => ({ default: m.VtuHubView }))
@@ -127,21 +128,7 @@ export const AcademicsView: React.FC<AcademicsViewProps> = ({
       ) : (
         <React.Suspense fallback={<ViewSkeleton />}>
           <VtuHubView
-            vtuProfile={
-              vtuProfile || {
-                usn: '1MS21CS001',
-                studentName: 'Engineering Scholar',
-                branch: 'Computer Science and Engineering',
-                branchCode: 'CS',
-                collegeCode: '1MS',
-                collegeName: 'M S Ramaiah Institute of Technology',
-                currentSemester: 5,
-                scheme: '2022',
-                targetCgpa: 8.5,
-                attendanceThreshold: 85,
-                semesters: [],
-              }
-            }
+            vtuProfile={vtuProfile || INITIAL_VTU_PROFILE}
             onUpdateVtuProfile={onUpdateVtuProfile || (() => {})}
           />
         </React.Suspense>

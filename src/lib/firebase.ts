@@ -28,6 +28,7 @@ import {
 } from '../types/index.ts';
 import { INITIAL_VTU_PROFILE } from './vtuData.ts';
 import { getLocalDateOffset, getLocalDateString } from './dateUtils.ts';
+import { purgeOldTombstones } from './entity.ts';
 
 export enum OperationType {
   CREATE = 'create',
@@ -368,22 +369,24 @@ export const SEED_IDS = new Set<string>([
  */
 export function hasUserCreatedContent(data: UserAppData | null | undefined): boolean {
   if (!data) return false;
-  const hasTask = Array.isArray(data.tasks) && data.tasks.some((t) => t && t.id && !SEED_IDS.has(t.id));
-  const hasTx = Array.isArray(data.transactions) && data.transactions.some((tx) => tx && tx.id && !SEED_IDS.has(tx.id));
-  const hasExam = Array.isArray(data.exams) && data.exams.some((e) => e && e.id && !SEED_IDS.has(e.id));
-  const hasHabit = Array.isArray(data.habits) && data.habits.some((h) => h && h.id && !SEED_IDS.has(h.id));
-  const hasNote = Array.isArray(data.notes) && data.notes.some((n) => n && n.id && !SEED_IDS.has(n.id));
-  const hasMetric = Array.isArray(data.dailyMetrics) && data.dailyMetrics.length > 0;
+  const hasTask = Array.isArray(data.tasks) && data.tasks.some((t) => t && t.id && !t.deletedAt && !SEED_IDS.has(t.id));
+  const hasTx = Array.isArray(data.transactions) && data.transactions.some((tx) => tx && tx.id && !tx.deletedAt && !SEED_IDS.has(tx.id));
+  const hasExam = Array.isArray(data.exams) && data.exams.some((e) => e && e.id && !e.deletedAt && !SEED_IDS.has(e.id));
+  const hasHabit = Array.isArray(data.habits) && data.habits.some((h) => h && h.id && !h.deletedAt && !SEED_IDS.has(h.id));
+  const hasNote = Array.isArray(data.notes) && data.notes.some((n) => n && n.id && !n.deletedAt && !SEED_IDS.has(n.id));
+  const hasMetric = Array.isArray(data.dailyMetrics) && data.dailyMetrics.some((m) => m && !m.deletedAt);
   return hasTask || hasTx || hasExam || hasHabit || hasNote || hasMetric;
 }
 
 /**
  * Merges two entity arrays by ID keeping the item with the newer updatedAt timestamp.
- * Respects tombstone deletions (items with deletedAt are filtered out).
+ * Preserves recent tombstones (deletedAt) so stale devices observe deletions,
+ * and garbage-collects tombstones older than 30 days.
  */
 export function mergeArraysById<T extends { id: string; updatedAt?: number; deletedAt?: number }>(
   cloudItems: T[] = [],
-  localItems: T[] = []
+  localItems: T[] = [],
+  now: number = Date.now()
 ): T[] {
   const map = new Map<string, T>();
 
@@ -401,34 +404,36 @@ export function mergeArraysById<T extends { id: string; updatedAt?: number; dele
       } else {
         const localTime = localItem.updatedAt || 0;
         const cloudTime = existing.updatedAt || 0;
-        if (localTime >= cloudTime) {
+        if (localTime > cloudTime) {
+          map.set(localItem.id, localItem);
+        } else if (localTime === cloudTime && localItem.deletedAt && !existing.deletedAt) {
           map.set(localItem.id, localItem);
         }
       }
     }
   }
 
-  return Array.from(map.values()).filter((item) => !item.deletedAt);
+  return purgeOldTombstones(Array.from(map.values()), now);
 }
 
 /**
  * Merges cloud snapshot and local data without replacing whole arrays with stale copies.
  */
-export function mergeUserAppData(cloudData: UserAppData, localData: UserAppData): UserAppData {
+export function mergeUserAppData(cloudData: UserAppData, localData: UserAppData, now: number = Date.now()): UserAppData {
   const isLocalNewer = (localData.lastUpdated || 0) > (cloudData.lastUpdated || 0);
   return {
     ...cloudData,
-    tasks: mergeArraysById(cloudData.tasks, localData.tasks),
-    transactions: mergeArraysById(cloudData.transactions, localData.transactions),
-    exams: mergeArraysById(cloudData.exams, localData.exams),
-    habits: mergeArraysById(cloudData.habits, localData.habits),
-    notes: mergeArraysById(cloudData.notes, localData.notes),
-    dailyMetrics: mergeArraysById(cloudData.dailyMetrics || [], localData.dailyMetrics || []),
+    tasks: mergeArraysById(cloudData.tasks, localData.tasks, now),
+    transactions: mergeArraysById(cloudData.transactions, localData.transactions, now),
+    exams: mergeArraysById(cloudData.exams, localData.exams, now),
+    habits: mergeArraysById(cloudData.habits, localData.habits, now),
+    notes: mergeArraysById(cloudData.notes, localData.notes, now),
+    dailyMetrics: mergeArraysById(cloudData.dailyMetrics || [], localData.dailyMetrics || [], now),
     budget: isLocalNewer ? localData.budget : cloudData.budget,
     vtuProfile: isLocalNewer ? localData.vtuProfile : cloudData.vtuProfile,
     masterPlan: isLocalNewer ? localData.masterPlan : cloudData.masterPlan,
-    version: Math.max(cloudData.version || 1, localData.version || 1) + 1,
-    lastUpdated: Math.max(cloudData.lastUpdated || 0, localData.lastUpdated || 0, Date.now()),
+    version: Math.max(cloudData.version || 1, localData.version || 1),
+    lastUpdated: Math.max(cloudData.lastUpdated || 0, localData.lastUpdated || 0),
   };
 }
 
@@ -466,8 +471,7 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     return out;
   };
 
-  const isRecord = (x: any) => x !== null && typeof x === 'object';
-  const now = Date.now();
+  const isRecord = (x: unknown): x is Record<string, any> => x !== null && typeof x === 'object';
 
   const tasks = cleanArray<Task>(
     src.tasks,
@@ -475,7 +479,7 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     (t) => ({
       ...t,
       subtasks: Array.isArray(t.subtasks) ? t.subtasks : (repaired = true, []),
-      updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : now,
+      updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : 0,
     })
   );
 
@@ -484,7 +488,7 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     (t) => isRecord(t) && typeof t.id === 'string' && typeof t.amount === 'number',
     (t) => ({
       ...t,
-      updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : now,
+      updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : 0,
     })
   );
 
@@ -494,7 +498,7 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     (e) => ({
       ...e,
       topics: Array.isArray(e.topics) ? e.topics : (repaired = true, []),
-      updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : now,
+      updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : 0,
     })
   );
 
@@ -504,7 +508,7 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     (h) => ({
       ...h,
       completedDates: Array.isArray(h.completedDates) ? h.completedDates : (repaired = true, []),
-      updatedAt: typeof h.updatedAt === 'number' ? h.updatedAt : now,
+      updatedAt: typeof h.updatedAt === 'number' ? h.updatedAt : 0,
     })
   );
 
@@ -513,7 +517,7 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     (n) => isRecord(n) && typeof n.id === 'string',
     (n) => ({
       ...n,
-      updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : now,
+      updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : 0,
     })
   );
 
@@ -522,13 +526,14 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     (m) => isRecord(m) && typeof m.date === 'string',
     (m) => ({
       ...m,
-      updatedAt: typeof m.updatedAt === 'number' ? m.updatedAt : now,
+      id: typeof m.id === 'string' && m.id ? m.id : m.date,
+      updatedAt: typeof m.updatedAt === 'number' ? m.updatedAt : 0,
     })
   );
 
   const budget: BudgetSettings =
     isRecord(src.budget) && typeof src.budget.monthlyBudget === 'number'
-      ? src.budget
+      ? (src.budget as BudgetSettings)
       : (repaired = true, { monthlyBudget: 0, savingsGoal: 0 });
 
   const data: UserAppData = {
@@ -540,9 +545,9 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     notes,
     dailyMetrics,
     budget,
-    vtuProfile: isRecord(src.vtuProfile) ? src.vtuProfile : INITIAL_VTU_PROFILE,
+    vtuProfile: isRecord(src.vtuProfile) ? (src.vtuProfile as UserAppData['vtuProfile']) : INITIAL_VTU_PROFILE,
     version: typeof src.version === 'number' ? src.version : 1,
-    lastUpdated: typeof src.lastUpdated === 'number' ? src.lastUpdated : now,
+    lastUpdated: typeof src.lastUpdated === 'number' ? src.lastUpdated : 0,
   };
   return { data, repaired };
 }
@@ -605,8 +610,8 @@ export async function logoutUser(): Promise<void> {
   await signOut(auth);
 }
 
-export function createGoogleUserProfile(email = 'user@example.com', displayName?: string): User {
-  const name = displayName || email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1);
+export function createGoogleUserProfile(email = 'local@device.invalid', displayName?: string): User {
+  const name = displayName || 'Local User';
   const safeId = email.replace(/[^a-zA-Z0-9]/g, '_');
   return {
     uid: `local_${safeId}`,
@@ -614,7 +619,7 @@ export function createGoogleUserProfile(email = 'user@example.com', displayName?
     email,
     emailVerified: false,
     isAnonymous: true,
-    photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
+    photoURL: null,
     providerData: [
       {
         providerId: 'local',
@@ -622,7 +627,7 @@ export function createGoogleUserProfile(email = 'user@example.com', displayName?
         displayName: name,
         email,
         phoneNumber: null,
-        photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563eb`,
+        photoURL: null,
       },
     ],
     metadata: {},
@@ -643,10 +648,26 @@ export function createGoogleUserProfile(email = 'user@example.com', displayName?
   } as unknown as User;
 }
 
+function hasMergedChanges(cloudData: UserAppData, merged: UserAppData): boolean {
+  const serialize = (d: UserAppData) =>
+    JSON.stringify({
+      tasks: d.tasks,
+      transactions: d.transactions,
+      exams: d.exams,
+      habits: d.habits,
+      notes: d.notes,
+      dailyMetrics: d.dailyMetrics || [],
+      budget: d.budget,
+      vtuProfile: d.vtuProfile,
+      masterPlan: d.masterPlan,
+    });
+  return serialize(cloudData) !== serialize(merged);
+}
+
 export function subscribeToUserDoc(
   userId: string,
   onUpdate: (data: UserAppData) => void,
-  onError: (err: any) => void
+  onError: (err: unknown) => void
 ) {
   if (!auth.currentUser) {
     const local = loadLocalData();
@@ -664,6 +685,17 @@ export function subscribeToUserDoc(
         const merged = mergeUserAppData(sanitizedCloudData, localData);
         saveLocalData(merged);
         onUpdate(merged);
+
+        if (hasMergedChanges(sanitizedCloudData, merged)) {
+          const pushDoc: UserAppData = {
+            ...merged,
+            version: (sanitizedCloudData.version || 1) + 1,
+            lastUpdated: Date.now(),
+          };
+          setDoc(userRef, pushDoc, { merge: true }).catch((err) => {
+            console.warn('Reconcile cloud merge notice:', err?.message || err);
+          });
+        }
       } else {
         const localData = loadLocalData();
         const shouldMigrate = hasUserCreatedContent(localData);

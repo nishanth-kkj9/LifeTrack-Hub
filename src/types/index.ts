@@ -153,7 +153,7 @@ export interface QuickNote {
   deletedAt?: number;
 }
 
-export type VtuGradeLetter = 'O' | 'A+' | 'A' | 'B+' | 'B' | 'C' | 'P' | 'F';
+export type VtuGradeLetter = 'O' | 'A+' | 'A' | 'B+' | 'B' | 'C' | 'P' | 'S+' | 'S' | 'D' | 'E' | 'F';
 
 export interface VtuSubject {
   id: string;
@@ -287,7 +287,7 @@ export interface VtuCampusEvent {
   type: 'Tech Fest' | 'Hackathon' | 'Robotics' | 'Coding Contest' | 'Cultural & Tech';
   date: string;
   prizePool: string;
-  status: 'Registration Open' | 'Starting Soon' | 'Closing Soon';
+  status: 'Registration Open' | 'Starting Soon' | 'Closing Soon' | 'Check Official Site';
   registrationUrl: string;
   highlights: string[];
 }

@@ -16,10 +16,18 @@ export interface ParsedTaskInput {
   recurring: TaskRecurrence;
 }
 
-export function parseNaturalLanguageTask(rawInput: string): ParsedTaskInput {
-  let text = rawInput.trim();
-  const today = new Date();
-  
+export function parseNaturalLanguageTask(
+  rawInput: string,
+  referenceDate: Date = new Date()
+): ParsedTaskInput {
+  const original = rawInput.trim();
+  let text = original;
+  const today = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate()
+  );
+
   let targetDate = new Date(today);
   let hasExplicitDate = false;
   let dueTime: string | undefined = undefined;
@@ -29,122 +37,143 @@ export function parseNaturalLanguageTask(rawInput: string): ParsedTaskInput {
   let estimatedMinutes: number | undefined = undefined;
   let recurring: TaskRecurrence = 'none';
 
-  // Extract Tags: #tagname
-  const tagMatches = text.match(/#([a-zA-Z0-9_-]+)/g);
+  // 1. Extract Tags: #tagname
+  const tagMatches = text.match(/(?:^|\s)#([a-zA-Z0-9_-]+)/g);
   if (tagMatches) {
-    tagMatches.forEach((tag) => {
-      const cleanTag = tag.slice(1).toLowerCase();
+    tagMatches.forEach((rawTag) => {
+      const cleanTag = rawTag.trim().slice(1).toLowerCase();
       tags.push(cleanTag);
-      // Auto-assign category if matches
       if (['study', 'work', 'personal', 'finance', 'health', 'project'].includes(cleanTag)) {
         category = cleanTag as TaskCategory;
       }
     });
-    text = text.replace(/#([a-zA-Z0-9_-]+)/g, '').trim();
+    text = text.replace(/(?:^|\s)#[a-zA-Z0-9_-]+/g, ' ').trim();
   }
 
-  // Extract Priority: p1 / !1 / urgent / p2 / high / p3 / med / p4 / low
-  if (/\b(p1|!1|urgent|critical)\b/i.test(text)) {
-    priority = 'urgent';
-    text = text.replace(/\b(p1|!1|urgent|critical)\b/gi, '').trim();
-  } else if (/\b(p2|!2|high)\b/i.test(text)) {
-    priority = 'high';
-    text = text.replace(/\b(p2|!2|high)\b/gi, '').trim();
-  } else if (/\b(p3|!3|medium|med)\b/i.test(text)) {
-    priority = 'medium';
-    text = text.replace(/\b(p3|!3|medium|med)\b/gi, '').trim();
-  } else if (/\b(p4|!4|low)\b/i.test(text)) {
-    priority = 'low';
-    text = text.replace(/\b(p4|!4|low)\b/gi, '').trim();
-  }
-
-  // Extract Duration / Estimates: ~30m, ~1h, 45mins, 2hours
-  const estMatch = text.match(/~?(\d+)\s*(m|min|mins|minutes|h|hr|hrs|hours)\b/i);
-  if (estMatch) {
-    const val = parseInt(estMatch[1], 10);
-    const unit = estMatch[2].toLowerCase();
-    if (unit.startsWith('h')) {
-      estimatedMinutes = val * 60;
-    } else {
-      estimatedMinutes = val;
+  // 2. Extract Priority strictly from explicit tokens (!1..4, !urgent/!high/!med/!low, p1..p4, urgent, asap)
+  // Never strip plain English words like "low" from "Buy low-fat milk" or "high" from "high-quality report".
+  const priorityTokenRegex = /(?:^|\s)(?:!(1|2|3|4|urgent|high|med|medium|low)|p([1-4]))(?=\s|$|[,.!?])|\b(urgent|asap)\b/gi;
+  let pMatch: RegExpExecArray | null;
+  const priorityMatches: string[] = [];
+  while ((pMatch = priorityTokenRegex.exec(text)) !== null) {
+    const bang = pMatch[1]?.toLowerCase();
+    const pNum = pMatch[2];
+    const word = pMatch[3]?.toLowerCase();
+    if (bang === '1' || bang === 'urgent' || pNum === '1' || word === 'urgent' || word === 'asap') {
+      priority = 'urgent';
+    } else if (bang === '2' || bang === 'high' || pNum === '2') {
+      priority = 'high';
+    } else if (bang === '3' || bang === 'med' || bang === 'medium' || pNum === '3') {
+      priority = 'medium';
+    } else if (bang === '4' || bang === 'low' || pNum === '4') {
+      priority = 'low';
     }
-    text = text.replace(estMatch[0], '').trim();
+    priorityMatches.push(pMatch[0]);
+  }
+  if (priorityMatches.length > 0) {
+    text = text.replace(priorityTokenRegex, ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
-  // Extract Recurrence: everyday, daily, weekly, every monday
+  // 3. Extract Duration / Estimates: ~30m, 1h, 45mins, 2hours
+  const estMatch = text.match(/(?:^|\s)(~?(\d+)\s*(m|min|mins|minutes|h|hr|hrs|hours))(?=\s|$|[,.!?])/i);
+  if (estMatch) {
+    const val = parseInt(estMatch[2], 10);
+    const unit = estMatch[3].toLowerCase();
+    estimatedMinutes = unit.startsWith('h') ? val * 60 : val;
+    text = text.replace(estMatch[1], ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  // 4. Extract Recurrence: every day / daily / weekdays / weekly / monthly
   if (/\b(every\s*day|daily)\b/i.test(text)) {
     recurring = 'daily';
-    text = text.replace(/\b(every\s*day|daily)\b/gi, '').trim();
+    text = text.replace(/\b(every\s*day|daily)\b/gi, ' ').trim();
   } else if (/\b(every\s*weekday|weekdays)\b/i.test(text)) {
     recurring = 'weekdays';
-    text = text.replace(/\b(every\s*weekday|weekdays)\b/gi, '').trim();
+    text = text.replace(/\b(every\s*weekday|weekdays)\b/gi, ' ').trim();
   } else if (/\b(every\s*week|weekly)\b/i.test(text)) {
     recurring = 'weekly';
-    text = text.replace(/\b(every\s*week|weekly)\b/gi, '').trim();
+    text = text.replace(/\b(every\s*week|weekly)\b/gi, ' ').trim();
   } else if (/\b(every\s*month|monthly)\b/i.test(text)) {
     recurring = 'monthly';
-    text = text.replace(/\b(every\s*month|monthly)\b/gi, '').trim();
+    text = text.replace(/\b(every\s*month|monthly)\b/gi, ' ').trim();
   }
 
-  // Extract Relative Dates: today, tomorrow, tonight, in X days, next mon/tue/wed...
+  const hadTonight = /\btonight\b/i.test(text);
+
+  // 5. Extract Time BEFORE stripping date words so "tonight at 8" keeps evening hint,
+  // but require standalone `at` / `@`, `HH:MM`, or `am/pm` so "Read page 7" never parses 7 as 07:00.
+  const atTimeRegex = /(?:^|\s)((?:at\b|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)(?=\s|$|[,.!?])/i;
+  const amPmTimeRegex = /(?:^|\s)((\d{1,2})(?::(\d{2}))?\s*(am|pm))(?=\s|$|[,.!?])/i;
+  const colonTimeRegex = /(?:^|\s)((\d{1,2}):(\d{2}))(?=\s|$|[,.!?])/;
+
+  const timeMatch =
+    text.match(atTimeRegex) || text.match(amPmTimeRegex) || text.match(colonTimeRegex);
+
+  if (timeMatch) {
+    const matchedPhrase = timeMatch[1];
+    let hours = parseInt(timeMatch[2], 10);
+    const minutes = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
+    const meridian = timeMatch[4]?.toLowerCase();
+
+    if (meridian === 'pm' && hours >= 1 && hours < 12) hours += 12;
+    else if (meridian === 'am' && hours === 12) hours = 0;
+    else if (!meridian && hadTonight && hours >= 1 && hours <= 11) hours += 12;
+
+    if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+      dueTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+      text = text.replace(matchedPhrase, ' ').replace(/\s{2,}/g, ' ').trim();
+    }
+  }
+
+  // 6. Extract Relative Dates: today, tonight, tomorrow/tmrw, in N days, weekday names & 3-letter abbrevs
   if (/\b(today|tonight)\b/i.test(text)) {
     targetDate = new Date(today);
     hasExplicitDate = true;
-    text = text.replace(/\b(today|tonight)\b/gi, '').trim();
+    text = text.replace(/\b(today|tonight)\b/gi, ' ').trim();
   } else if (/\b(tomorrow|tmrw)\b/i.test(text)) {
     targetDate = new Date(today);
     targetDate.setDate(targetDate.getDate() + 1);
     hasExplicitDate = true;
-    text = text.replace(/\b(tomorrow|tmrw)\b/gi, '').trim();
-  } else if (/\bin\s+(\d+)\s+days?\b/i.test(text)) {
+    text = text.replace(/\b(tomorrow|tmrw)\b/gi, ' ').trim();
+  } else {
     const daysMatch = text.match(/\bin\s+(\d+)\s+days?\b/i);
     if (daysMatch) {
       const days = parseInt(daysMatch[1], 10);
       targetDate = new Date(today);
       targetDate.setDate(targetDate.getDate() + days);
       hasExplicitDate = true;
-      text = text.replace(daysMatch[0], '').trim();
-    }
-  } else {
-    // Check weekday: next monday, on friday, etc.
-    const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    for (let i = 0; i < weekdays.length; i++) {
-      const re = new RegExp(`\\b(next|this|on)?\\s*${weekdays[i]}\\b`, 'i');
-      if (re.test(text)) {
-        const currentDay = today.getDay();
-        let diff = i - currentDay;
-        if (diff <= 0) diff += 7;
-        targetDate = new Date(today);
-        targetDate.setDate(targetDate.getDate() + diff);
-        hasExplicitDate = true;
-        text = text.replace(re, '').trim();
-        break;
+      text = text.replace(daysMatch[0], ' ').trim();
+    } else {
+      const weekdayMap: Array<{ day: number; pattern: string }> = [
+        { day: 0, pattern: 'sunday|sun' },
+        { day: 1, pattern: 'monday|mon' },
+        { day: 2, pattern: 'tuesday|tues|tue' },
+        { day: 3, pattern: 'wednesday|wed' },
+        { day: 4, pattern: 'thursday|thurs|thur|thu' },
+        { day: 5, pattern: 'friday|fri' },
+        { day: 6, pattern: 'saturday|sat' },
+      ];
+      for (const wd of weekdayMap) {
+        const re = new RegExp(`\\b(?:(next|this|on|by)\\s+)?(${wd.pattern})\\b`, 'i');
+        const m = text.match(re);
+        if (m) {
+          const currentDay = today.getDay();
+          let diff = wd.day - currentDay;
+          if (diff <= 0) diff += 7;
+          targetDate = new Date(today);
+          targetDate.setDate(targetDate.getDate() + diff);
+          hasExplicitDate = true;
+          text = text.replace(m[0], ' ').trim();
+          break;
+        }
       }
     }
   }
 
-  // Extract Time: at 5pm, @ 17:30, 4:00 pm, 10am
-  const timeMatch = text.match(/(?:at|@)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
-  if (timeMatch && (timeMatch[3] || text.includes('at ') || text.includes('@'))) {
-    let hours = parseInt(timeMatch[1], 10);
-    const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-    const meridian = timeMatch[3]?.toLowerCase();
-
-    if (meridian === 'pm' && hours < 12) hours += 12;
-    if (meridian === 'am' && hours === 12) hours = 0;
-
-    if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
-      dueTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-      text = text.replace(timeMatch[0], '').trim();
-    }
-  }
-
-  // Default to today if not specified
   if (!hasExplicitDate) {
     targetDate = new Date(today);
   }
 
-  // Clean trailing punctuation or prepositions
   const cleanTitle = text
     .replace(/^[-–—:,\s]+|[-–—:,\s]+$/g, '')
     .replace(/\s{2,}/g, ' ')
@@ -153,7 +182,7 @@ export function parseNaturalLanguageTask(rawInput: string): ParsedTaskInput {
   const formattedDate = getLocalDateString(targetDate);
 
   return {
-    title: cleanTitle || rawInput.trim(),
+    title: cleanTitle || original,
     dueDate: formattedDate,
     dueTime,
     priority,

@@ -86,15 +86,15 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
   const [connectTab, setConnectTab] = useState<'events' | 'opportunities' | 'communities'>('events');
 
   // Real-Time Student Info & Record State
-  const [enteredUsn, setEnteredUsn] = useState(vtuProfile.usn || '1MS22CS084');
-  const [activeRecord, setActiveRecord] = useState<EduStudentRecord>(() =>
-    getEduStudentRecord(vtuProfile.usn || '1MS22CS084')
+  const [enteredUsn, setEnteredUsn] = useState(vtuProfile.usn || '');
+  const [activeRecord, setActiveRecord] = useState<EduStudentRecord | null>(() =>
+    getEduStudentRecord(vtuProfile.usn || '')
   );
   const [selectedResultSem, setSelectedResultSem] = useState<number>(() => {
-    const rec = getEduStudentRecord(vtuProfile.usn || '1MS22CS084');
-    return rec.semesterResults.length > 0
+    const rec = getEduStudentRecord(vtuProfile.usn || '');
+    return rec && rec.semesterResults.length > 0
       ? rec.semesterResults[rec.semesterResults.length - 1].semester
-      : vtuProfile.currentSemester || 3;
+      : vtuProfile.currentSemester || 1;
   });
 
   // Modals state
@@ -104,16 +104,16 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
   // Edit student bio inputs
   const [editStudentName, setEditStudentName] = useState(
-    vtuProfile.studentName || activeRecord.studentName
+    vtuProfile.studentName || activeRecord?.studentName || ''
   );
   const [editFatherName, setEditFatherName] = useState(
-    vtuProfile.fatherName || activeRecord.fatherName || ''
+    vtuProfile.fatherName || activeRecord?.fatherName || ''
   );
   const [editCollegeName, setEditCollegeName] = useState(
-    vtuProfile.collegeName || activeRecord.collegeName
+    vtuProfile.collegeName || activeRecord?.collegeName || ''
   );
   const [editTargetCgpa, setEditTargetCgpa] = useState(
-    (vtuProfile.targetCgpa || 8.75).toString()
+    (vtuProfile.targetCgpa || 8.5).toString()
   );
 
   // Results portal paste input
@@ -123,6 +123,7 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingSyncConfirm, setPendingSyncConfirm] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   // Search & Filters
@@ -145,10 +146,10 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
       setEnteredUsn(vtuProfile.usn);
       const rec = getEduStudentRecord(vtuProfile.usn);
       setActiveRecord(rec);
-      setEditStudentName(vtuProfile.studentName || rec.studentName);
-      setEditFatherName(vtuProfile.fatherName || rec.fatherName || '');
-      setEditCollegeName(vtuProfile.collegeName || rec.collegeName);
-      if (rec.semesterResults.length > 0) {
+      setEditStudentName(vtuProfile.studentName || rec?.studentName || '');
+      setEditFatherName(vtuProfile.fatherName || rec?.fatherName || '');
+      setEditCollegeName(vtuProfile.collegeName || rec?.collegeName || '');
+      if (rec && rec.semesterResults.length > 0) {
         setSelectedResultSem(rec.semesterResults[rec.semesterResults.length - 1].semester);
       }
     }
@@ -156,13 +157,13 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
   // Calculate live cumulative CGPA from profile
   const { cgpa: liveCgpa } = calculateCumulativeCgpa(vtuProfile.semesters);
-  const currentCgpa = liveCgpa > 0 ? liveCgpa : (activeRecord.overallCgpa || 8.78);
+  const currentCgpa = liveCgpa > 0 ? liveCgpa : (activeRecord?.overallCgpa || 0);
   const currentPercentage = vtuCgpaToPercentage(currentCgpa);
   const classAwarded = getVtuClassFromCgpa(currentCgpa);
 
   // Extract roll number from USN for deterministic ranking calculation
-  const rollMatch = vtuProfile.usn.match(/[0-9]{3}$/);
-  const rollStr = rollMatch ? rollMatch[0] : '084';
+  const rollMatch = (vtuProfile.usn || '').match(/[0-9]{3}$/);
+  const rollStr = rollMatch ? rollMatch[0] : '000';
   const rankings = calculateVtuSyncRanking(currentCgpa, rollStr, vtuProfile.branch);
 
   // Handle Real-Time USN Fetch
@@ -171,7 +172,7 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
     if (!usnToFetch) return;
 
     setIsSyncing(true);
-    setSyncFeedback(`Connecting to VTU Student Node for ${usnToFetch}...`);
+    setSyncFeedback(`Looking up records for ${usnToFetch}...`);
 
     setTimeout(() => {
       const syncedProfile = syncVtuProfileFromStudentRecord(usnToFetch, {
@@ -181,30 +182,28 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
       setActiveRecord(record);
       setEnteredUsn(usnToFetch);
-      setEditStudentName(record.studentName);
-      setEditFatherName(record.fatherName || '');
-      setEditCollegeName(record.collegeName);
+      setEditStudentName(record?.studentName || '');
+      setEditFatherName(record?.fatherName || '');
+      setEditCollegeName(record?.collegeName || syncedProfile.collegeName || '');
 
-      if (record.semesterResults.length > 0) {
+      if (record && record.semesterResults.length > 0) {
         setSelectedResultSem(record.semesterResults[record.semesterResults.length - 1].semester);
       }
 
       onUpdateProfile(syncedProfile);
       setIsSyncing(false);
       setSyncFeedback(
-        `Synchronized: ${record.studentName} (${record.usn}) - ${record.collegeName}`
+        record
+          ? `Loaded: ${record.studentName} (${record.usn}) - ${record.collegeName}`
+          : `No record found for ${usnToFetch}. Enter details manually.`
       );
       setTimeout(() => setSyncFeedback(null), 4000);
-    }, 600);
+    }, 300);
   };
 
-  // Handle Sync Trigger
-  const handlePerformSync = () => {
-    const confirmed = window.confirm(
-      'Notice: Simulated academic sync will load demonstration records for your USN schema. Continue to load demo data?'
-    );
-    if (!confirmed) return;
-
+  // Handle Sync Trigger (inline confirmation — no window.confirm)
+  const executePerformSync = () => {
+    setPendingSyncConfirm(false);
     setIsSyncing(true);
     setSyncFeedback('Loading demonstration records for USN...');
 
@@ -220,30 +219,13 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
       onUpdateProfile(syncedProfile);
       setIsSyncing(false);
-      setSyncFeedback('Simulated Demonstration Record Loaded Successfully.');
+      setSyncFeedback(
+        record
+          ? 'Demonstration Record Loaded Successfully.'
+          : 'No pre-loaded record found for this USN. Decoded available metadata.'
+      );
       setTimeout(() => setSyncFeedback(null), 3500);
-    }, 800);
-  };
-
-  // Save manual student details
-  const handleSaveStudentBio = () => {
-    const updatedName = editStudentName.trim() || activeRecord.studentName;
-    const updatedFather = editFatherName.trim() || activeRecord.fatherName || '';
-    const updatedCollege = editCollegeName.trim() || activeRecord.collegeName;
-    const updatedTarget = parseFloat(editTargetCgpa) || vtuProfile.targetCgpa;
-
-    onUpdateProfile({
-      ...vtuProfile,
-      studentName: updatedName,
-      fatherName: updatedFather,
-      collegeName: updatedCollege,
-      targetCgpa: updatedTarget,
-      lastSyncedAt: Date.now(),
-    });
-
-    setIsEditStudentModalOpen(false);
-    setSyncFeedback(`Profile details updated for ${updatedName}!`);
-    setTimeout(() => setSyncFeedback(null), 3000);
+    }, 300);
   };
 
   // Handle parsing raw text from results.vtu.ac.in
@@ -253,10 +235,10 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
     setIsParsing(true);
     setParseFeedback('Extracting VTU grades & course codes...');
 
-    const parsed = parseVtuResultText(rawPortalText);
+    const parsed = parseVtuResultText(rawPortalText, vtuProfile.scheme);
     if (parsed.extractedSubjects.length > 0) {
-      const semToUse = parsed.extractedSem || selectedResultSem || 3;
-      const { sgpa, totalCredits } = calculateSemesterSgpa(parsed.extractedSubjects);
+      const semToUse = parsed.extractedSem || selectedResultSem || 1;
+      const { sgpa, totalCredits } = calculateSemesterSgpa(parsed.extractedSubjects, vtuProfile.scheme);
 
       const updatedSemesters = vtuProfile.semesters.map((s) =>
         s.semesterNumber === semToUse
@@ -286,27 +268,38 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
       });
 
       setIsParsing(false);
-      setParseFeedback(`Imported ${parsed.extractedSubjects.length} subjects for Semester ${semToUse}!`);
-      setTimeout(() => {
-        setIsImportModalOpen(false);
-        setParseFeedback(null);
-        setRawPortalText('');
-      }, 1500);
+      const notes: string[] = [];
+      if (parsed.skippedRows.length > 0) {
+        notes.push(`${parsed.skippedRows.length} incomplete row(s) skipped`);
+      }
+      if (parsed.schemeWarning) {
+        notes.push(parsed.schemeWarning);
+      }
+      const noteText = notes.length > 0 ? ` Notice: ${notes.join('. ')}` : '';
+      setParseFeedback(`Imported ${parsed.extractedSubjects.length} subjects for Semester ${semToUse}.${noteText}`);
+      if (notes.length === 0) {
+        setTimeout(() => {
+          setIsImportModalOpen(false);
+          setParseFeedback(null);
+          setRawPortalText('');
+        }, 1500);
+      }
       return;
     }
 
     setIsParsing(false);
-    setParseFeedback('Could not detect marks table. Please paste raw text with course codes and marks.');
+    const skippedInfo = parsed.skippedRows.length > 0 ? ` (${parsed.skippedRows.length} row(s) lacked both CIE & SEE marks.)` : '';
+    setParseFeedback(`Could not detect marks table with both CIE and SEE marks.${skippedInfo}`);
   };
 
   // Sample VTU results text
   const handleLoadSamplePortalResult = () => {
     const sample = `VISVESVARAYA TECHNOLOGICAL UNIVERSITY, BELAGAVI
 PROVISIONAL RESULTS OF CBCS JULY/AUGUST 2024 EXAMINATION
-USN: ${vtuProfile.usn}
-Student Name: ${vtuProfile.studentName || activeRecord.studentName}
-Father's Name: ${vtuProfile.fatherName || activeRecord.fatherName || 'Manoj Sharma'}
-College: ${vtuProfile.collegeName || activeRecord.collegeName}
+USN: ${vtuProfile.usn || '1MS22CS084'}
+Student Name: ${vtuProfile.studentName || activeRecord?.studentName || 'Sample Student'}
+Father's Name: ${vtuProfile.fatherName || activeRecord?.fatherName || 'Not available'}
+College: ${vtuProfile.collegeName || activeRecord?.collegeName || 'Not available'}
 Semester: ${selectedResultSem}
 Subject Code\tSubject Name\tCIE\tSEE\tTotal\tGrade\tResult
 BCS301\tMathematics for Computer Science\t46\t44\t90\tO\tPASS
@@ -415,19 +408,41 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
 
           {/* Sync Trigger & Quick Actions */}
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
-            <button
-              id="vtu-sync-trigger-btn"
-              onClick={handlePerformSync}
-              disabled={isSyncing}
-              className={`px-5 py-3 rounded-2xl font-black text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-lg ${
-                isSyncing
-                  ? 'bg-indigo-700 text-indigo-200 cursor-wait'
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-              }`}
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Synchronizing with VTU...' : 'Sync Live with VTU Node'}</span>
-            </button>
+            {!pendingSyncConfirm ? (
+              <button
+                id="vtu-sync-trigger-btn"
+                onClick={() => setPendingSyncConfirm(true)}
+                disabled={isSyncing}
+                className={`px-5 py-3 rounded-2xl font-black text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-lg ${
+                  isSyncing
+                    ? 'bg-indigo-700 text-indigo-200 cursor-wait'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                }`}
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Loading Records...' : 'Sync Demo Record for USN'}</span>
+              </button>
+            ) : (
+              <div className="p-2.5 rounded-2xl bg-slate-900 border border-indigo-500/40 text-xs space-y-2">
+                <p className="text-slate-200 text-[11px] font-medium">Load demonstration records for your USN?</p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={executePerformSync}
+                    className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingSyncConfirm(false)}
+                    className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               id="vtu-sync-share-btn"
@@ -455,8 +470,9 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
             {/* Student Preview Pill */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-indigo-300 font-black text-sm">
-                {(vtuProfile.studentName || activeRecord.studentName)
+                {(vtuProfile.studentName || activeRecord?.studentName || '')
                   .split(' ')
+                  .filter(Boolean)
                   .map((n) => n[0])
                   .slice(0, 2)
                   .join('')
@@ -465,21 +481,23 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
               <div>
                 <div className="flex items-center gap-2">
                   <h4 className="font-black text-sm text-white">
-                    {vtuProfile.studentName || activeRecord.studentName}
+                    {vtuProfile.studentName || activeRecord?.studentName || 'Not available'}
                   </h4>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-extrabold text-[10px] border border-emerald-500/30 flex items-center gap-1">
                     <UserCheck className="w-3 h-3" />
-                    <span>Verified Profile</span>
+                    <span>{activeRecord ? 'Record Found' : 'Manual Profile'}</span>
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300 mt-0.5">
-                  <span className="font-mono text-indigo-300 font-bold">{vtuProfile.usn}</span>
+                  <span className="font-mono text-indigo-300 font-bold">{vtuProfile.usn || 'Not set'}</span>
                   <span>•</span>
                   <span className="truncate max-w-[240px] text-slate-300">
-                    {vtuProfile.collegeName || activeRecord.collegeName}
+                    {vtuProfile.collegeName || activeRecord?.collegeName || 'Not available'}
                   </span>
                   <span>•</span>
-                  <span className="text-amber-300 font-bold">{currentCgpa.toFixed(2)} CGPA</span>
+                  <span className="text-amber-300 font-bold">
+                    {currentCgpa > 0 ? `${currentCgpa.toFixed(2)} CGPA` : 'CGPA Not available'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -637,13 +655,13 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                     </span>
                   </div>
                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5">
-                    {vtuProfile.studentName || activeRecord.studentName}
+                    {vtuProfile.studentName || activeRecord?.studentName || 'Not available'}
                   </h3>
                   <p className="text-xs text-slate-600 font-medium mt-0.5">
-                    {vtuProfile.fatherName || activeRecord.fatherName ? (
-                      <>Father's Name: <span className="font-semibold text-slate-800">{vtuProfile.fatherName || activeRecord.fatherName}</span> • </>
+                    {vtuProfile.fatherName || activeRecord?.fatherName ? (
+                      <>Father's Name: <span className="font-semibold text-slate-800">{vtuProfile.fatherName || activeRecord?.fatherName}</span> • </>
                     ) : null}
-                    College: <span className="font-semibold text-slate-800">{vtuProfile.collegeName || activeRecord.collegeName}</span>
+                    College: <span className="font-semibold text-slate-800">{vtuProfile.collegeName || activeRecord?.collegeName || 'Not available'}</span>
                   </p>
                 </div>
               </div>
@@ -681,10 +699,10 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   University Seat No
                 </span>
                 <span className="font-mono font-black text-sm text-slate-900 block truncate">
-                  {vtuProfile.usn}
+                  {vtuProfile.usn || 'Not set'}
                 </span>
                 <span className="text-[10px] text-indigo-600 font-semibold mt-1 block">
-                  Reg: 20{vtuProfile.usn.slice(3, 5)} Batch
+                  {vtuProfile.admissionYear ? `Reg: ${vtuProfile.admissionYear} Batch` : 'Not available'}
                 </span>
               </div>
 
@@ -693,10 +711,10 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   Branch / Discipline
                 </span>
                 <span className="font-bold text-xs text-slate-900 block truncate" title={vtuProfile.branch}>
-                  {vtuProfile.branch.slice(0, 18)}
+                  {vtuProfile.branch ? vtuProfile.branch.slice(0, 18) : 'Not available'}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium mt-1 block">
-                  Branch Code: {vtuProfile.branchCode || activeRecord.branchCode || 'CS'}
+                  Branch Code: {vtuProfile.branchCode || activeRecord?.branchCode || 'Not available'}
                 </span>
               </div>
 
@@ -708,7 +726,7 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   {vtuProfile.scheme} Scheme (NEP)
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium mt-1 block">
-                  Batch: {vtuProfile.batch || activeRecord.batch || '2022 - 2026'}
+                  Batch: {vtuProfile.batch || activeRecord?.batch || 'Not available'}
                 </span>
               </div>
 
@@ -717,10 +735,10 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   Current Standing
                 </span>
                 <span className="font-bold text-xs text-slate-900 block">
-                  Semester {vtuProfile.currentSemester || activeRecord.currentSemester || 3}
+                  Semester {vtuProfile.currentSemester || activeRecord?.currentSemester || 1}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium mt-1 block">
-                  Year {Math.ceil((vtuProfile.currentSemester || 3) / 2)} of 4
+                  Year {Math.ceil((vtuProfile.currentSemester || 1) / 2)} of 4
                 </span>
               </div>
 
@@ -729,10 +747,10 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   Cumulative CGPA
                 </span>
                 <span className="font-black text-base text-emerald-600 block">
-                  {currentCgpa.toFixed(2)} CGPA
+                  {currentCgpa > 0 ? `${currentCgpa.toFixed(2)} CGPA` : 'Not available'}
                 </span>
                 <span className="text-[10px] text-emerald-700 font-bold mt-1 block">
-                  {currentPercentage}% Equivalent
+                  {currentCgpa > 0 ? `${currentPercentage}% Equivalent` : 'Enter marks to compute'}
                 </span>
               </div>
 
@@ -741,7 +759,7 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   Class Awarded
                 </span>
                 <span className="font-bold text-xs text-indigo-700 block truncate" title={classAwarded.title}>
-                  {classAwarded.title.split('(')[0]}
+                  {currentCgpa > 0 ? classAwarded.title.split('(')[0] : 'Not available'}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium mt-1 block">
                   {vtuProfile.activeBacklogs ?? 0} Active Backlogs
@@ -862,7 +880,7 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-indigo-900 flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
-                    <span>Your Academic CGPA ({vtuProfile.studentName || activeRecord.studentName})</span>
+                    <span>Your Academic CGPA ({vtuProfile.studentName || activeRecord?.studentName || 'Not available'})</span>
                   </span>
                   <span className="font-mono text-indigo-600 text-sm font-black">
                     {currentCgpa.toFixed(2)} CGPA
@@ -949,9 +967,9 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
 
               {/* Semester Selector Tabs */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {(activeRecord.semesterResults.length > 0
+                {(activeRecord && activeRecord.semesterResults.length > 0
                   ? activeRecord.semesterResults.map((r) => r.semester)
-                  : [1, 2, 3]
+                  : [1, 2, 3, 4]
                 ).map((semNum) => (
                   <button
                     key={semNum}
@@ -970,9 +988,9 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
 
             {/* Selected Semester Marksheet Table */}
             {(() => {
-              const currentSemResult = activeRecord.semesterResults.find(
-                (s) => s.semester === selectedResultSem
-              ) || (activeRecord.semesterResults[0] ?? null);
+              const currentSemResult = activeRecord
+                ? (activeRecord.semesterResults.find((s) => s.semester === selectedResultSem) || activeRecord.semesterResults[0] || null)
+                : null;
 
               const currentProfileSem = vtuProfile.semesters.find(
                 (s) => s.semesterNumber === selectedResultSem
@@ -980,8 +998,8 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
 
               // Use profile subjects if updated, otherwise active record subjects
               const subjectsToRender = currentProfileSem?.subjects || currentSemResult?.subjects || [];
-              const semSgpa = currentProfileSem?.sgpa || currentSemResult?.sgpa || 8.87;
-              const semCredits = currentProfileSem?.totalCredits || currentSemResult?.totalCredits || 22;
+              const semSgpa = currentProfileSem?.sgpa ?? currentSemResult?.sgpa ?? 0;
+              const semCredits = currentProfileSem?.totalCredits ?? currentSemResult?.totalCredits ?? 0;
 
               return (
                 <div className="space-y-4">
@@ -1031,12 +1049,12 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {subjectsToRender.map((sub: any, idx: number) => {
-                          const cie = sub.cieMarks ?? 45;
-                          const see = sub.seeMarks ?? 45;
+                          const cie = sub.cieMarks ?? 0;
+                          const see = sub.seeMarks ?? 0;
                           const total = sub.totalMarks ?? (cie + see);
-                          const grade = sub.gradeLetter ?? 'O';
-                          const point = sub.gradePoint ?? 10;
-                          const res = sub.result ?? 'PASS';
+                          const grade = sub.gradeLetter ?? 'F';
+                          const point = sub.gradePoint ?? 0;
+                          const res = sub.result ?? (point > 0 ? 'PASS' : 'FAIL');
 
                           return (
                             <tr key={sub.id || sub.code || idx} className="hover:bg-slate-50/80 transition">
@@ -1813,19 +1831,19 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   <div className="flex">
                     <span className="w-36 font-bold text-slate-500">University Seat No (USN):</span>
                     <span className="font-mono font-black text-slate-900 text-sm">
-                      {vtuProfile.usn}
+                      {vtuProfile.usn || 'Not available'}
                     </span>
                   </div>
                   <div className="flex">
                     <span className="w-36 font-bold text-slate-500">Student Name:</span>
                     <span className="font-black text-slate-900 uppercase">
-                      {vtuProfile.studentName || activeRecord.studentName}
+                      {vtuProfile.studentName || activeRecord?.studentName || 'Not available'}
                     </span>
                   </div>
                   <div className="flex">
                     <span className="w-36 font-bold text-slate-500">Father's / Mother's Name:</span>
                     <span className="font-semibold text-slate-800 uppercase">
-                      {vtuProfile.fatherName || activeRecord.fatherName || 'Not Specified'}
+                      {vtuProfile.fatherName || activeRecord?.fatherName || 'Not available'}
                     </span>
                   </div>
                 </div>
@@ -1834,7 +1852,7 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                   <div className="flex">
                     <span className="w-36 font-bold text-slate-500">Institution / College:</span>
                     <span className="font-semibold text-slate-900 truncate">
-                      {vtuProfile.collegeName || activeRecord.collegeName}
+                      {vtuProfile.collegeName || activeRecord?.collegeName || 'Not available'}
                     </span>
                   </div>
                   <div className="flex">
@@ -1854,17 +1872,17 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
 
               {/* Marksheet Table */}
               {(() => {
-                const curSem = activeRecord.semesterResults.find(
-                  (s) => s.semester === selectedResultSem
-                ) || activeRecord.semesterResults[0];
+                const curSem = activeRecord
+                  ? (activeRecord.semesterResults.find((s) => s.semester === selectedResultSem) || activeRecord.semesterResults[0] || null)
+                  : null;
 
                 const profSem = vtuProfile.semesters.find(
                   (s) => s.semesterNumber === selectedResultSem
                 );
 
                 const subjects = profSem?.subjects || curSem?.subjects || [];
-                const sgpa = profSem?.sgpa || curSem?.sgpa || 8.87;
-                const credits = profSem?.totalCredits || curSem?.totalCredits || 22;
+                const sgpa = profSem?.sgpa ?? curSem?.sgpa ?? 0;
+                const credits = profSem?.totalCredits ?? curSem?.totalCredits ?? 0;
 
                 return (
                   <div className="space-y-4">
@@ -1885,12 +1903,12 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
                       </thead>
                       <tbody className="divide-y divide-slate-200">
                         {subjects.map((sub: any, idx: number) => {
-                          const cie = sub.cieMarks ?? 45;
-                          const see = sub.seeMarks ?? 45;
+                          const cie = sub.cieMarks ?? 0;
+                          const see = sub.seeMarks ?? 0;
                           const total = sub.totalMarks ?? cie + see;
-                          const grade = sub.gradeLetter ?? 'O';
-                          const point = sub.gradePoint ?? 10;
-                          const res = sub.result ?? 'PASS';
+                          const grade = sub.gradeLetter ?? 'F';
+                          const point = sub.gradePoint ?? 0;
+                          const res = sub.result ?? (point > 0 ? 'PASS' : 'FAIL');
 
                           return (
                             <tr key={idx} className="hover:bg-slate-50">
@@ -2184,12 +2202,16 @@ Subject Code\tSubject Name\tInternal Marks\tExternal Marks\tTotal\tResult
                       targetCgpa: parsedTarget,
                     };
                     onUpdateProfile(updated);
-                    setActiveRecord((prev) => ({
-                      ...prev,
-                      studentName: editStudentName.trim() || prev.studentName,
-                      fatherName: editFatherName.trim() || prev.fatherName,
-                      collegeName: editCollegeName.trim() || prev.collegeName,
-                    }));
+                    setActiveRecord((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            studentName: editStudentName.trim() || prev.studentName,
+                            fatherName: editFatherName.trim() || prev.fatherName,
+                            collegeName: editCollegeName.trim() || prev.collegeName,
+                          }
+                        : null
+                    );
                     setIsEditStudentModalOpen(false);
                     setCopiedTextFeedback('Student bio updated successfully!');
                     setTimeout(() => setCopiedTextFeedback(null), 2500);

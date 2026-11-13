@@ -57,6 +57,7 @@ import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
 import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
 import { useHabitManager } from './hooks/useHabitManager.ts';
 import { getLocalDateString } from './lib/dateUtils.ts';
+import { touch, tombstone, isActive } from './lib/entity.ts';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -317,31 +318,32 @@ export default function App() {
       ...prev,
       tasks: prev.tasks.map((t) =>
         t.id === taskId
-          ? {
+          ? touch({
               ...t,
               completed: !t.completed,
               completedAt: !t.completed ? Date.now() : undefined,
               subtasks: !t.completed
                 ? t.subtasks.map((s) => ({ ...s, completed: true }))
                 : t.subtasks,
-            }
+            })
           : t
       ),
     }));
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
+    const stamped = touch(updatedTask);
     commitAppData((prev) => {
-      const exists = prev.tasks.some((t) => t.id === updatedTask.id);
+      const exists = prev.tasks.some((t) => t.id === stamped.id);
       return {
         ...prev,
         tasks: exists
-          ? prev.tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t))
-          : [updatedTask, ...prev.tasks],
+          ? prev.tasks.map((t) => (t.id === stamped.id ? stamped : t))
+          : [stamped, ...prev.tasks],
       };
     });
-    if (selectedDetailTask?.id === updatedTask.id) {
-      setSelectedDetailTask(updatedTask);
+    if (selectedDetailTask?.id === stamped.id) {
+      setSelectedDetailTask(stamped);
     }
   };
 
@@ -349,7 +351,7 @@ export default function App() {
     commitAppData((prev) => ({
       ...prev,
       tasks: prev.tasks.map((t) =>
-        t.id === taskId ? { ...t, actualMinutes: (t.actualMinutes || 0) + minutes } : t
+        t.id === taskId ? touch({ ...t, actualMinutes: (t.actualMinutes || 0) + minutes }) : t
       ),
     }));
   };
@@ -357,7 +359,7 @@ export default function App() {
   const handleDeleteTask = (taskId: string) => {
     commitAppData((prev) => ({
       ...prev,
-      tasks: prev.tasks.filter((t) => t.id !== taskId),
+      tasks: prev.tasks.map((t) => (t.id === taskId ? tombstone(t) : t)),
     }));
     if (selectedDetailTask?.id === taskId) {
       setSelectedDetailTask(null);
@@ -365,31 +367,34 @@ export default function App() {
   };
 
   const handleAddTask = (newTask: Task) => {
+    const stamped = touch(newTask);
     commitAppData((prev) => ({
       ...prev,
-      tasks: [newTask, ...prev.tasks],
+      tasks: [stamped, ...prev.tasks],
     }));
   };
 
   const handleClearCompletedTasks = () => {
+    const now = Date.now();
     commitAppData((prev) => ({
       ...prev,
-      tasks: prev.tasks.filter((t) => !t.completed),
+      tasks: prev.tasks.map((t) => (t.completed && isActive(t) ? tombstone(t, now) : t)),
     }));
   };
 
   // Finances Operations
   const handleAddTransaction = (newTx: Transaction) => {
+    const stamped = touch(newTx);
     commitAppData((prev) => ({
       ...prev,
-      transactions: [newTx, ...prev.transactions],
+      transactions: [stamped, ...prev.transactions],
     }));
   };
 
   const handleDeleteTransaction = (txId: string) => {
     commitAppData((prev) => ({
       ...prev,
-      transactions: prev.transactions.filter((t) => t.id !== txId),
+      transactions: prev.transactions.map((t) => (t.id === txId ? tombstone(t) : t)),
     }));
   };
 
@@ -402,23 +407,25 @@ export default function App() {
 
   // Exams Operations
   const handleAddExam = (newExam: ExamReminder) => {
+    const stamped = touch(newExam);
     commitAppData((prev) => ({
       ...prev,
-      exams: [...prev.exams, newExam],
+      exams: [...prev.exams, stamped],
     }));
   };
 
   const handleUpdateExam = (updatedExam: ExamReminder) => {
+    const stamped = touch(updatedExam);
     commitAppData((prev) => ({
       ...prev,
-      exams: prev.exams.map((e) => (e.id === updatedExam.id ? updatedExam : e)),
+      exams: prev.exams.map((e) => (e.id === stamped.id ? stamped : e)),
     }));
   };
 
   const handleDeleteExam = (examId: string) => {
     commitAppData((prev) => ({
       ...prev,
-      exams: prev.exams.filter((e) => e.id !== examId),
+      exams: prev.exams.map((e) => (e.id === examId ? tombstone(e) : e)),
     }));
   };
 
@@ -441,12 +448,13 @@ export default function App() {
 
   // Multi-Dimensional Daily Life Metrics Operations
   const handleSaveDailyMetric = (metric: DailyLifeMetric) => {
+    const stamped = touch(metric);
     commitAppData((prev) => {
       const existing = prev.dailyMetrics || [];
-      const filtered = existing.filter((m) => m.date !== metric.date);
+      const filtered = existing.filter((m) => m.date !== stamped.date);
       return {
         ...prev,
-        dailyMetrics: [metric, ...filtered],
+        dailyMetrics: [stamped, ...filtered],
       };
     });
   };
@@ -470,23 +478,25 @@ export default function App() {
 
   // Notes Operations
   const handleAddNote = (newNote: QuickNote) => {
+    const stamped = touch(newNote);
     commitAppData((prev) => ({
       ...prev,
-      notes: [newNote, ...prev.notes],
+      notes: [stamped, ...prev.notes],
     }));
   };
 
   const handleUpdateNote = (updatedNote: QuickNote) => {
+    const stamped = touch(updatedNote);
     commitAppData((prev) => ({
       ...prev,
-      notes: prev.notes.map((n) => (n.id === updatedNote.id ? updatedNote : n)),
+      notes: prev.notes.map((n) => (n.id === stamped.id ? stamped : n)),
     }));
   };
 
   const handleDeleteNote = (noteId: string) => {
     commitAppData((prev) => ({
       ...prev,
-      notes: prev.notes.filter((n) => n.id !== noteId),
+      notes: prev.notes.map((n) => (n.id === noteId ? tombstone(n) : n)),
     }));
   };
 
@@ -519,10 +529,18 @@ export default function App() {
     setIsFocusModalOpen(true);
   };
 
+  // Active non-tombstoned views of collections for UI & badges
+  const activeTasks = appData.tasks.filter(isActive);
+  const activeTransactions = appData.transactions.filter(isActive);
+  const activeExams = appData.exams.filter(isActive);
+  const activeHabits = appData.habits.filter(isActive);
+  const activeNotes = appData.notes.filter(isActive);
+  const activeDailyMetrics = (appData.dailyMetrics || []).filter(isActive);
+
   // Stats for badge
-  const activeTasksCount = appData.tasks.filter((t) => !t.completed).length;
+  const activeTasksCount = activeTasks.filter((t) => !t.completed).length;
   const nowTime = Date.now();
-  const urgentExamsCount = appData.exams.filter((e) => {
+  const urgentExamsCount = activeExams.filter((e) => {
     const examMs = new Date(`${e.examDate}T${e.examTime || '09:00'}`).getTime();
     const diffDays = (examMs - nowTime) / (1000 * 60 * 60 * 24);
     return diffDays > 0 && diffDays <= 7;
@@ -583,13 +601,13 @@ export default function App() {
         {/* 1. Today View (Default Landing Operating System) */}
         {(activeTab === 'today' || activeTab === 'overview') && (
           <TodayView
-            tasks={appData.tasks}
-            habits={appData.habits}
-            exams={appData.exams}
-            transactions={appData.transactions}
+            tasks={activeTasks}
+            habits={activeHabits}
+            exams={activeExams}
+            transactions={activeTransactions}
             budget={appData.budget}
             vtuProfile={appData.vtuProfile || INITIAL_VTU_PROFILE}
-            dailyMetrics={appData.dailyMetrics}
+            dailyMetrics={activeDailyMetrics}
             onToggleTask={handleToggleTask}
             onToggleHabitToday={(id) =>
               handleToggleHabitDate(id, getLocalDateString())
@@ -606,7 +624,7 @@ export default function App() {
         {/* 2. Tasks View */}
         {activeTab === 'tasks' && (
           <TasksView
-            tasks={appData.tasks}
+            tasks={activeTasks}
             onToggleTask={handleToggleTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}
@@ -614,7 +632,7 @@ export default function App() {
             onImportTasks={(newTasks) =>
               commitAppData((prev) => ({
                 ...prev,
-                tasks: [...newTasks, ...prev.tasks],
+                tasks: [...newTasks.map((t) => touch(t)), ...prev.tasks],
               }))
             }
             onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
@@ -626,8 +644,8 @@ export default function App() {
         {activeTab === 'calendar' && (
           <React.Suspense fallback={<ViewSkeleton />}>
             <CalendarView
-              tasks={appData.tasks}
-              exams={appData.exams}
+              tasks={activeTasks}
+              exams={activeExams}
               onToggleTask={handleToggleTask}
               onSelectTask={(task) => setSelectedDetailTask(task)}
               onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
@@ -638,9 +656,9 @@ export default function App() {
         {/* 4. Academics View (Unifies Exams & VTU Hub) */}
         {(activeTab === 'academics' || activeTab === 'exams' || activeTab === 'vtu') && (
           <AcademicsView
-            exams={appData.exams}
+            exams={activeExams}
             vtuProfile={appData.vtuProfile || INITIAL_VTU_PROFILE}
-            tasks={appData.tasks}
+            tasks={activeTasks}
             initialSubTab={activeTab === 'vtu' ? 'vtu' : 'exams'}
             onUpdateVtuProfile={handleUpdateVtuProfile}
             onAddExam={handleAddExam}
@@ -654,7 +672,7 @@ export default function App() {
         {activeTab === 'finances' && (
           <React.Suspense fallback={<ViewSkeleton />}>
             <FinancesView
-              transactions={appData.transactions}
+              transactions={activeTransactions}
               budget={appData.budget}
               onAddTransaction={handleAddTransaction}
               onDeleteTransaction={handleDeleteTransaction}
@@ -667,12 +685,12 @@ export default function App() {
         {/* 6. Habits View */}
         {activeTab === 'habits' && (
           <HabitsView
-            habits={appData.habits}
+            habits={activeHabits}
             onToggleHabitDate={handleToggleHabitDate}
             onAddHabit={handleAddHabit}
             onDeleteHabit={handleDeleteHabit}
             onUpdateHabit={handleUpdateHabit}
-            dailyMetrics={appData.dailyMetrics || []}
+            dailyMetrics={activeDailyMetrics}
             onSaveDailyMetric={handleSaveDailyMetric}
           />
         )}
@@ -680,7 +698,7 @@ export default function App() {
         {/* 7. Notes View */}
         {activeTab === 'notes' && (
           <NotesView
-            notes={appData.notes}
+            notes={activeNotes}
             onAddNote={handleAddNote}
             onUpdateNote={handleUpdateNote}
             onDeleteNote={handleDeleteNote}
@@ -692,12 +710,12 @@ export default function App() {
         {activeTab === 'insights' && (
           <React.Suspense fallback={<ViewSkeleton />}>
             <InsightsView
-              tasks={appData.tasks}
-              habits={appData.habits}
-              transactions={appData.transactions}
+              tasks={activeTasks}
+              habits={activeHabits}
+              transactions={activeTransactions}
               budget={appData.budget}
-              exams={appData.exams}
-              dailyMetrics={appData.dailyMetrics || []}
+              exams={activeExams}
+              dailyMetrics={activeDailyMetrics}
               onSaveDailyMetric={handleSaveDailyMetric}
               appData={appData}
               onRestoreAppData={handleRestoreAppData}
@@ -739,10 +757,10 @@ export default function App() {
         onOpenAddExam={() => setIsAddExamOpen(true)}
         onOpenAddNote={() => setIsAddNoteOpen(true)}
         onOpenFocusModal={() => handleOpenFocus(null)}
-        tasks={appData.tasks}
-        exams={appData.exams}
-        habits={appData.habits}
-        notes={appData.notes}
+        tasks={activeTasks}
+        exams={activeExams}
+        habits={activeHabits}
+        notes={activeNotes}
         onToggleTask={handleToggleTask}
       />
 
@@ -796,7 +814,7 @@ export default function App() {
       <AuthorizedDomainModal
         isOpen={isAuthDomainModalOpen}
         onClose={() => setIsAuthDomainModalOpen(false)}
-        onSignInLocal={() => handleSelectGoogleAccount('chataiwithcode@gmail.com')}
+        onSignInLocal={() => handleSelectGoogleAccount('local@device.invalid', 'Local User')}
       />
 
       <GoogleSignInModal
@@ -804,7 +822,6 @@ export default function App() {
         onClose={() => setIsGoogleSignInModalOpen(false)}
         onSelectGoogleAccount={handleSelectGoogleAccount}
         onTryFirebasePopup={handleTryFirebasePopup}
-        defaultEmail="chataiwithcode@gmail.com"
       />
     </div>
   );

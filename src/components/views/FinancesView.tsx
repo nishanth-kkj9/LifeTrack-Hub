@@ -14,6 +14,8 @@ import {
   Sliders,
 } from 'lucide-react';
 import { Transaction, BudgetSettings, FinanceCategory } from '../../types/index.ts';
+import { getLocalMonthPrefix, parseLocalDate } from '../../lib/dateUtils.ts';
+import { formatCurrency } from '../../lib/format.ts';
 
 interface FinancesViewProps {
   transactions: Transaction[];
@@ -46,7 +48,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
     .reduce((sum, tx) => sum + tx.amount, 0);
   const netSavings = totalIncome - totalExpense;
 
-  const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+  const currentMonthPrefix = getLocalMonthPrefix();
   const currentMonthExpense = transactions
     .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
     .reduce((sum, tx) => sum + tx.amount, 0);
@@ -83,7 +85,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
       }
       return true;
     })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => parseLocalDate(b.date).getTime() - parseLocalDate(a.date).getTime());
 
   return (
     <div id="finances-view-container" className="space-y-6 pb-12 animate-fadeIn">
@@ -119,7 +121,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
             </span>
           </div>
           <p className={`text-2xl font-black tabular-nums tracking-tight ${netSavings >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-            ₹{netSavings.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrency(netSavings)}
           </p>
           <p className="text-xs text-slate-500 mt-1">Total income minus expenses</p>
         </div>
@@ -133,7 +135,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
             </span>
           </div>
           <p className="text-2xl font-black tabular-nums tracking-tight text-emerald-600">
-            +₹{totalIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            +{formatCurrency(totalIncome)}
           </p>
           <p className="text-xs text-slate-500 mt-1">{transactions.filter((t) => t.type === 'income').length} credit logs</p>
         </div>
@@ -147,7 +149,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
             </span>
           </div>
           <p className="text-2xl font-black tabular-nums tracking-tight text-slate-900">
-            -₹{totalExpense.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            -{formatCurrency(totalExpense)}
           </p>
           <p className="text-xs text-slate-500 mt-1">{transactions.filter((t) => t.type === 'expense').length} purchases</p>
         </div>
@@ -205,7 +207,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
             <>
               <div className="flex items-baseline justify-between">
                 <span className="text-2xl font-black tabular-nums tracking-tight text-slate-900">
-                  ₹{budget.monthlyBudget.toLocaleString('en-IN')}
+                  {formatCurrency(budget.monthlyBudget)}
                 </span>
                 <span className={`text-xs font-bold tabular-nums ${budgetSpentPercent > 90 ? 'text-rose-600' : 'text-slate-500'}`}>
                   {budgetSpentPercent}% used
@@ -332,7 +334,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
                           tx.type === 'income' ? 'text-emerald-600' : 'text-slate-900'
                         }`}
                       >
-                        {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toFixed(2)}
+                        {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
                       </span>
 
                       <button
@@ -369,7 +371,7 @@ export const FinancesView: React.FC<FinancesViewProps> = ({
                     <div key={category} className="space-y-1">
                       <div className="flex items-center justify-between text-xs font-semibold">
                         <span className="text-slate-700 truncate">{category}</span>
-                        <span className="text-slate-900 font-mono">₹{amount.toFixed(2)} ({percent}%)</span>
+                        <span className="text-slate-900 font-mono">{formatCurrency(amount)} ({percent}%)</span>
                       </div>
                       <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                         <div

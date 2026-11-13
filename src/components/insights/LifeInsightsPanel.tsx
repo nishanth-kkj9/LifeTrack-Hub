@@ -7,6 +7,7 @@
 import React, { useMemo } from 'react';
 import { DailyLifeMetric, Habit } from '../../types/index.ts';
 import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
+import { getHabitStats } from '../../lib/habitScoring.ts';
 
 export interface LifeInsightsPanelProps {
   habits: Habit[];
@@ -22,17 +23,13 @@ export function LifeInsightsPanel({
   const habitItems = useMemo(
     () =>
       habits.map((h) => {
-        const targetDays = Math.max(1, h.targetDaysPerWeek || 7);
-        const completionRate = Math.min(
-          100,
-          Math.round(((h.completedDates?.length || 0) / (targetDays * 4)) * 100)
-        );
+        const stats = getHabitStats(h);
         return {
           id: h.id,
           name: h.name,
           score: {
-            currentStrength: h.habitScore ?? 50,
-            completionRate,
+            currentStrength: stats.strengthScore,
+            completionRate: stats.completionRate,
           },
         };
       }),

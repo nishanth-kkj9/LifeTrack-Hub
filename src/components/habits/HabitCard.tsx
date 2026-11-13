@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Habit } from '../../types/index.ts';
-import { calculateHabitScore } from '../../lib/habitScore.ts';
+import { getHabitStats } from '../../lib/habitScoring.ts';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
 
 export interface HabitCardProps {
@@ -29,27 +29,17 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   habit,
   onToggle,
   onDelete,
-  onUpdate,
 }) => {
   const today = getLocalDateString();
   const isCompletedToday = habit.completedDates?.includes(today);
-
-  const dueDateCount = (habit.targetDaysPerWeek || 7) * 4;
-  const completionCount = habit.completedDates?.length || 0;
-
-  const habitScore = calculateHabitScore({
-    completions: completionCount,
-    totalDueDates: dueDateCount,
-    currentStreak: habit.streak || 0,
-    longestStreak: habit.bestStreak || 0,
-  });
+  const stats = getHabitStats(habit, today);
 
   const accentColor = HABIT_COLORS[habit.category || 'personal'] || '#7c3aed';
 
   const getHealthIndicator = () => {
-    if (habitScore.healthLabel === 'Excellent') return '🟢';
-    if (habitScore.healthLabel === 'Strong') return '🟡';
-    if (habitScore.healthLabel === 'Stable') return '🟠';
+    if (stats.healthLabel === 'Excellent') return '🟢';
+    if (stats.healthLabel === 'Strong') return '🟡';
+    if (stats.healthLabel === 'Stable') return '🟠';
     return '🔴';
   };
 
@@ -70,7 +60,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             {habit.targetDaysPerWeek || 7}x per week • {habit.category || 'general'}
           </div>
         </div>
-        <div style={{ fontSize: 22 }} title={habitScore.healthLabel}>
+        <div style={{ fontSize: 22 }} title={stats.healthLabel}>
           {getHealthIndicator()}
         </div>
       </div>
@@ -82,7 +72,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             Strength
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: accentColor }}>
-            {habitScore.currentStrength.toFixed(0)}/100
+            {stats.strengthScore}/100
           </div>
         </div>
         <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg">
@@ -90,7 +80,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             Streak
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>
-            {habit.streak || 0}d
+            {stats.currentStreak}d
           </div>
         </div>
         <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg">
@@ -98,7 +88,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             Completion
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#10b981' }}>
-            {habitScore.completionRate.toFixed(0)}%
+            {stats.completionRate}%
           </div>
         </div>
       </div>

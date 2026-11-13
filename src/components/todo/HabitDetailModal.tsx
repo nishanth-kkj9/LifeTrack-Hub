@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { Habit, VacationPeriod } from '../../types/index.ts';
 import { analyzeHabitStrength } from '../../lib/habitScoring.ts';
-import { calculateHabitScore } from '../../lib/habitScore.ts';
 import { computeAdaptiveSchedule } from '../../lib/schedule.ts';
 import { exportHabitsCsv } from '../../lib/dataExport.ts';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
@@ -40,19 +39,12 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
   const [vacationReason, setVacationReason] = useState('');
   const [vacationStart, setVacationStart] = useState(getLocalDateString());
   const [vacationEnd, setVacationEnd] = useState(getLocalDateString());
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   if (!isOpen || !habit) return null;
 
   const analysis = analyzeHabitStrength(habit);
   const todayStr = getLocalDateString();
-  const totalDays = Math.max(1, Math.round((Date.now() - habit.createdAt) / (1000 * 60 * 60 * 24)) + 1);
-
-  const habitScoreResult = calculateHabitScore({
-    completions: habit.completedDates?.length || 0,
-    totalDueDates: totalDays,
-    currentStreak: analysis.currentStreak,
-    longestStreak: analysis.bestStreak,
-  });
 
   const adaptiveSchedule = computeAdaptiveSchedule({
     completedDates: habit.completedDates || [],
@@ -184,7 +176,7 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
           <div className="grid grid-cols-3 gap-2 pt-2 text-center border-t border-slate-700/60 text-xs bg-slate-800/50 -mx-4 -mb-3 p-3 rounded-b-xl">
             <div>
               <p className="text-slate-400 text-[10px]">Routine Health</p>
-              <p className="font-bold text-purple-300">{habitScoreResult.healthLabel}</p>
+              <p className="font-bold text-purple-300">{analysis.healthLabel}</p>
             </div>
             <div>
               <p className="text-slate-400 text-[10px]">Today's Status</p>
@@ -192,8 +184,8 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
             </div>
             <div>
               <p className="text-slate-400 text-[10px]">Schedule Backlog</p>
-              <p className={`font-bold ${habitScoreResult.backlogDays > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {habitScoreResult.backlogDays}d
+              <p className={`font-bold ${analysis.backlogDays > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {analysis.backlogDays}d
               </p>
             </div>
           </div>
@@ -331,19 +323,38 @@ export const HabitDetailModal: React.FC<HabitDetailModalProps> = ({
             <span>Export CSV</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm(`Are you sure you want to delete "${habit.name}"?`)) {
-                onDeleteHabit(habit.id);
-                onClose();
-              }
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Delete Habit</span>
-          </button>
+          {confirmingDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-rose-700">Delete habit?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteHabit(habit.id);
+                  setConfirmingDelete(false);
+                  onClose();
+                }}
+                className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition cursor-pointer"
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Habit</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

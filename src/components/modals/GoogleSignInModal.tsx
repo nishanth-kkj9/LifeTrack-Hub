@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { X, User, ChevronRight, Sparkles, Check, ExternalLink, ShieldCheck } from 'lucide-react';
+import { X, HardDrive, ShieldCheck } from 'lucide-react';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
-import firebaseConfig from '../../../firebase-applet-config.json';
 
 interface GoogleSignInModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectGoogleAccount: (email: string, displayName?: string) => void;
   onTryFirebasePopup?: () => Promise<void>;
-  defaultEmail?: string;
 }
 
 export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({
@@ -16,26 +14,18 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({
   onClose,
   onSelectGoogleAccount,
   onTryFirebasePopup,
-  defaultEmail = 'chataiwithcode@gmail.com',
 }) => {
   const { modalRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
-  const [customEmail, setCustomEmail] = useState('');
-  const [customName, setCustomName] = useState('');
-  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [offlineName, setOfflineName] = useState('');
   const [isPopupLoading, setIsPopupLoading] = useState(false);
   const [popupError, setPopupError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleSelectPrimary = () => {
-    onSelectGoogleAccount(defaultEmail, 'Student Scholar');
-    onClose();
-  };
-
-  const handleCustomSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customEmail.trim() || !customEmail.includes('@')) return;
-    onSelectGoogleAccount(customEmail.trim(), customName.trim() || undefined);
+  const handleContinueOffline = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const label = offlineName.trim() || 'Local User';
+    onSelectGoogleAccount('local@device.invalid', label);
     onClose();
   };
 
@@ -48,9 +38,9 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({
       onClose();
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user') {
-        setPopupError('Popup closed by user. Select an account or try again.');
+        setPopupError('Sign-in window was closed. Try again or continue offline below.');
       } else if (err?.code === 'auth/unauthorized-domain') {
-        setPopupError('Preview domain not authorized in Firebase Console. You can continue with a Local Profile below.');
+        setPopupError('This preview domain is not allowlisted for Google Sign-In. You can continue offline on this device.');
       } else {
         setPopupError(err?.message || 'Unable to open Google sign-in window.');
       }
@@ -68,9 +58,9 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({
     >
       <div
         ref={modalRef}
-        className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-6 my-8 animate-scaleUp text-slate-900"
+        className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-5 my-8 animate-scaleUp text-slate-900"
       >
-        {/* Header with Google Logo */}
+        {/* Header */}
         <div className="flex items-start justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-center shadow-xs">
@@ -95,9 +85,9 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({
             </div>
             <div>
               <h2 id="google-signin-modal-title" className="text-lg font-extrabold text-slate-900 tracking-tight">
-                Sign in with Google
+                Sync & Profile
               </h2>
-              <p className="text-xs text-slate-500">Choose an account to continue to LifeTrack Hub</p>
+              <p className="text-xs text-slate-500">Sign in for cloud sync or stay local on this browser</p>
             </div>
           </div>
           <button
@@ -110,108 +100,55 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({
           </button>
         </div>
 
-        {/* Primary Google Account Button */}
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={handleSelectPrimary}
-            className="w-full flex items-center justify-between p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-500 bg-indigo-50/40 hover:bg-indigo-50 transition cursor-pointer group text-left shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-500 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-                {defaultEmail[0].toUpperCase()}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-slate-900">Student Scholar</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
-                    Default
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 font-mono mt-0.5">{defaultEmail}</p>
-              </div>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-indigo-600 group-hover:translate-x-0.5 transition shadow-xs">
-              <ChevronRight className="w-4 h-4" />
-            </div>
-          </button>
-
-          {/* Use another account toggle */}
-          {!showCustomInput ? (
-            <button
-              type="button"
-              onClick={() => setShowCustomInput(true)}
-              className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 transition cursor-pointer text-left text-xs font-semibold text-slate-700"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                  <User className="w-3.5 h-3.5" />
-                </div>
-                <span>Use another Google account</span>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-400" />
-            </button>
-          ) : (
-            <form onSubmit={handleCustomSubmit} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700">Enter Google Account</label>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomInput(false)}
-                  className="text-[11px] text-slate-500 hover:underline"
-                >
-                  Cancel
-                </button>
-              </div>
-              <input
-                type="email"
-                required
-                value={customEmail}
-                onChange={(e) => setCustomEmail(e.target.value)}
-                placeholder="e.g. yourname@gmail.com"
-                className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <input
-                type="text"
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="Full Name (optional)"
-                className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <button
-                type="submit"
-                className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-xs"
-              >
-                Sign In with this Google Account
-              </button>
-            </form>
-          )}
-        </div>
-
-        {/* Live Firebase Popup Trigger (Optional) */}
+        {/* Live Firebase Google Sign-In */}
         {onTryFirebasePopup && (
-          <div className="pt-2 border-t border-slate-100 space-y-2">
+          <div className="space-y-2">
             <button
               type="button"
               disabled={isPopupLoading}
               onClick={handlePopupAttempt}
-              className="w-full py-2 text-xs font-medium text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition cursor-pointer border border-dashed border-slate-200"
+              className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center gap-2"
             >
-              {isPopupLoading ? 'Opening Google Auth popup...' : 'Try live browser popup (Firebase Auth)'}
+              <span>{isPopupLoading ? 'Opening Google Sign-In...' : 'Sign in with Google (Cloud Sync)'}</span>
             </button>
             {popupError && (
-              <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 leading-normal">
+              <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 leading-normal">
                 {popupError}
               </p>
             )}
           </div>
         )}
 
-        {/* Security & Feature Promise */}
+        {/* Honest Offline Mode Option */}
+        <form onSubmit={handleContinueOffline} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-slate-600" />
+            <span className="text-xs font-bold text-slate-800">Continue offline (this device only)</span>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Data stays in your browser storage without uploading to Firebase.
+          </p>
+          <input
+            type="text"
+            value={offlineName}
+            onChange={(e) => setOfflineName(e.target.value)}
+            placeholder="Display name (optional)"
+            className="w-full px-3 py-2 text-xs bg-white rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900"
+          />
+          <button
+            id="continue-offline-btn"
+            type="submit"
+            className="w-full py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold rounded-lg transition cursor-pointer"
+          >
+            Continue offline (this device only)
+          </button>
+        </form>
+
+        {/* Privacy note */}
         <div className="flex items-center gap-2 p-3 bg-emerald-50/70 rounded-xl border border-emerald-100 text-xs text-emerald-800">
           <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>
-            Signing in unlocks sync across devices, personalized daily streak tracking, and backup.
+            Cloud sync requires a live Google Sign-In session. Offline mode saves only to this browser.
           </span>
         </div>
       </div>

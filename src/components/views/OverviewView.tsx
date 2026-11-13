@@ -15,9 +15,11 @@ import {
   Award,
 } from 'lucide-react';
 import { Task, Transaction, ExamReminder, Habit, BudgetSettings, VtuProfile } from '../../types/index.ts';
-import { calculateCumulativeCgpa, calculateAttendanceReport, calculateSemesterSgpa } from '../../lib/vtuData.ts';
+import { calculateCumulativeCgpa, calculateAttendanceReport } from '../../lib/vtuData.ts';
 import { ActiveTab } from '../Navigation.tsx';
-import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { getLocalDateString, getLocalMonthPrefix } from '../../lib/dateUtils.ts';
+import { formatCurrency } from '../../lib/format.ts';
+import { getHabitStats } from '../../lib/habitScoring.ts';
 
 interface OverviewViewProps {
   tasks: Task[];
@@ -74,7 +76,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     .filter((tx) => tx.type === 'expense')
     .reduce((sum, tx) => sum + tx.amount, 0);
   const netBalance = totalIncome - totalExpense;
-  const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+  const currentMonthPrefix = getLocalMonthPrefix();
   const currentMonthExpense = transactions
     .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
     .reduce((sum, tx) => sum + tx.amount, 0);
@@ -172,7 +174,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     VTU CBCS Tracker
                   </span>
                   <span className="text-xs text-slate-400 font-mono">
-                    USN: {vtuProfile.usn || '1MS22CS084'}
+                    USN: {vtuProfile.usn || 'Not set'}
                   </span>
                 </div>
                 <h3 className="font-bold text-sm text-white mt-0.5">
@@ -275,11 +277,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
           <div className="flex items-baseline justify-between">
             <span className={`text-2xl font-black ${netBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-              ${netBalance.toFixed(2)}
+              {formatCurrency(netBalance)}
             </span>
             <span className="text-xs font-medium text-emerald-700 flex items-center gap-0.5">
               <TrendingUp className="w-3 h-3" />
-              +${totalIncome.toFixed(0)}
+              +{formatCurrency(totalIncome)}
             </span>
           </div>
           <div className="mt-3">
@@ -292,7 +294,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               />
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1.5">
-              <span>Budget: ${totalExpense.toFixed(0)} / ${budget.monthlyBudget}</span>
+              <span>Budget: {formatCurrency(currentMonthExpense)} / {formatCurrency(budget.monthlyBudget)}</span>
               <span className="font-semibold text-slate-700">{budgetPercentage}%</span>
             </div>
           </div>
@@ -482,6 +484,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {habits.map((habit) => {
                 const isDoneToday = habit.completedDates.includes(todayStr);
+                const stats = getHabitStats(habit, todayStr);
                 return (
                   <div
                     key={habit.id}
@@ -507,7 +510,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     </div>
                     <span className="text-xs font-bold text-orange-600 flex items-center gap-0.5">
                       <Flame className="w-3 h-3 fill-orange-500" />
-                      {habit.streak}d
+                      {stats.currentStreak}d
                     </span>
                   </div>
                 );

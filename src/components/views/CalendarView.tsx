@@ -14,7 +14,7 @@ import {
 import { Task, ExamReminder } from '../../types/index.ts';
 import { Button } from '../ui/Button.tsx';
 import { TaskRow } from '../ui/TaskRow.tsx';
-import { getLocalDateString, formatAppTime } from '../../lib/dateUtils.ts';
+import { getLocalDateString, formatAppTime, parseLocalDate } from '../../lib/dateUtils.ts';
 
 interface CalendarViewProps {
   tasks: Task[];
@@ -196,7 +196,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   }, [calendarDays]);
 
   const monthName = viewMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const selectedFormatted = new Date(`${selectedDate}T00:00:00`).toLocaleDateString('en-US', {
+  const selectedFormatted = parseLocalDate(selectedDate).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -350,7 +350,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           ) : (
             <div className="divide-y divide-slate-100">
               {upcomingEvents.map((evt) => {
-                const dateDisplay = new Date(`${evt.date}T00:00:00`).toLocaleDateString('en-US', {
+                const dateDisplay = parseLocalDate(evt.date).toLocaleDateString('en-US', {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',

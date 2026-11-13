@@ -34,8 +34,27 @@ jobs:
       - name: Web Build
         run: npm run build
 
-      - name: Web Test Suites (UI workflows + API router + rules integrity)
+      - name: Web Test Suites
         run: npm test
+
+      - name: Setup Java (Firestore Emulator)
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Firestore Rules Emulator Tests
+        run: npx --yes firebase-tools emulators:exec --project demo-lifetrack --only firestore "tsx test/firestore.rules.emulator.test.ts"
+
+      - name: Production Server Boot Check (omit devDependencies)
+        run: |
+          npm ci --omit=dev
+          PORT=3100 NODE_ENV=production node dist/server.cjs &
+          SERVER_PID=$!
+          sleep 2
+          curl -sf http://localhost:3100/ > /dev/null
+          curl -sf http://localhost:3100/api/health | grep -q '"status":"ok"'
+          kill $SERVER_PID || true
 
   kmp-desktop:
     runs-on: ubuntu-latest

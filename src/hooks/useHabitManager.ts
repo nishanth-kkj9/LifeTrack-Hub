@@ -1,13 +1,12 @@
 /**
  * Habit Manager Hook
- * Manages habit CRUD, scoring, and streak calculations
+ * Manages habit CRUD, scoring, and streak calculations via canonical habitScoring engine.
  */
 
 import { useCallback } from 'react';
 import { Habit, DailyLifeMetric } from '../types/index.ts';
-import { calculateHabitScore } from '../lib/habitScore.ts';
-import { calculateHabitStreaks, generateDueDates } from '../lib/schedule.ts';
-import { getLocalDateString } from '../lib/dateUtils.ts';
+import { getHabitStats } from '../lib/habitScoring.ts';
+import { touch, tombstone, isActive } from '../lib/entity.ts';
 
 export interface UseHabitManagerOptions {
   habits: Habit[];
@@ -15,7 +14,7 @@ export interface UseHabitManagerOptions {
   onUpdate: (habits: Habit[]) => void;
 }
 
-export function useHabitManager({ habits, dailyMetrics = [], onUpdate }: UseHabitManagerOptions) {
+export function useHabitManager({ habits, onUpdate }: UseHabitManagerOptions) {
   const toggleHabitDate = useCallback(
     (habitId: string, dateStr: string) => {
       const updated = habits.map((h) => {
@@ -27,23 +26,19 @@ export function useHabitManager({ habits, dailyMetrics = [], onUpdate }: UseHabi
           ? currentDates.filter((d) => d !== dateStr)
           : [...currentDates, dateStr];
 
-        const streaks = calculateHabitStreaks(nextCompletedDates);
-        const dueDateCount = (h.targetDaysPerWeek || 7) * 4;
-        const score = calculateHabitScore({
-          completions: nextCompletedDates.length,
-          totalDueDates: dueDateCount,
-          currentStreak: streaks.current,
-          longestStreak: streaks.longest,
-        });
-
-        return {
+        const nextDraft: Habit = {
           ...h,
           completedDates: nextCompletedDates,
-          streak: streaks.current,
-          bestStreak: streaks.longest,
-          habitScore: score.currentStrength,
-          habitHealth: score.healthLabel,
         };
+        const stats = getHabitStats(nextDraft);
+
+        return touch({
+          ...nextDraft,
+          streak: stats.currentStreak,
+          bestStreak: Math.max(stats.bestStreak, h.bestStreak || 0),
+          habitScore: stats.strengthScore,
+          habitHealth: stats.healthLabel,
+        });
       });
 
       onUpdate(updated);
@@ -53,19 +48,14 @@ export function useHabitManager({ habits, dailyMetrics = [], onUpdate }: UseHabi
 
   const addHabit = useCallback(
     (newHabit: Habit) => {
-      const dueDateCount = (newHabit.targetDaysPerWeek || 7) * 4;
-      const score = calculateHabitScore({
-        completions: newHabit.completedDates?.length || 0,
-        totalDueDates: dueDateCount,
-        currentStreak: newHabit.streak || 0,
-        longestStreak: newHabit.bestStreak || 0,
-      });
-
-      const habitWithScore: Habit = {
+      const stats = getHabitStats(newHabit);
+      const habitWithScore: Habit = touch({
         ...newHabit,
-        habitScore: score.currentStrength,
-        habitHealth: score.healthLabel,
-      };
+        streak: stats.currentStreak,
+        bestStreak: Math.max(stats.bestStreak, newHabit.bestStreak || 0),
+        habitScore: stats.strengthScore,
+        habitHealth: stats.healthLabel,
+      });
 
       onUpdate([...habits, habitWithScore]);
     },
@@ -74,25 +64,25 @@ export function useHabitManager({ habits, dailyMetrics = [], onUpdate }: UseHabi
 
   const deleteHabit = useCallback(
     (habitId: string) => {
-      onUpdate(habits.filter((h) => h.id !== habitId));
+      onUpdate(habits.map((h) => (h.id === habitId ? tombstone(h) : h)));
     },
     [habits, onUpdate]
   );
 
   const updateHabit = useCallback(
     (updatedHabit: Habit) => {
-      const dueDateCount = (updatedHabit.targetDaysPerWeek || 7) * 4;
-      const score = calculateHabitScore({
-        completions: updatedHabit.completedDates?.length || 0,
-        totalDueDates: dueDateCount,
-        currentStreak: updatedHabit.streak || 0,
-        longestStreak: updatedHabit.bestStreak || 0,
-      });
+      const stats = getHabitStats(updatedHabit);
 
       onUpdate(
         habits.map((h) =>
           h.id === updatedHabit.id
-            ? { ...updatedHabit, habitScore: score.currentStrength, habitHealth: score.healthLabel }
+            ? touch({
+                ...updatedHabit,
+                streak: stats.currentStreak,
+                bestStreak: Math.max(stats.bestStreak, updatedHabit.bestStreak || 0),
+                habitScore: stats.strengthScore,
+                habitHealth: stats.healthLabel,
+              })
             : h
         )
       );
@@ -101,19 +91,15 @@ export function useHabitManager({ habits, dailyMetrics = [], onUpdate }: UseHabi
   );
 
   const getHabitsWithScores = useCallback(() => {
-    return habits.map((h) => {
-      const dueDateCount = (h.targetDaysPerWeek || 7) * 4;
-      const score = calculateHabitScore({
-        completions: h.completedDates?.length || 0,
-        totalDueDates: dueDateCount,
-        currentStreak: h.streak || 0,
-        longestStreak: h.bestStreak || 0,
-      });
+    return habits.filter(isActive).map((h) => {
+      const stats = getHabitStats(h);
 
       return {
         ...h,
-        habitScore: score.currentStrength,
-        habitHealth: score.healthLabel,
+        streak: stats.currentStreak,
+        bestStreak: Math.max(stats.bestStreak, h.bestStreak || 0),
+        habitScore: stats.strengthScore,
+        habitHealth: stats.healthLabel,
       };
     });
   }, [habits]);

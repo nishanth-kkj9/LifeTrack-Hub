@@ -1,9 +1,7 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
-import cors from 'cors';
 import helmet from 'helmet';
-import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
@@ -20,31 +18,40 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-async function startServer() {
+export async function createAppServer(options?: { port?: number; host?: string }) {
   const app = express();
+  const isProd = process.env.NODE_ENV === 'production';
   // Respect platform-injected PORT (Render, Railway, Cloud Run, Heroku); default 3000.
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = options?.port ?? (Number(process.env.PORT) || 3000);
+  const HOST = options?.host ?? '0.0.0.0';
 
   // Set trusted proxy hop for secure IP resolution
   app.set('trust proxy', 1);
 
-  // Security Headers (Helmet) with iframe embedding allowed for preview sandbox
+  // Security Headers (Helmet)
   app.use(
     helmet({
-      frameguard: false,
+      frameguard: isProd ? { action: 'sameorigin' } : false,
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: [
-            "'self'",
-            "'unsafe-inline'",
-            "'unsafe-eval'",
-            'https://apis.google.com',
-            'https://www.gstatic.com',
-            'https://*.firebaseapp.com',
-          ],
+          scriptSrc: isProd
+            ? [
+                "'self'",
+                'https://apis.google.com',
+                'https://www.gstatic.com',
+                'https://*.firebaseapp.com',
+              ]
+            : [
+                "'self'",
+                "'unsafe-inline'",
+                'https://apis.google.com',
+                'https://www.gstatic.com',
+                'https://*.firebaseapp.com',
+              ],
           connectSrc: [
             "'self'",
+            ...(isProd ? [] : ['ws:', 'wss:']),
             'https://*.googleapis.com',
             'https://*.firebaseio.com',
             'https://*.cloudfunctions.net',
@@ -52,54 +59,89 @@ async function startServer() {
             'https://securetoken.googleapis.com',
             'https://firestore.googleapis.com',
           ],
-          imgSrc: ["'self'", 'data:', 'blob:', 'https://*.googleusercontent.com', 'https://*.gstatic.com'],
-          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: [
+            "'self'",
+            'data:',
+            'blob:',
+            'https://*.googleusercontent.com',
+            'https://*.gstatic.com',
+          ],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
           fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
           frameSrc: ["'self'", 'https://*.firebaseapp.com', 'https://accounts.google.com'],
-          frameAncestors: ['*'],
+          frameAncestors: isProd ? ["'self'"] : ['*'],
         },
       },
       crossOriginEmbedderPolicy: false,
     })
   );
 
-  // Strict CORS policy: Allow app origin or dev
-  const allowedOrigin = process.env.APP_ORIGIN || `http://localhost:${PORT}`;
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        if (!origin || origin === allowedOrigin || process.env.NODE_ENV !== 'production') {
-          return callback(null, true);
-        }
-        return callback(new Error('CORS origin denied'));
-      },
-      credentials: true,
-    })
-  );
+  // Optional CORS for API routes only, driven by comma-separated CORS_ORIGINS env var.
+  // Same-origin static assets and index.html are never blocked. Denied origins simply omit CORS headers.
+  const corsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
-  // NOTE: JSON body parsing is registered once, inside apiRouter (scoped to /api).
-  // Registering express.json() here too would parse every request body twice.
+  if (corsOrigins.length > 0) {
+    app.use('/api', (req, res, next) => {
+      const origin = req.headers.origin;
+      if (origin && corsOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+        if (req.method === 'OPTIONS') {
+          res.status(204).end();
+          return;
+        }
+      }
+      next();
+    });
+  }
 
   // Lightweight health endpoint for uptime probes / load balancers
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
+  // Vite middleware for development (dynamically imported so production omit-dev works cleanly)
+  if (!isProd) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
         hmr: false,
+        ws: false,
       },
       appType: 'spa',
     });
+
+    // Since HMR & WebSockets are disabled in the preview iframe, prevent @vite/client
+    // from calling new WebSocket(...) while preserving CSS/style & module helpers.
+    app.get('/@vite/client', async (_req, res, next) => {
+      try {
+        const result = await vite.transformRequest('/@vite/client');
+        if (!result) return next();
+        const patchedCode = result.code.replace(
+          'transport.connect(createHMRHandler(handleMessage));',
+          '// HMR disabled: WebSocket transport.connect skipped cleanly'
+        );
+        res.setHeader('Content-Type', 'application/javascript');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.send(patchedCode);
+      } catch (err) {
+        next(err);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    // SPA fallback (Express 4 wildcard) — but never for /api paths:
-    // unknown API routes must fall through to the JSON 404 handler below.
+    // SPA fallback (Express 4 wildcard) — never for /api paths:
+    // unknown API routes fall through to the JSON 404 handler below.
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api/')) return next();
       res.sendFile(path.join(distPath, 'index.html'));
@@ -111,32 +153,46 @@ async function startServer() {
     res.status(404).json({ error: `Not found: ${req.method} ${req.path}` });
   });
 
-  // Global error handling middleware — MUST be registered LAST so it can also
-  // catch errors thrown by the Vite/static/404 layers above.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Global error handling middleware — registered LAST
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('[Express Global Error Handler]', err);
     if (!res.headersSent) {
-      res.status(err.status || 500).json({
+      const status = typeof err === 'object' && err !== null && 'status' in err && typeof (err as { status: unknown }).status === 'number'
+        ? (err as { status: number }).status
+        : 500;
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(status).json({
         error: 'An unexpected internal server error occurred',
-        message: process.env.NODE_ENV === 'production' ? undefined : err?.message,
+        message: isProd ? undefined : message,
       });
     }
   });
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve, reject) => {
+    const srv = app.listen(PORT, HOST, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      resolve(srv);
+    });
+    srv.once('error', reject);
   });
 
-  // Graceful shutdown: stop accepting connections, let in-flight requests drain.
-  const shutdown = (signal: string) => {
-    console.log(`[Server] ${signal} received — closing HTTP server gracefully.`);
-    server.close(() => process.exit(0));
-    // Hard-kill fallback if connections refuse to drain
-    setTimeout(() => process.exit(1), 10_000).unref();
-  };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  return server;
 }
 
-startServer();
+// Only auto-start when invoked directly (not when imported in tests)
+const isDirectRun =
+  typeof process !== 'undefined' &&
+  process.argv[1] &&
+  (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.cjs'));
+
+if (isDirectRun) {
+  createAppServer().then((server) => {
+    const shutdown = (signal: string) => {
+      console.log(`[Server] ${signal} received — closing HTTP server gracefully.`);
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(1), 10_000).unref();
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  });
+}

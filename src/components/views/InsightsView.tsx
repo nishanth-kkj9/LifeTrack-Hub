@@ -16,7 +16,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { Task, Habit, Transaction, BudgetSettings, ExamReminder, DailyLifeMetric, UserAppData } from '../../types/index.ts';
-import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { getLocalDateString, getLocalMonthPrefix } from '../../lib/dateUtils.ts';
 import { analyzeLifeMetricCorrelations } from '../../lib/correlationEngine.ts';
 import {
   exportAppDataJson,
@@ -30,7 +30,8 @@ import { DailyLifeCheckinModal } from '../insights/DailyLifeCheckinModal.tsx';
 import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
 import { LifeDashboard } from '../../features/dashboard/LifeDashboard.tsx';
 import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
-import { calculateHabitScore } from '../../lib/habitScore.ts';
+import { getHabitStats } from '../../lib/habitScoring.ts';
+import { formatCurrency } from '../../lib/format.ts';
 
 interface InsightsViewProps {
   tasks: Task[];
@@ -63,22 +64,16 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
     return analyzeLifeMetricCorrelations(dailyMetrics, tasks, habits);
   }, [dailyMetrics, tasks, habits]);
 
-  // Analytics Engine Life Summary (from analytics.ts & habitScore.ts)
+  // Analytics Engine Life Summary (from analytics.ts & habitScoring.ts)
   const { weeklySummary, lifeInsights } = useMemo(() => {
     const habitLikes = habits.map((h) => {
-      const totalDays = Math.max(1, Math.round((Date.now() - h.createdAt) / (1000 * 60 * 60 * 24)) + 1);
-      const score = calculateHabitScore({
-        completions: h.completedDates?.length || 0,
-        totalDueDates: totalDays,
-        currentStreak: h.streak || 0,
-        longestStreak: h.bestStreak || h.streak || 0,
-      });
+      const stats = getHabitStats(h, todayStr);
       return {
         id: h.id,
         name: h.name,
         score: {
-          currentStrength: score.currentStrength,
-          completionRate: score.completionRate,
+          currentStrength: stats.strengthScore,
+          completionRate: stats.completionRate,
         },
       };
     });
@@ -97,7 +92,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
     const insights = generateInsights(habitLikes, metricLikes);
 
     return { weeklySummary: summary, lifeInsights: insights };
-  }, [habits, dailyMetrics]);
+  }, [habits, dailyMetrics, todayStr]);
 
   // 1. Task Metrics
   const taskStats = useMemo(() => {
@@ -121,12 +116,13 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
     return { total, completed, rate, completedRecently, categoryCount };
   }, [tasks]);
 
-  // 2. Habit Consistency
+  // 2. Habit Consistency (computed strictly from completedDates via getHabitStats)
   const habitStats = useMemo(() => {
     if (habits.length === 0) return { avgStreak: 0, bestStreak: 0, checkedInToday: 0 };
-    const bestStreak = Math.max(...habits.map((h) => h.streak || 0), 0);
+    const streaks = habits.map((h) => getHabitStats(h, todayStr).currentStreak);
+    const bestStreak = Math.max(...streaks, 0);
     const avgStreak = Math.round(
-      habits.reduce((sum, h) => sum + (h.streak || 0), 0) / habits.length
+      streaks.reduce((sum, s) => sum + s, 0) / habits.length
     );
     const checkedInToday = habits.filter(
       (h) => h.completedDates && h.completedDates.includes(todayStr)
@@ -145,7 +141,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
       .reduce((sum, tx) => sum + tx.amount, 0);
     const savings = totalIncome - totalExpense;
     const savingsRate = totalIncome > 0 ? Math.round((savings / totalIncome) * 100) : 0;
-    const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+    const currentMonthPrefix = getLocalMonthPrefix();
     const monthlyExpense = transactions
       .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
       .reduce((sum, tx) => sum + tx.amount, 0);
@@ -245,7 +241,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
             </p>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-blue-700 font-medium">
-            ₹{financeStats.savings.toLocaleString('en-IN')} net balance
+            {formatCurrency(financeStats.savings)} net balance
           </div>
         </div>
 

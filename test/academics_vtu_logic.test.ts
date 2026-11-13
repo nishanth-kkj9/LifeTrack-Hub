@@ -7,8 +7,11 @@ import {
   calculateAttendanceReport,
   estimateCurrentSemester,
   getEduStudentRecord,
+  syncVtuProfileFromStudentRecord,
+  parseVtuResultText,
+  getGradeFromTotalMarks,
 } from '../src/lib/vtuData.ts';
-import { getSchemeConfig, VTU_SCHEME_CONFIGS } from '../src/lib/vtuSchemes.ts';
+import { getSchemeConfig } from '../src/lib/vtuSchemes.ts';
 import { VtuSubject } from '../src/types/index.ts';
 
 describe('Academics & VTU Data Logic', () => {
@@ -71,6 +74,10 @@ describe('Academics & VTU Data Logic', () => {
       { semesterNumber: 2, scheme: '2022' as const, branch: 'CS', subjects: sem2Subjects },
     ];
 
+    const sem1Sgpa = calculateSemesterSgpa(sem1Subjects, '2022');
+    assert.equal(sem1Sgpa.sgpa, 4.5);
+    assert.equal(sem1Sgpa.totalCredits, 8);
+
     const { cgpa, totalCredits } = calculateCumulativeCgpa(semesters);
     // Passed credits = 4 (S1) + 4 (S3) = 8. (S2 is F grade, excluded until cleared).
     // Total weighted points = 4*9 + 4*8 = 36 + 32 = 68. CGPA = 68 / 8 = 8.5
@@ -89,7 +96,7 @@ describe('Academics & VTU Data Logic', () => {
     assert.equal(report2.classesToAttend, null);
   });
 
-  it('getSchemeConfig returns official grade rules for selected scheme', () => {
+  it('getSchemeConfig and getGradeFromTotalMarks differentiate 2021 (S/A) vs 2022 (O/A+) schemes', () => {
     const cfg2022 = getSchemeConfig('2022');
     assert.equal(cfg2022.scheme, '2022');
     assert.equal(cfg2022.minSeeTheory, 18);
@@ -97,6 +104,11 @@ describe('Academics & VTU Data Logic', () => {
     const cfg2021 = getSchemeConfig('2021');
     assert.equal(cfg2021.scheme, '2021');
     assert.equal(cfg2021.grades[0].letter, 'S');
+
+    assert.equal(getGradeFromTotalMarks(92, '2021').letter, 'S');
+    assert.equal(getGradeFromTotalMarks(92, '2022').letter, 'O');
+    assert.equal(getGradeFromTotalMarks(86, '2021').letter, 'A');
+    assert.equal(getGradeFromTotalMarks(86, '2022').letter, 'A+');
   });
 
   it('estimateCurrentSemester correctly calculates semester for admission year', () => {
@@ -107,10 +119,45 @@ describe('Academics & VTU Data Logic', () => {
     assert.equal(semFeb, 4); // 2 years = sem 4
   });
 
-  it('getEduStudentRecord returns Not available for unseeded USNs without fabricating fake profiles', () => {
-    const record = getEduStudentRecord('1MS99CS999');
-    assert.equal(record.studentName, 'Not available');
-    assert.equal(record.fatherName, 'Not available');
-    assert.equal(record.semesterResults.length, 0);
+  it('getEduStudentRecord returns null for unknown or invalid USNs without fabricating data', () => {
+    assert.equal(getEduStudentRecord('1MS99CS999'), null);
+    assert.equal(getEduStudentRecord('hello'), null);
+    assert.equal(getEduStudentRecord(''), null);
+
+    const seeded = getEduStudentRecord('1MS22CS084');
+    assert.ok(seeded !== null);
+    assert.equal(seeded.studentName, 'Rahul Sharma');
+  });
+
+  it('syncVtuProfileFromStudentRecord does not fabricate student names or years for unknown/invalid USN', () => {
+    const syncedInvalid = syncVtuProfileFromStudentRecord('hello');
+    assert.equal(syncedInvalid.studentName, '');
+    assert.equal(syncedInvalid.collegeName, 'Not available');
+    assert.equal(syncedInvalid.admissionYear, undefined);
+    assert.equal(syncedInvalid.semesters.length, 0);
+  });
+
+  it('parseVtuResultText skips incomplete rows instead of inventing 40/40 marks and warns on marks > 50', () => {
+    const sample = [
+      'BCS301 Mathematics for Computer Science', // Missing marks -> must be skipped
+      'BCS302 Digital Design 45 78 PASS', // SEE > 50 -> keep raw marks & emit schemeWarning
+      '21CS52 Computer Networks 44 48 PASS', // Total 92 -> S under 2021 scheme
+    ].join('\n');
+
+    const parsed = parseVtuResultText(sample, '2021');
+    assert.equal(parsed.skippedRows.length, 1);
+    assert.ok(parsed.skippedRows[0].includes('BCS301'));
+    assert.equal(parsed.extractedSubjects.length, 2);
+
+    const sub302 = parsed.extractedSubjects.find((s) => s.code === 'BCS302');
+    assert.equal(sub302?.cieMarks, 45);
+    assert.equal(sub302?.seeMarks, 78);
+    assert.ok(typeof parsed.schemeWarning === 'string' && parsed.schemeWarning.length > 0);
+
+    const sub52 = parsed.extractedSubjects.find((s) => s.code === '21CS52');
+    assert.equal(sub52?.gradeLetter, 'S');
+    assert.equal(sub52?.gradePoint, 10);
+    assert.equal(sub52?.attendedClasses, 0);
+    assert.equal(sub52?.totalClasses, 0);
   });
 });

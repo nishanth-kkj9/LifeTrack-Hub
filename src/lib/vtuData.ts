@@ -10,6 +10,8 @@ import {
   GradingSystem,
 } from '../types/index.ts';
 
+import { getSchemeConfig } from './vtuSchemes.ts';
+
 // VTU Grading Scale
 export interface VtuGradeInfo {
   letter: VtuGradeLetter;
@@ -30,11 +32,15 @@ export const VTU_GRADES: VtuGradeInfo[] = [
   { letter: 'F', points: 0, minMarks: 0, maxMarks: 39, description: 'Fail' },
 ];
 
-export function getGradeFromTotalMarks(totalMarks100: number): { letter: VtuGradeLetter; points: number } {
+export function getGradeFromTotalMarks(
+  totalMarks100: number,
+  scheme?: '2022' | '2021' | '2018'
+): { letter: VtuGradeLetter; points: number } {
   const rounded = Math.round(totalMarks100);
-  for (const g of VTU_GRADES) {
+  const cfg = getSchemeConfig(scheme);
+  for (const g of cfg.grades) {
     if (rounded >= g.minMarks) {
-      return { letter: g.letter, points: g.points };
+      return { letter: g.letter as VtuGradeLetter, points: g.points };
     }
   }
   return { letter: 'F', points: 0 };
@@ -91,7 +97,11 @@ export function getVtuClassFromCgpa(cgpa: number): {
 export const MIN_SEE_TO_PASS = 18;
 export const MIN_TOTAL_TO_PASS = 40;
 
-export function calculateSemesterSgpa(subjects: VtuSubject[]): { sgpa: number; totalCredits: number } {
+export function calculateSemesterSgpa(
+  subjects: VtuSubject[],
+  scheme?: '2022' | '2021' | '2018'
+): { sgpa: number; totalCredits: number } {
+  const cfg = getSchemeConfig(scheme);
   let totalCredits = 0;
   let totalCreditPoints = 0;
 
@@ -104,10 +114,10 @@ export function calculateSemesterSgpa(subjects: VtuSubject[]): { sgpa: number; t
       const see = s.seeMarks || 0; // scaled out of 50
       const total = cie + see;
       // VTU Passing Criterion: Student MUST score at least 18 in SEE and at least 40 overall
-      if (see < MIN_SEE_TO_PASS || total < MIN_TOTAL_TO_PASS) {
+      if (see < cfg.minSeeTheory || total < cfg.minTotalPercent) {
         gp = 0;
       } else if (gp === undefined) {
-        gp = getGradeFromTotalMarks(total).points;
+        gp = getGradeFromTotalMarks(total, scheme).points;
       }
     } else if (gp === undefined) {
       continue; // Exclude subjects with missing grade from calculation rather than assuming fabricated grade
@@ -133,6 +143,7 @@ export function calculateCumulativeCgpa(semesters: VtuSemesterData[]): {
   let totalWeightedPoints = 0;
 
   for (const sem of semesters) {
+    const cfg = getSchemeConfig(sem.scheme);
     if (sem.subjects && sem.subjects.length > 0) {
       for (const sub of sem.subjects) {
         const credits = sub.credits || 0;
@@ -140,7 +151,9 @@ export function calculateCumulativeCgpa(semesters: VtuSemesterData[]): {
         if (gp === undefined && (sub.cieMarks !== undefined || sub.seeMarks !== undefined)) {
           const see = sub.seeMarks || 0;
           const total = (sub.cieMarks || 0) + see;
-          gp = (see < MIN_SEE_TO_PASS || total < MIN_TOTAL_TO_PASS) ? 0 : getGradeFromTotalMarks(total).points;
+          gp = (see < cfg.minSeeTheory || total < cfg.minTotalPercent)
+            ? 0
+            : getGradeFromTotalMarks(total, sem.scheme).points;
         }
         // Exclude failed (0 grade points) courses from CGPA until cleared
         if (gp !== undefined && gp > 0 && credits > 0) {
@@ -243,31 +256,33 @@ export interface SeeTargetBreakdown {
   }[];
 }
 
-export function calculateSeeTargets(cieOutOf50: number): SeeTargetBreakdown {
+export function calculateSeeTargets(
+  cieOutOf50: number,
+  scheme?: '2022' | '2021' | '2018'
+): SeeTargetBreakdown {
+  const cfg = getSchemeConfig(scheme);
   const cie = Math.max(0, Math.min(50, cieOutOf50));
-  const cieEligible = cie >= 20;
+  const cieEligible = cie >= cfg.minCieTheory;
 
-  // Min SEE marks to pass:
-  // 1. Min 18 out of 50 in SEE (35% in exam paper)
-  // 2. Aggregate (CIE + SEE) >= 40
-  const neededFor40 = Math.max(0, 40 - cie);
-  const minSeeToPass = Math.max(18, neededFor40);
+  const neededFor40 = Math.max(0, cfg.minTotalPercent - cie);
+  const minSeeToPass = Math.max(cfg.minSeeTheory, neededFor40);
 
-  const targets = VTU_GRADES.filter((g) => g.letter !== 'F').map((g) => {
-    // Total marks needed out of 100:
-    const neededTotal = g.minMarks;
-    const neededSee50 = Math.max(18, neededTotal - cie);
-    const achievable = neededSee50 <= 50;
-    const neededSee100 = neededSee50 * 2;
+  const targets = cfg.grades
+    .filter((g) => g.letter !== 'F')
+    .map((g) => {
+      const neededTotal = g.minMarks;
+      const neededSee50 = Math.max(cfg.minSeeTheory, neededTotal - cie);
+      const achievable = neededSee50 <= 50;
+      const neededSee100 = neededSee50 * 2;
 
-    return {
-      grade: g.letter,
-      points: g.points,
-      neededSee50: Math.min(50, Math.max(18, neededSee50)),
-      neededSee100: Math.min(100, Math.max(36, neededSee100)),
-      achievable,
-    };
-  });
+      return {
+        grade: g.letter as VtuGradeLetter,
+        points: g.points,
+        neededSee50: Math.min(50, Math.max(cfg.minSeeTheory, neededSee50)),
+        neededSee100: Math.min(100, Math.max(cfg.minSeeTheory * 2, neededSee100)),
+        achievable,
+      };
+    });
 
   return {
     cie,
@@ -682,8 +697,13 @@ export function decodeVtuUsn(usnRaw: string): DecodedUsn {
 }
 
 // Parse copied text / result table from VTU results portal (results.vtu.ac.in)
-export function parseVtuResultText(text: string): {
+export function parseVtuResultText(
+  text: string,
+  scheme?: '2022' | '2021' | '2018'
+): {
   extractedSubjects: VtuSubject[];
+  skippedRows: string[];
+  schemeWarning?: string;
   extractedUsn?: string;
   extractedSem?: number;
   extractedStudentName?: string;
@@ -693,6 +713,8 @@ export function parseVtuResultText(text: string): {
 } {
   const lines = text.split('\n');
   const extractedSubjects: VtuSubject[] = [];
+  const skippedRows: string[] = [];
+  let hasOutOfRangeMarks = false;
   let extractedUsn: string | undefined;
   let extractedSem: number | undefined;
   let extractedStudentName: string | undefined;
@@ -748,19 +770,20 @@ export function parseVtuResultText(text: string): {
     if (!codeMatch) continue;
 
     const code = codeMatch[1].toUpperCase();
+    const afterCode = trimmed.slice((codeMatch.index ?? 0) + code.length);
 
-    // Extract numbers in line (cie, see, total)
-    // Example line: "BCS301 Mathematics for Computer Science 45 42 87 P"
-    const numbers = trimmed.match(/\b\d{1,3}\b/g);
-    let cie = 40;
-    let see = 40;
+    // Require BOTH CIE and SEE marks in the row — never fabricate defaults (40/40)
+    const rawNumbers = afterCode.match(/\b\d{1,3}\b/g);
+    const parsedNums = rawNumbers ? rawNumbers.map((n) => parseInt(n, 10)).filter((n) => n >= 0 && n <= 100) : [];
+    if (parsedNums.length < 2) {
+      skippedRows.push(trimmed);
+      continue;
+    }
 
-    if (numbers && numbers.length >= 2) {
-      const parsedNums = numbers.map((n) => parseInt(n, 10)).filter((n) => n <= 100);
-      if (parsedNums.length >= 2) {
-        cie = Math.min(50, parsedNums[0]);
-        see = Math.min(50, parsedNums[1]);
-      }
+    const cie = parsedNums[0];
+    const see = parsedNums[1];
+    if (cie > 50 || see > 50) {
+      hasOutOfRangeMarks = true;
     }
 
     // Determine credits heuristic: Labs usually have 'L' in code
@@ -768,16 +791,17 @@ export function parseVtuResultText(text: string): {
     const credits = isLab ? 1.5 : 4;
 
     // Determine subject name by stripping code and numbers
-    const cleanName = trimmed
-      .replace(code, '')
+    const cleanName = afterCode
       .replace(/\b\d{1,3}\b/g, '')
-      .replace(/\b(P|F|PASS|FAIL)\b/gi, '')
+      .replace(/\b(P|F|PASS|FAIL|AB)\b/gi, '')
       .replace(/[\t|\-,]/g, ' ')
       .trim();
 
     const finalName = cleanName.length > 3 ? cleanName : `Course ${code}`;
     const total = cie + see;
-    const grade = getGradeFromTotalMarks(total);
+    const cfg = getSchemeConfig(scheme);
+    const failed = see < cfg.minSeeTheory || total < cfg.minTotalPercent;
+    const grade = failed ? { letter: 'F' as VtuGradeLetter, points: 0 } : getGradeFromTotalMarks(total, scheme);
 
     extractedSubjects.push({
       id: `vtu-imported-${code}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -796,6 +820,13 @@ export function parseVtuResultText(text: string): {
 
   return {
     extractedSubjects,
+    skippedRows,
+    ...(hasOutOfRangeMarks
+      ? {
+          schemeWarning:
+            'Some marks exceed 50 (for example, a 100-mark SEE scheme). Original values were kept—please verify before calculating SGPA.',
+        }
+      : {}),
     extractedUsn,
     extractedSem,
     extractedStudentName,
@@ -1061,54 +1092,59 @@ const SAMPLE_FATHERS = [
 ];
 
 /**
- * Looks up any USN and returns a complete, authenticated-style Edu App student profile
- * with real subject mappings, marks cards, SGPA, and cumulative CGPA.
+ * Looks up a USN in pre-seeded records.
+ * Returns null if no matching student record exists — never invents data.
  */
-export function getEduStudentRecord(rawUsn: string): EduStudentRecord {
+export function getEduStudentRecord(rawUsn: string): EduStudentRecord | null {
   const cleanUsn = rawUsn.trim().toUpperCase();
+  if (!cleanUsn) return null;
 
-  // Check pre-seeded database
   if (PRESEEDED_EDU_STUDENTS[cleanUsn]) {
     return PRESEEDED_EDU_STUDENTS[cleanUsn];
   }
 
-  // Fallback: Dynamically decode real VTU USN structure without fabricating names or marks
-  const decoded = decodeVtuUsn(cleanUsn);
-  const admissionYr = decoded.admissionYear || 2022;
-  const scheme = decoded.estimatedScheme || '2022';
-  const branchName = decoded.branchName || 'Not available';
-  const currentSemester = estimateCurrentSemester(admissionYr);
-
-  return {
-    usn: cleanUsn || 'Not available',
-    studentName: 'Not available',
-    fatherName: 'Not available',
-    collegeCode: decoded.collegeCode || 'Not available',
-    collegeName: decoded.collegeName || 'Not available',
-    branchCode: decoded.branchCode || 'Not available',
-    branchName,
-    scheme,
-    admissionYear: admissionYr,
-    batch: decoded.batch || `${admissionYr} - ${admissionYr + 4}`,
-    currentSemester,
-    overallCgpa: 0,
-    percentage: 0,
-    degreeClass: 'Not available',
-    activeBacklogs: 0,
-    rankInClass: undefined,
-    semesterResults: [],
-  };
+  return null;
 }
 
 /**
- * Synchronizes any given VTU USN with official student records and marks transcripts.
- * Returns a populated VtuProfile ready for calculation without fabricating grades.
+ * Synchronizes any given VTU USN with official student records when available,
+ * or decodes structural metadata only from valid VTU USNs without inventing names or marks.
  */
 export function syncVtuProfileFromStudentRecord(
   rawUsn: string,
   existingProfile?: Partial<VtuProfile>
 ): VtuProfile {
-  const record = getEduStudentRecord(rawUsn);
+  const cleanUsn = rawUsn.trim().toUpperCase();
+  const record = getEduStudentRecord(cleanUsn);
+
+  if (!record) {
+    const decoded = decodeVtuUsn(cleanUsn);
+    const scheme = decoded.valid && decoded.estimatedScheme
+      ? decoded.estimatedScheme
+      : (existingProfile?.scheme || '2022');
+    const admissionYear = decoded.valid ? decoded.admissionYear : undefined;
+    const currentSem = admissionYear ? estimateCurrentSemester(admissionYear) : (existingProfile?.currentSemester || 1);
+
+    return {
+      usn: cleanUsn,
+      studentName: existingProfile?.studentName || '',
+      fatherName: existingProfile?.fatherName || '',
+      collegeCode: decoded.valid ? decoded.collegeCode : '',
+      collegeName: decoded.valid ? (decoded.collegeName || 'Not available') : 'Not available',
+      branchCode: decoded.valid ? decoded.branchCode : '',
+      branch: decoded.valid ? (decoded.branchName || 'Not available') : (existingProfile?.branch || 'General Studies'),
+      scheme,
+      admissionYear,
+      batch: decoded.valid ? decoded.batch : undefined,
+      currentSemester: currentSem,
+      semesters: existingProfile?.semesters || [],
+      targetCgpa: existingProfile?.targetCgpa || 8.5,
+      attendanceThreshold: existingProfile?.attendanceThreshold || 85,
+      lastSyncedAt: Date.now(),
+      semesterResults: [],
+      activeBacklogs: existingProfile?.activeBacklogs || 0,
+    };
+  }
 
   const semesters: VtuSemesterData[] = record.semesterResults.map((sr) => ({
     semesterNumber: sr.semester,
@@ -1130,20 +1166,7 @@ export function syncVtuProfileFromStudentRecord(
     })),
   }));
 
-  const currentSem = record.currentSemester || 4;
-  const hasCurrentSem = semesters.some((s) => s.semesterNumber === currentSem);
-  if (!hasCurrentSem) {
-    const defaultSubs = getDefaultVtuSubjectsForSemester(currentSem, record.branchName);
-    const { sgpa, totalCredits } = calculateSemesterSgpa(defaultSubs);
-    semesters.push({
-      semesterNumber: currentSem,
-      scheme: record.scheme,
-      branch: record.branchName,
-      subjects: defaultSubs,
-      sgpa,
-      totalCredits,
-    });
-  }
+  const currentSem = record.currentSemester || 1;
 
   return {
     usn: record.usn,

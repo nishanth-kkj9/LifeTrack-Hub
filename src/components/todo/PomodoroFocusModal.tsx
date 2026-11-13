@@ -42,8 +42,31 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   onAddFocusMinutes,
 }) => {
   const accumulatedFocusSecondsRef = useRef(0);
+  const targetEndTimeRef = useRef<number | null>(null);
+  const lastSyncMsRef = useRef<number | null>(null);
+
+  const syncWallClock = () => {
+    if (!targetEndTimeRef.current) return;
+    const now = Date.now();
+    const effectiveNow = Math.min(now, targetEndTimeRef.current);
+
+    if (lastSyncMsRef.current !== null) {
+      const deltaSecs = Math.max(0, Math.floor((effectiveNow - lastSyncMsRef.current) / 1000));
+      if (deltaSecs > 0) {
+        lastSyncMsRef.current += deltaSecs * 1000;
+        if (timerMode === 'focus') {
+          accumulatedFocusSecondsRef.current += deltaSecs;
+          setSessionCompletedSeconds((s) => s + deltaSecs);
+        }
+      }
+    }
+
+    const remaining = Math.max(0, Math.ceil((targetEndTimeRef.current - now) / 1000));
+    setTimeLeft(remaining);
+  };
 
   const handleClose = () => {
+    syncWallClock();
     focusSoundEngine.stop();
     // Flush partial focus time if at least 1 minute elapsed
     if (task && accumulatedFocusSecondsRef.current >= 60) {
@@ -71,12 +94,14 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   const [sessionCompletedSeconds, setSessionCompletedSeconds] = useState(0);
   const [customGoal, setCustomGoal] = useState('');
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Reset session accounting when modal opens or task changes
   useEffect(() => {
     if (isOpen) {
       accumulatedFocusSecondsRef.current = 0;
+      targetEndTimeRef.current = null;
+      lastSyncMsRef.current = null;
       setSessionCompletedSeconds(0);
       setTimerMode('focus');
       setTimeLeft(25 * 60);
@@ -87,6 +112,8 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   // Set default time based on mode
   useEffect(() => {
     setIsRunning(false);
+    targetEndTimeRef.current = null;
+    lastSyncMsRef.current = null;
     if (timerMode === 'focus') setTimeLeft(25 * 60);
     else if (timerMode === 'short_break') setTimeLeft(5 * 60);
     else if (timerMode === 'long_break') setTimeLeft(15 * 60);
@@ -110,22 +137,29 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
     focusSoundEngine.setVolume(soundVolume);
   }, [soundVolume]);
 
-  // Main countdown loop
+  // Wall-clock synchronized countdown loop + tab visibility catch-up
   useEffect(() => {
     if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            return 0;
-          }
-          if (timerMode === 'focus') {
-            setSessionCompletedSeconds((s) => s + 1);
-            accumulatedFocusSecondsRef.current += 1;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      const now = Date.now();
+      targetEndTimeRef.current = now + timeLeft * 1000;
+      lastSyncMsRef.current = now;
+
+      timerRef.current = setInterval(syncWallClock, 500);
+      const handleVisibility = () => {
+        if (document.visibilityState === 'visible') {
+          syncWallClock();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        document.removeEventListener('visibilitychange', handleVisibility);
+      };
     } else {
+      syncWallClock();
+      targetEndTimeRef.current = null;
+      lastSyncMsRef.current = null;
       if (timerRef.current) clearInterval(timerRef.current);
     }
 
@@ -137,6 +171,9 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   // Completion effect when countdown reaches 0
   useEffect(() => {
     if (timeLeft === 0 && isRunning) {
+      syncWallClock();
+      targetEndTimeRef.current = null;
+      lastSyncMsRef.current = null;
       if (timerRef.current) clearInterval(timerRef.current);
       handleTimerComplete();
     }
@@ -170,11 +207,13 @@ export const PomodoroFocusModal: React.FC<PomodoroFocusModalProps> = ({
   };
 
   const toggleTimer = () => {
-    setIsRunning(!isRunning);
+    setIsRunning((prev) => !prev);
   };
 
   const handleReset = () => {
     setIsRunning(false);
+    targetEndTimeRef.current = null;
+    lastSyncMsRef.current = null;
     accumulatedFocusSecondsRef.current = 0;
     setSessionCompletedSeconds(0);
     if (timerMode === 'focus') setTimeLeft(25 * 60);

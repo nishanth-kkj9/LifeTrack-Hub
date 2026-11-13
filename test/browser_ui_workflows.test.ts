@@ -352,22 +352,20 @@ async function runBrowserUiTests() {
   const googleModalTitle = document.getElementById('google-signin-modal-title');
   assert(googleModalTitle !== null, 'Google Sign-In modal opens when clicking login button');
 
-  // Click primary Google account option in modal
-  const primaryAccountBtn = Array.from(document.querySelectorAll('button')).find((b) =>
-    b.textContent?.includes('chataiwithcode@gmail.com')
-  );
-  assert(primaryAccountBtn !== undefined, 'Primary Google account button found in modal');
+  // Click offline mode option in modal (no fake Google email accounts)
+  const offlineBtn = document.getElementById('continue-offline-btn');
+  assert(offlineBtn !== null, 'Honest offline mode button found in modal');
 
   await act(async () => {
-    primaryAccountBtn?.click();
+    offlineBtn?.click();
   });
 
-  // Verify signed-in state
+  // Verify signed-in local offline state
   const logoutBtn = document.getElementById('user-logout-button');
-  assert(logoutBtn !== null, 'User is successfully signed in and logout button is rendered');
+  assert(logoutBtn !== null, 'User session started in offline mode and logout button is rendered');
   assert(
-    localStorage.getItem('lifetrack_local_user')?.includes('chataiwithcode@gmail.com') === true,
-    'Signed-in Google profile is persisted in localStorage'
+    localStorage.getItem('lifetrack_local_user')?.includes('local@device.invalid') === true,
+    'Offline local profile is persisted in localStorage'
   );
 
   // Click logout
@@ -380,19 +378,30 @@ async function runBrowserUiTests() {
 
   // Test 15: Habit Intelligence, Advanced Scoring & LifeInsightsPanel
   console.log('\n[Test 15] Habit Intelligence Engine, Scoring & LifeInsightsPanel');
-  // Unit verification of scoring logic
-  const { calculateHabitScore, calculateOverallCompletionRate } = await import('../src/lib/habitScore.ts');
-  const { calculateHabitStreaks, computeAdaptiveSchedule } = await import('../src/lib/schedule.ts');
-  const { getWeeklyTrend, buildWeeklySummary } = await import('../src/lib/analytics.ts');
+  // Unit verification of canonical scoring logic
+  const { getHabitStats } = await import('../src/lib/habitScoring.ts');
+  const { calculateHabitStreaks } = await import('../src/lib/schedule.ts');
+  const { getLocalDateOffset } = await import('../src/lib/dateUtils.ts');
 
-  const testScore = calculateHabitScore({
-    completions: 12,
-    totalDueDates: 16,
-    currentStreak: 5,
-    longestStreak: 10,
-  });
-  assert(testScore.currentStrength > 0, 'calculateHabitScore computes strength score');
-  assert(testScore.healthLabel !== undefined, 'calculateHabitScore produces health label');
+  const todayDateStr = '2026-11-12';
+  const sampleDates = Array.from({ length: 12 }, (_, idx) =>
+    getLocalDateOffset(-idx, new Date(2026, 10, 12))
+  );
+  const testScore = getHabitStats(
+    {
+      id: 'h-test',
+      title: 'Deep Study',
+      category: 'study',
+      streak: 999, // stale value must be ignored
+      completedDates: sampleDates,
+      targetDaysPerWeek: 7,
+      createdAt: Date.now() - 20 * 86400000,
+    },
+    todayDateStr
+  );
+  assert(testScore.strengthScore > 0, 'getHabitStats computes strength score');
+  assert(testScore.currentStreak === 12, 'getHabitStats computes streak from completedDates, not stale field');
+  assert(testScore.healthLabel !== undefined, 'getHabitStats produces health label');
 
   const testStreaks = calculateHabitStreaks(['2026-10-08', '2026-10-07', '2026-10-06']);
   assert(testStreaks.longest >= 3, 'calculateHabitStreaks computes correct streak sequence');

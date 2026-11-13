@@ -155,7 +155,7 @@ export const AuthorizedDomainModal: React.FC<AuthorizedDomainModalProps> = ({
                 }}
                 className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition cursor-pointer shadow-xs"
               >
-                <span>Instant Local Sign-In</span>
+                <span>Continue offline (this device only)</span>
               </button>
             )}
           </div>

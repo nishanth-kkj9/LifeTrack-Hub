@@ -12,8 +12,9 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio preview iframe environment
+      // HMR and WebSocket server are disabled in AI Studio preview iframe environment
       hmr: false,
+      ws: false,
       watch: null,
     },
     build: {

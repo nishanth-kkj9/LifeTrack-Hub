@@ -7,6 +7,7 @@ import {
   mergeArraysById,
   mergeUserAppData,
 } from '../src/lib/firebase.ts';
+import { isActive } from '../src/lib/entity.ts';
 import { UserAppData, Task } from '../src/types/index.ts';
 
 /**
@@ -68,7 +69,7 @@ function simulateValidateUserDoc(data: Record<string, any>): { valid: boolean; r
   return { valid: true };
 }
 
-function runRulesVerification() {
+async function runRulesVerification() {
   console.log('--- Starting Firestore Rules Verification & Integrity Suite ---');
   let passed = 0;
   let total = 0;
@@ -256,7 +257,8 @@ function runRulesVerification() {
   const mergedTasks = mergeArraysById([cloudTask], [localTaskUpdated]);
   assert('Newer local item wins over older cloud item', mergedTasks[0]?.title === 'Local Version (Newer)');
 
-  // Tombstone delete test:
+  // Tombstone delete test (must preserve recent tombstone for propagation, exclude from active list):
+  const now = Date.now();
   const tombstonedLocalTask: Task = {
     id: 'task-sync-1',
     title: 'Deleted Task',
@@ -266,13 +268,95 @@ function runRulesVerification() {
     completed: false,
     subtasks: [],
     createdAt: 1000,
-    updatedAt: 3000,
-    deletedAt: 3000,
+    updatedAt: now,
+    deletedAt: now,
   };
-  const mergedWithTombstone = mergeArraysById([cloudTask], [tombstonedLocalTask]);
-  assert('Tombstoned item (deletedAt present) is purged from merged array', mergedWithTombstone.length === 0);
+  const mergedWithTombstone = mergeArraysById([cloudTask], [tombstonedLocalTask], now);
+  assert('Recent tombstone stays in merged array for offline device replication', mergedWithTombstone.length === 1 && Boolean(mergedWithTombstone[0]?.deletedAt));
+  assert('Tombstoned item is excluded from active list via isActive()', mergedWithTombstone.filter(isActive).length === 0);
+
+  // 12. Real Firestore Emulator Execution via @firebase/rules-unit-testing (when FIRESTORE_EMULATOR_HOST is set)
+  if (process.env.FIRESTORE_EMULATOR_HOST) {
+    console.log(`\n[Live Firestore Emulator Suite @ ${process.env.FIRESTORE_EMULATOR_HOST}]`);
+    const { initializeTestEnvironment, assertSucceeds, assertFails } = await import('@firebase/rules-unit-testing');
+    const { doc, getDoc, setDoc, updateDoc, deleteDoc } = await import('firebase/firestore');
+
+    const [host, portStr] = process.env.FIRESTORE_EMULATOR_HOST.split(':');
+    const port = Number(portStr) || 8080;
+
+    const testEnv = await initializeTestEnvironment({
+      projectId: process.env.GCLOUD_PROJECT || 'demo-lifetrack',
+      firestore: {
+        rules: rulesContent,
+        host,
+        port,
+      },
+    });
+
+    try {
+      const aliceCtx = testEnv.authenticatedContext('alice_uid');
+      const bobCtx = testEnv.authenticatedContext('bob_uid');
+      const anonCtx = testEnv.unauthenticatedContext();
+
+      // Default-deny global fallback
+      await assertFails(getDoc(doc(aliceCtx.firestore(), 'unmatched/doc1')));
+      assert('Emulator denies read on unmatched collection', true);
+
+      // Unauthenticated user cannot read/write user doc
+      await assertFails(getDoc(doc(anonCtx.firestore(), 'users/alice_uid')));
+      await assertFails(setDoc(doc(anonCtx.firestore(), 'users/alice_uid'), validDoc));
+      assert('Emulator denies unauthenticated access to /users/{userId}', true);
+
+      // Owner can write valid user doc; non-owner (Bob) is denied
+      await assertSucceeds(setDoc(doc(aliceCtx.firestore(), 'users/alice_uid'), validDoc));
+      await assertFails(getDoc(doc(bobCtx.firestore(), 'users/alice_uid')));
+      await assertFails(setDoc(doc(bobCtx.firestore(), 'users/alice_uid'), validDoc));
+      assert('Emulator allows owner write & isolates from other users', true);
+
+      // Schema validation: unknown key or non-numeric lastUpdated fails
+      await assertFails(setDoc(doc(aliceCtx.firestore(), 'users/alice_uid'), unknownKeyDoc));
+      await assertFails(setDoc(doc(aliceCtx.firestore(), 'users/alice_uid'), wrongTypeDoc));
+      assert('Emulator rejects unknown keys and invalid lastUpdated types', true);
+
+      // Delta immutability and pinned versions
+      const validDelta = {
+        id: 'delta-1',
+        entityType: 'TASK',
+        entityId: 'task-1',
+        operation: 'UPSERT',
+        payload: '{"id":"task-1"}',
+        hlcTimestamp: '1700000000000:0000:dev1',
+        createdAt: 1700000000000,
+        originDeviceId: 'dev1',
+        protocolVersion: 1,
+        schemaVersion: 1,
+        hlcPhysicalTimeMs: 1700000000000,
+        hlcLogicalCounter: 0,
+        hlcNodeId: 'dev1',
+      };
+      const deltaRef = doc(aliceCtx.firestore(), 'users/alice_uid/deltas/delta-1');
+      await assertSucceeds(setDoc(deltaRef, validDelta));
+      await assertFails(updateDoc(deltaRef, { operation: 'DELETE' }));
+      await assertFails(deleteDoc(deltaRef));
+      await assertFails(
+        setDoc(doc(aliceCtx.firestore(), 'users/alice_uid/deltas/delta-2'), {
+          ...validDelta,
+          id: 'delta-2',
+          protocolVersion: 2,
+        })
+      );
+      assert('Emulator enforces delta immutability and protocolVersion == 1', true);
+    } finally {
+      await testEnv.cleanup();
+    }
+  } else {
+    console.log('\n[Note] FIRESTORE_EMULATOR_HOST not set — live emulator assertions skipped (configured in CI via setup-java + firebase emulators:exec).');
+  }
 
   console.log(`--- All ${passed}/${total} Firestore Rules & Data Layer Tests Passed Successfully ---`);
 }
 
-runRulesVerification();
+runRulesVerification().catch((err) => {
+  console.error('Firestore rules verification failed:', err);
+  process.exit(1);
+});

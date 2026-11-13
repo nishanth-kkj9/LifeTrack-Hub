@@ -56,6 +56,7 @@ import {
   EDUCATION_LEVEL_CONFIGS,
   getDefaultSubjectsForLevel,
 } from '../../lib/vtuData.ts';
+import { getSchemeConfig } from '../../lib/vtuSchemes.ts';
 import { VtuSyncSection } from '../vtu/VtuSyncSection.tsx';
 
 interface VtuHubViewProps {
@@ -81,14 +82,16 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
   const [importStatusMessage, setImportStatusMessage] = useState<string | null>(null);
 
   // USN Inspector State
-  const [inspectorUsn, setInspectorUsn] = useState(vtuProfile.usn || '1MS22CS084');
-  const [decodedInfo, setDecodedInfo] = useState<DecodedUsn>(() => decodeVtuUsn(vtuProfile.usn || '1MS22CS084'));
+  const [inspectorUsn, setInspectorUsn] = useState(vtuProfile.usn || '');
+  const [decodedInfo, setDecodedInfo] = useState<DecodedUsn>(() => decodeVtuUsn(vtuProfile.usn || ''));
 
   // Edu App Student Record State
-  const [eduStudent, setEduStudent] = useState<EduStudentRecord>(() => getEduStudentRecord(vtuProfile.usn || '1MS22CS084'));
+  const [eduStudent, setEduStudent] = useState<EduStudentRecord | null>(() => getEduStudentRecord(vtuProfile.usn || ''));
   const [selectedEduSem, setSelectedEduSem] = useState<number>(() => {
-    const initRec = getEduStudentRecord(vtuProfile.usn || '1MS22CS084');
-    return initRec.semesterResults.length > 0 ? initRec.semesterResults[initRec.semesterResults.length - 1].semester : 1;
+    const initRec = getEduStudentRecord(vtuProfile.usn || '');
+    return initRec && initRec.semesterResults.length > 0
+      ? initRec.semesterResults[initRec.semesterResults.length - 1].semester
+      : 1;
   });
   const [isMarksCardModalOpen, setIsMarksCardModalOpen] = useState(false);
   const [isEditingStudentName, setIsEditingStudentName] = useState(false);
@@ -121,7 +124,8 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
   const activeSubjects = currentSemData.subjects || [];
 
   // Live SGPA for this semester
-  const { sgpa: currentSemSgpa, totalCredits: currentSemCredits } = calculateSemesterSgpa(activeSubjects);
+  const { sgpa: currentSemSgpa, totalCredits: currentSemCredits } = calculateSemesterSgpa(activeSubjects, vtuProfile.scheme);
+  const activeSchemeConfig = getSchemeConfig(vtuProfile.scheme);
 
   // Live CGPA across all semesters
   const { cgpa: cumulativeCgpa, totalCredits: allCredits, percentage: equivalentPercentage } =
@@ -140,7 +144,7 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
       if (updates.cieMarks !== undefined || updates.seeMarks !== undefined) {
         const cie = updates.cieMarks !== undefined ? updates.cieMarks : (merged.cieMarks || 0);
         const see = updates.seeMarks !== undefined ? updates.seeMarks : (merged.seeMarks || 0);
-        const gradeInfo = getGradeFromTotalMarks(cie + see);
+        const gradeInfo = getGradeFromTotalMarks(cie + see, vtuProfile.scheme);
         merged.gradeLetter = gradeInfo.letter;
         merged.gradePoint = gradeInfo.points;
       }
@@ -163,8 +167,8 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
       seeMarks: 40,
       gradeLetter: 'A',
       gradePoint: 8,
-      attendedClasses: 25,
-      totalClasses: 30,
+      attendedClasses: 0,
+      totalClasses: 0,
     };
 
     saveSemesterSubjects([...activeSubjects, newSub]);
@@ -182,7 +186,7 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
   };
 
   const saveSemesterSubjects = (updatedSubjects: VtuSubject[]) => {
-    const { sgpa, totalCredits } = calculateSemesterSgpa(updatedSubjects);
+    const { sgpa, totalCredits } = calculateSemesterSgpa(updatedSubjects, vtuProfile.scheme);
 
     const existingSemIndex = vtuProfile.semesters.findIndex((s) => s.semesterNumber === selectedSemester);
     let updatedSemesters: VtuSemesterData[];
@@ -251,8 +255,8 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
 
     const record = getEduStudentRecord(clean);
     setEduStudent(record);
-    setCustomStudentName(record.studentName);
-    if (record.semesterResults.length > 0) {
+    setCustomStudentName(record ? record.studentName : '');
+    if (record && record.semesterResults.length > 0) {
       setSelectedEduSem(record.semesterResults[record.semesterResults.length - 1].semester);
     }
   };
@@ -262,12 +266,12 @@ export const VtuHubView: React.FC<VtuHubViewProps> = ({
     onUpdateVtuProfile({
       ...vtuProfile,
       usn: decodedInfo.usn,
-      studentName: eduStudent.studentName,
+      studentName: eduStudent?.studentName || vtuProfile.studentName,
       branch: decodedInfo.branchName || vtuProfile.branch,
       scheme: decodedInfo.estimatedScheme || vtuProfile.scheme,
     });
     setTempUsn(decodedInfo.usn);
-    setImportStatusMessage(`Profile updated to ${decodedInfo.usn} (${eduStudent.studentName})`);
+    setImportStatusMessage(`Profile updated to ${decodedInfo.usn}${eduStudent ? ` (${eduStudent.studentName})` : ''}`);
     setTimeout(() => setImportStatusMessage(null), 3000);
   };
 
@@ -332,7 +336,7 @@ Verified on VTU Engineering Suite`;
   };
 
   const handleSaveCustomStudentName = (newName: string) => {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !eduStudent) return;
     setEduStudent({
       ...eduStudent,
       studentName: newName.trim(),
@@ -346,9 +350,13 @@ Verified on VTU Engineering Suite`;
       return;
     }
 
-    const { extractedSubjects, extractedUsn, extractedSem } = parseVtuResultText(rawResultInput);
+    const { extractedSubjects, skippedRows, schemeWarning, extractedUsn, extractedSem } = parseVtuResultText(
+      rawResultInput,
+      vtuProfile.scheme
+    );
     if (extractedSubjects.length === 0) {
-      setImportStatusMessage('No subjects recognized. Ensure the pasted text includes course codes like BCS301, 21CS52, etc.');
+      const skippedHint = skippedRows.length > 0 ? ` (${skippedRows.length} row(s) missing CIE/SEE marks were skipped.)` : '';
+      setImportStatusMessage(`No subjects with both CIE and SEE marks recognized.${skippedHint}`);
       return;
     }
 
@@ -367,12 +375,18 @@ Verified on VTU Engineering Suite`;
       setSelectedSemester(extractedSem);
     }
 
-    setImportStatusMessage(`Imported ${extractedSubjects.length} subjects with actual marks into Semester ${targetSem}!`);
-    setTimeout(() => {
-      setIsImportModalOpen(false);
-      setImportStatusMessage(null);
-      setRawResultInput('');
-    }, 1500);
+    const warnings: string[] = [];
+    if (skippedRows.length > 0) warnings.push(`${skippedRows.length} incomplete row(s) skipped`);
+    if (schemeWarning) warnings.push(schemeWarning);
+    const suffix = warnings.length > 0 ? ` Note: ${warnings.join('. ')}` : '';
+    setImportStatusMessage(`Imported ${extractedSubjects.length} subjects into Semester ${targetSem}.${suffix}`);
+    if (warnings.length === 0) {
+      setTimeout(() => {
+        setIsImportModalOpen(false);
+        setImportStatusMessage(null);
+        setRawResultInput('');
+      }, 1500);
+    }
   };
 
   const handleLoadSampleResult = () => {
@@ -399,7 +413,7 @@ BCS301	Mathematics for Computer Science	45	42	87	P
   );
 
   // SEE targets breakdown for predictor
-  const seeTargets = calculateSeeTargets(predictorCieInput);
+  const seeTargets = calculateSeeTargets(predictorCieInput, vtuProfile.scheme);
 
   return (
     <div className="space-y-6 pb-12">
@@ -837,6 +851,12 @@ BCS301	Mathematics for Computer Science	45	42	87	P
             </div>
           </div>
 
+          {/* Unverified Scheme Notice */}
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Scheme rules are unverified - check against your college's regulation.</span>
+          </div>
+
           {/* Subjects Table */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -873,7 +893,10 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                     const cie = sub.cieMarks ?? 40;
                     const see = sub.seeMarks ?? 40;
                     const totalMarks = cie + see;
-                    const gradeInfo = getGradeFromTotalMarks(totalMarks);
+                    const failed = see < activeSchemeConfig.minSeeTheory || totalMarks < activeSchemeConfig.minTotalPercent;
+                    const gradeInfo = failed
+                      ? { letter: 'F' as VtuGradeLetter, points: 0 }
+                      : getGradeFromTotalMarks(totalMarks, vtuProfile.scheme);
                     const gradeLetter = sub.gradeLetter || gradeInfo.letter;
                     const gradePoint = sub.gradePoint ?? gradeInfo.points;
 
@@ -1259,13 +1282,17 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                       <Info className="w-3.5 h-3.5 shrink-0" />
                       {report.status === 'safe' ? (
                         <span>
-                          🎉 <strong>Safe zone!</strong> You can safely miss{' '}
+                          <strong>Safe zone!</strong> You can safely miss{' '}
                           <strong className="underline">{report.classesCanBunk} more classes</strong> without falling below {report.threshold}%.
+                        </span>
+                      ) : report.reachable && report.classesToAttend !== null ? (
+                        <span>
+                          <strong>Action needed:</strong> Attend{' '}
+                          <strong className="underline">{report.classesToAttend} consecutive classes</strong> to recover back to {report.threshold}%.
                         </span>
                       ) : (
                         <span>
-                          ⚠️ <strong>Action needed:</strong> Attend{' '}
-                          <strong className="underline">{report.classesToAttend} consecutive classes</strong> to recover back to {report.threshold}%.
+                          <strong>Not reachable:</strong> Target {report.threshold}% cannot be reached mathematically from current ratio.
                         </span>
                       )}
                     </div>
@@ -1425,7 +1452,7 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                         </span>
                       </div>
                       <span className="text-[10px] font-bold text-slate-400">
-                        Total: {VTU_GRADES.find((g) => g.letter === t.grade)?.minMarks}+ Marks
+                        Total: {activeSchemeConfig.grades.find((g) => g.letter === t.grade)?.minMarks ?? 0}+ Marks
                       </span>
                     </div>
 
@@ -1543,10 +1570,12 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {VTU_GRADES.map((g) => (
+                    {activeSchemeConfig.grades.map((g) => (
                       <tr key={g.letter} className="hover:bg-slate-50/60">
                         <td className="py-2 px-3 font-bold text-indigo-950">{g.letter}</td>
-                        <td className="py-2 px-3 text-slate-600">{g.description}</td>
+                        <td className="py-2 px-3 text-slate-600">
+                          {VTU_GRADES.find((v) => v.letter === g.letter)?.description || `Grade ${g.letter}`}
+                        </td>
                         <td className="py-2 px-3 text-center text-slate-800 font-mono">
                           {g.minMarks} - {g.maxMarks}
                         </td>
@@ -1558,6 +1587,9 @@ BCS301	Mathematics for Computer Science	45	42	87	P
                   </tbody>
                 </table>
               </div>
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                Scheme rules are unverified - check against your college's regulation.
+              </p>
             </div>
           </div>
         </div>
@@ -1646,6 +1678,34 @@ BCS301	Mathematics for Computer Science	45	42	87	P
               </div>
             </div>
           </div>
+
+          {/* No Record Found Banner */}
+          {!eduStudent && inspectorUsn.trim().length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-xs text-amber-900 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <span>No record found. Enter details manually.</span>
+              </div>
+              {decodedInfo.valid ? (
+                <div className="space-y-2 pt-1">
+                  <p className="text-amber-800">
+                    Valid USN structure decoded: <strong>{decodedInfo.collegeName}</strong> • {decodedInfo.branchName} • Batch {decodedInfo.batch} ({decodedInfo.estimatedScheme} scheme).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleApplyInspectedUsnToProfile}
+                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition cursor-pointer"
+                  >
+                    Apply Decoded College/Branch to Profile
+                  </button>
+                </div>
+              ) : (
+                <p className="text-amber-800">
+                  No pre-loaded record matches &ldquo;{inspectorUsn}&rdquo;. You can select a sample record above or enter your subjects manually in the SGPA &amp; CGPA Calculator.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Student Detailed Record Card */}
           {eduStudent && (

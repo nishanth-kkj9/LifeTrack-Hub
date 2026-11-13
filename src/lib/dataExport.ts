@@ -1,5 +1,7 @@
 import { UserAppData, Task, Transaction, Habit, DailyLifeMetric } from '../types/index.ts';
 import { sanitizeUserAppData } from './firebase.ts';
+import { isActive } from './entity.ts';
+import { getLocalDateString } from './dateUtils.ts';
 
 /**
  * Triggers browser download of text content as file
@@ -27,7 +29,7 @@ function sanitizeCsvCell(value: string): string {
 /**
  * Converts array of object records to CSV format string
  */
-export function convertToCsv(records: Record<string, any>[]): string {
+export function convertToCsv(records: Record<string, unknown>[]): string {
   if (!records || records.length === 0) return '';
   const headers = Object.keys(records[0]);
   const csvRows: string[] = [];
@@ -53,9 +55,18 @@ export function convertToCsv(records: Record<string, any>[]): string {
  * Export full application data backup as JSON file
  */
 export function exportAppDataJson(appData: UserAppData) {
-  const dateStr = new Date().toISOString().split('T')[0];
+  const dateStr = getLocalDateString();
   const filename = `LifeTrack_Hub_Backup_${dateStr}.json`;
-  const jsonContent = JSON.stringify(appData, null, 2);
+  const activeSnapshot: UserAppData = {
+    ...appData,
+    tasks: (appData.tasks || []).filter(isActive),
+    transactions: (appData.transactions || []).filter(isActive),
+    exams: (appData.exams || []).filter(isActive),
+    habits: (appData.habits || []).filter(isActive),
+    notes: (appData.notes || []).filter(isActive),
+    dailyMetrics: (appData.dailyMetrics || []).filter(isActive),
+  };
+  const jsonContent = JSON.stringify(activeSnapshot, null, 2);
   downloadFile(filename, jsonContent, 'application/json');
 }
 
@@ -63,8 +74,8 @@ export function exportAppDataJson(appData: UserAppData) {
  * Export Habits history to CSV
  */
 export function exportHabitsCsv(habits: Habit[]) {
-  const dateStr = new Date().toISOString().split('T')[0];
-  const records = habits.map((h) => ({
+  const dateStr = getLocalDateString();
+  const records = (habits || []).filter(isActive).map((h) => ({
     ID: h.id,
     Name: h.name,
     Category: h.category || 'General',
@@ -85,8 +96,8 @@ export function exportHabitsCsv(habits: Habit[]) {
  * Export Tasks to CSV
  */
 export function exportTasksCsv(tasks: Task[]) {
-  const dateStr = new Date().toISOString().split('T')[0];
-  const records = tasks.map((t) => ({
+  const dateStr = getLocalDateString();
+  const records = (tasks || []).filter(isActive).map((t) => ({
     ID: t.id,
     Title: t.title,
     Category: t.category,
@@ -109,8 +120,8 @@ export function exportTasksCsv(tasks: Task[]) {
  * Export Transactions to CSV
  */
 export function exportTransactionsCsv(transactions: Transaction[]) {
-  const dateStr = new Date().toISOString().split('T')[0];
-  const records = transactions.map((tx) => ({
+  const dateStr = getLocalDateString();
+  const records = (transactions || []).filter(isActive).map((tx) => ({
     ID: tx.id,
     Title: tx.title,
     Type: tx.type,
@@ -130,8 +141,8 @@ export function exportTransactionsCsv(transactions: Transaction[]) {
  * Export Daily Life Metrics to CSV
  */
 export function exportDailyMetricsCsv(metrics: DailyLifeMetric[]) {
-  const dateStr = new Date().toISOString().split('T')[0];
-  const records = (metrics || []).map((m) => ({
+  const dateStr = getLocalDateString();
+  const records = (metrics || []).filter(isActive).map((m) => ({
     ID: m.id,
     Date: m.date,
     SleepHours: m.sleepHours ?? '',

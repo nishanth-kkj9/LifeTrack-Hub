@@ -15,6 +15,15 @@ export function getLocalDateString(date: Date = new Date()): string {
 }
 
 /**
+ * Returns YYYY-MM in user's local timezone (NOT UTC).
+ */
+export function getLocalMonthPrefix(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+/**
  * Returns YYYY-MM-DD offset by specified days relative to baseDate in user's local timezone.
  */
 export function getLocalDateOffset(daysOffset: number, baseDate: Date = new Date()): string {
