@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
 import { createServer as createViteServer } from 'vite';
-import { apiRouter } from './server/apiRouter.ts';
 
 dotenv.config();
 
@@ -29,9 +28,10 @@ async function startServer() {
   // Set trusted proxy hop for secure IP resolution
   app.set('trust proxy', 1);
 
-  // Security Headers (Helmet) with strict CSP allowing app, Firebase, and Google APIs
+  // Security Headers (Helmet) with iframe embedding allowed for preview sandbox
   app.use(
     helmet({
+      frameguard: false,
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
@@ -56,6 +56,7 @@ async function startServer() {
           styleSrc: ["'self'", "'unsafe-inline'"],
           fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
           frameSrc: ["'self'", 'https://*.firebaseapp.com', 'https://accounts.google.com'],
+          frameAncestors: ['*'],
         },
       },
       crossOriginEmbedderPolicy: false,
@@ -78,9 +79,6 @@ async function startServer() {
 
   // NOTE: JSON body parsing is registered once, inside apiRouter (scoped to /api).
   // Registering express.json() here too would parse every request body twice.
-
-  // API routes FIRST
-  app.use('/api', apiRouter);
 
   // Lightweight health endpoint for uptime probes / load balancers
   app.get('/api/health', (_req, res) => {

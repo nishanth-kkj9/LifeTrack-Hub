@@ -6,8 +6,6 @@ import {
   Calendar,
   Tag,
   AlertCircle,
-  Sparkles,
-  RefreshCw,
   Clock,
   RotateCcw,
 } from 'lucide-react';
@@ -18,7 +16,6 @@ import {
   TaskRecurrence,
   Subtask,
 } from '../../types/index.ts';
-import { generateTaskSubtasks } from '../../lib/apiClient.ts';
 import { getLocalDateOffset, getLocalDateString } from '../../lib/dateUtils.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
@@ -46,7 +43,6 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
   const [tags, setTags] = useState<string[]>([]);
   const [subtaskInput, setSubtaskInput] = useState('');
   const [subtasks, setSubtasks] = useState<Array<{ id: string; title: string; estimatedMinutes?: number }>>([]);
-  const [isAiBreakingDown, setIsAiBreakingDown] = useState(false);
 
   if (!isOpen) return null;
 
@@ -73,28 +69,6 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
 
   const handleRemoveTag = (tagToRemove: string) => {
     setTags((prev) => prev.filter((t) => t !== tagToRemove));
-  };
-
-  const handleAiBreakdown = async () => {
-    if (!title.trim()) return;
-    try {
-      setIsAiBreakingDown(true);
-      const generated = await generateTaskSubtasks(title, description, category);
-      if (generated && generated.length > 0) {
-        setSubtasks((prev) => [
-          ...prev,
-          ...generated.map((g, idx) => ({
-            id: `ai-st-${Date.now()}-${idx}`,
-            title: g.title,
-            estimatedMinutes: g.estimatedMinutes || 20,
-          })),
-        ]);
-      }
-    } catch (err) {
-      console.warn('AI breakdown note:', err);
-    } finally {
-      setIsAiBreakingDown(false);
-    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -343,25 +317,10 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
             </div>
           </div>
 
-          {/* Subtasks with AI Breakdown */}
+          {/* Subtasks Checklist */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="mb-1.5">
               <label className="block text-xs font-bold text-slate-700">Subtask Steps (Optional)</label>
-              {title.trim() && (
-                <button
-                  type="button"
-                  onClick={handleAiBreakdown}
-                  disabled={isAiBreakingDown}
-                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  {isAiBreakingDown ? (
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3 h-3 text-indigo-600" />
-                  )}
-                  <span>AI Breakdown</span>
-                </button>
-              )}
             </div>
 
             <div className="flex items-center gap-2 mb-2">

@@ -122,29 +122,41 @@ export function calculateSemesterSgpa(subjects: VtuSubject[]): { sgpa: number; t
 }
 
 // Calculate CGPA across all completed semesters
+// Per VTU 2021-22 regulation: CGPA is course-wise, EXCLUDING F-grade courses from both numerator
+// and denominator until cleared, whereas SGPA includes failed courses at 0 points in its semester denominator.
 export function calculateCumulativeCgpa(semesters: VtuSemesterData[]): {
   cgpa: number;
   totalCredits: number;
   percentage: number;
 } {
-  let totalCredits = 0;
+  let passedCredits = 0;
   let totalWeightedPoints = 0;
 
   for (const sem of semesters) {
-    const { sgpa, totalCredits: semCredits } = sem.sgpa !== undefined && sem.totalCredits !== undefined
-      ? { sgpa: sem.sgpa, totalCredits: sem.totalCredits }
-      : calculateSemesterSgpa(sem.subjects);
-
-    // Semesters with credits must be included even if SGPA is 0 (failing semesters count towards credits)
-    if (semCredits > 0) {
-      totalCredits += semCredits;
-      totalWeightedPoints += semCredits * sgpa;
+    if (sem.subjects && sem.subjects.length > 0) {
+      for (const sub of sem.subjects) {
+        const credits = sub.credits || 0;
+        let gp = sub.gradePoint;
+        if (gp === undefined && (sub.cieMarks !== undefined || sub.seeMarks !== undefined)) {
+          const see = sub.seeMarks || 0;
+          const total = (sub.cieMarks || 0) + see;
+          gp = (see < MIN_SEE_TO_PASS || total < MIN_TOTAL_TO_PASS) ? 0 : getGradeFromTotalMarks(total).points;
+        }
+        // Exclude failed (0 grade points) courses from CGPA until cleared
+        if (gp !== undefined && gp > 0 && credits > 0) {
+          passedCredits += credits;
+          totalWeightedPoints += credits * gp;
+        }
+      }
+    } else if (sem.sgpa !== undefined && sem.totalCredits !== undefined && sem.sgpa > 0) {
+      passedCredits += sem.totalCredits;
+      totalWeightedPoints += sem.totalCredits * sem.sgpa;
     }
   }
 
-  const cgpa = totalCredits > 0 ? Math.round((totalWeightedPoints / totalCredits) * 100) / 100 : 0;
+  const cgpa = passedCredits > 0 ? Math.round((totalWeightedPoints / passedCredits) * 100) / 100 : 0;
   const percentage = vtuCgpaToPercentage(cgpa);
-  return { cgpa, totalCredits, percentage };
+  return { cgpa, totalCredits: passedCredits, percentage };
 }
 
 // Attendance Calculations
@@ -152,7 +164,8 @@ export interface AttendanceReport {
   percentage: number;
   status: 'safe' | 'warning' | 'danger';
   classesCanBunk: number;
-  classesToAttend: number;
+  classesToAttend: number | null;
+  reachable: boolean;
   threshold: number;
 }
 
@@ -163,6 +176,7 @@ export function calculateAttendanceReport(attended: number, total: number, thres
       status: 'safe',
       classesCanBunk: 0,
       classesToAttend: 0,
+      reachable: true,
       threshold,
     };
   }
@@ -186,15 +200,22 @@ export function calculateAttendanceReport(attended: number, total: number, thres
   }
 
   // If below threshold, how many consecutive classes must student attend to reach threshold %:
-  let classesToAttend = 0;
+  let classesToAttend: number | null = 0;
+  let reachable = true;
   if (rawPct < threshold) {
-    if (threshold >= 100) {
-      // If threshold is 100% and any class was missed, 100% is mathematically unachievable
-      classesToAttend = attended < total ? -1 : 0;
+    if (threshold >= 100 && attended < total) {
+      reachable = false;
+      classesToAttend = null;
     } else {
       const numerator = threshold * total - 100 * attended;
       const denominator = 100 - threshold;
-      classesToAttend = denominator > 0 ? Math.max(0, Math.ceil(numerator / denominator)) : 0;
+      const needed = denominator > 0 ? Math.max(0, Math.ceil(numerator / denominator)) : 0;
+      if (needed > 500) {
+        reachable = false;
+        classesToAttend = null;
+      } else {
+        classesToAttend = needed;
+      }
     }
   }
 
@@ -203,6 +224,7 @@ export function calculateAttendanceReport(attended: number, total: number, thres
     status,
     classesCanBunk,
     classesToAttend,
+    reachable,
     threshold,
   };
 }

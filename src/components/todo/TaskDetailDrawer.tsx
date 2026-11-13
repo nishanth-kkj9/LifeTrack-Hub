@@ -28,7 +28,6 @@ import {
   TaskRecurrence,
   Subtask,
 } from '../../types/index.ts';
-import { generateTaskSubtasks } from '../../lib/apiClient.ts';
 import { playTaskCompleteSound, triggerTaskConfetti } from '../../lib/todoUtils.ts';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
@@ -68,7 +67,6 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [newSubtaskEst, setNewSubtaskEst] = useState(20);
   const [newTagInput, setNewTagInput] = useState('');
-  const [isAiBreakingDown, setIsAiBreakingDown] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Sync state when active task changes
@@ -149,28 +147,6 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
     handleFieldChange({
       subtasks: task.subtasks.filter((s) => s.id !== subtaskId),
     });
-  };
-
-  const handleAiBreakdown = async () => {
-    try {
-      setIsAiBreakingDown(true);
-      const generated = await generateTaskSubtasks(task.title, task.description, task.category);
-      if (generated && generated.length > 0) {
-        const newSubs: Subtask[] = generated.map((g, idx) => ({
-          id: `ai-st-${Date.now()}-${idx}`,
-          title: g.title,
-          completed: false,
-          estimatedMinutes: g.estimatedMinutes || 20,
-        }));
-        handleFieldChange({
-          subtasks: [...task.subtasks, ...newSubs],
-        });
-      }
-    } catch (err) {
-      console.warn('AI breakdown note:', err);
-    } finally {
-      setIsAiBreakingDown(false);
-    }
   };
 
   const handleAddTag = () => {
@@ -471,20 +447,6 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                   {task.subtasks.reduce((sum, s) => sum + (s.estimatedMinutes || 20), 0)} mins total estimate
                 </p>
               </div>
-
-              {/* AI Breakdown Button */}
-              <button
-                onClick={handleAiBreakdown}
-                disabled={isAiBreakingDown}
-                className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {isAiBreakingDown ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                )}
-                <span>AI Breakdown</span>
-              </button>
             </div>
 
             {/* Progress Bar */}

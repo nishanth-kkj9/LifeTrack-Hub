@@ -64,7 +64,6 @@ import {
   parseVtuResultText,
   calculateSemesterSgpa,
 } from '../../lib/vtuData.ts';
-import { requestParseMarksheet } from '../../lib/apiClient.ts';
 
 interface VtuSyncSectionProps {
   vtuProfile: VtuProfile;
@@ -119,7 +118,7 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
 
   // Results portal paste input
   const [rawPortalText, setRawPortalText] = useState('');
-  const [isAiParsing, setIsAiParsing] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
   const [parseFeedback, setParseFeedback] = useState<string | null>(null);
 
   // Sync state
@@ -248,73 +247,12 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
   };
 
   // Handle parsing raw text from results.vtu.ac.in
-  const handleParseAndApplyResults = async () => {
+  const handleParseAndApplyResults = () => {
     if (!rawPortalText.trim()) return;
 
-    setIsAiParsing(true);
+    setIsParsing(true);
     setParseFeedback('Extracting VTU grades & course codes...');
 
-    try {
-      const json = await requestParseMarksheet(rawPortalText, vtuProfile.usn);
-
-      if (json && json.success && json.data && json.data.subjects?.length > 0) {
-          const d = json.data;
-          const semNum = d.semester || selectedResultSem || 3;
-          const mappedSubs = d.subjects.map((sub: any, idx: number) => ({
-            id: `vtu-imported-${sub.code || idx}-${Date.now()}`,
-            code: sub.code,
-            name: sub.name,
-            credits: sub.credits || 4,
-            cieMarks: sub.cieMarks ?? 40,
-            seeMarks: sub.seeMarks ?? 40,
-            gradeLetter: sub.gradeLetter || 'A',
-            gradePoint: sub.gradePoint ?? 8,
-            attendedClasses: 36,
-            totalClasses: 40,
-          }));
-
-          const { sgpa, totalCredits } = calculateSemesterSgpa(mappedSubs);
-          const updatedSemesters = vtuProfile.semesters.map((s) =>
-            s.semesterNumber === semNum
-              ? { ...s, subjects: mappedSubs, sgpa: d.sgpa || sgpa, totalCredits }
-              : s
-          );
-
-          if (!updatedSemesters.some((s) => s.semesterNumber === semNum)) {
-            updatedSemesters.push({
-              semesterNumber: semNum,
-              scheme: vtuProfile.scheme,
-              branch: vtuProfile.branch,
-              subjects: mappedSubs,
-              sgpa: d.sgpa || sgpa,
-              totalCredits,
-            });
-          }
-
-          onUpdateProfile({
-            ...vtuProfile,
-            usn: d.usn || vtuProfile.usn,
-            studentName: d.studentName || vtuProfile.studentName,
-            fatherName: d.fatherName || vtuProfile.fatherName,
-            collegeName: d.collegeName || vtuProfile.collegeName,
-            semesters: updatedSemesters,
-            lastSyncedAt: Date.now(),
-          });
-
-          setIsAiParsing(false);
-          setParseFeedback(`Imported ${mappedSubs.length} subjects for Semester ${semNum}!`);
-          setTimeout(() => {
-            setIsImportModalOpen(false);
-            setParseFeedback(null);
-            setRawPortalText('');
-          }, 1500);
-          return;
-        }
-    } catch {
-      // Fallback
-    }
-
-    // Client-side regex parsing fallback
     const parsed = parseVtuResultText(rawPortalText);
     if (parsed.extractedSubjects.length > 0) {
       const semToUse = parsed.extractedSem || selectedResultSem || 3;
@@ -347,7 +285,7 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
         lastSyncedAt: Date.now(),
       });
 
-      setIsAiParsing(false);
+      setIsParsing(false);
       setParseFeedback(`Imported ${parsed.extractedSubjects.length} subjects for Semester ${semToUse}!`);
       setTimeout(() => {
         setIsImportModalOpen(false);
@@ -357,7 +295,7 @@ export const VtuSyncSection: React.FC<VtuSyncSectionProps> = ({
       return;
     }
 
-    setIsAiParsing(false);
+    setIsParsing(false);
     setParseFeedback('Could not detect marks table. Please paste raw text with course codes and marks.');
   };
 
@@ -2056,7 +1994,7 @@ Status: 0 Active Backlogs • Verified via VTU Sync`;
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-black text-sm">Import VTU Portal Result (Text / AI Parser)</h3>
+                <h3 className="font-black text-sm">Import VTU Portal Result (Paste Text)</h3>
               </div>
               <button
                 onClick={() => setIsImportModalOpen(false)}
@@ -2131,17 +2069,17 @@ Subject Code\tSubject Name\tInternal Marks\tExternal Marks\tTotal\tResult
                   </button>
                   <button
                     onClick={handleParseAndApplyResults}
-                    disabled={isAiParsing || !rawPortalText.trim()}
+                    disabled={isParsing || !rawPortalText.trim()}
                     className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs"
                   >
-                    {isAiParsing ? (
+                    {isParsing ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                         <span>Parsing Marksheet...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-white" />
                         <span>Parse & Apply Marksheet</span>
                       </>
                     )}
