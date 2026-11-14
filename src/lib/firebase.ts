@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
   doc,
   setDoc,
   getDoc,
@@ -74,9 +75,47 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-export const db: Firestore = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+function initFirestoreDb(): Firestore {
+  const databaseId = firebaseConfig.firestoreDatabaseId || undefined;
+  try {
+    return initializeFirestore(app, { ignoreUndefinedProperties: true }, databaseId);
+  } catch {
+    return databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+  }
+}
+
+export const db: Firestore = initFirestoreDb();
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Recursively removes `undefined` keys from plain objects and normalizes any `undefined`
+ * array elements to `null` while preserving all `null` values and array lengths.
+ */
+export function stripUndefined<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => (item === undefined ? null : stripUndefined(item))) as unknown as T;
+  }
+  if (!isPlainObject(obj)) {
+    return obj;
+  }
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      cleaned[key] = stripUndefined(value);
+    }
+  }
+  return cleaned as T;
+}
 
 export const LOCAL_STORAGE_KEY = 'lifetrack_app_data_v1';
 export const LEGACY_STORAGE_KEY = 'lifetrack_hub_local_data_v1';
@@ -687,11 +726,11 @@ export function subscribeToUserDoc(
         onUpdate(merged);
 
         if (hasMergedChanges(sanitizedCloudData, merged)) {
-          const pushDoc: UserAppData = {
+          const pushDoc = stripUndefined<UserAppData>({
             ...merged,
             version: (sanitizedCloudData.version || 1) + 1,
             lastUpdated: Date.now(),
-          };
+          });
           setDoc(userRef, pushDoc, { merge: true }).catch((err) => {
             console.warn('Reconcile cloud merge notice:', err?.message || err);
           });
@@ -700,11 +739,11 @@ export function subscribeToUserDoc(
         const localData = loadLocalData();
         const shouldMigrate = hasUserCreatedContent(localData);
         const initialToSave = shouldMigrate ? localData : EMPTY_USER_DATA;
-        const initialDoc: UserAppData = {
+        const initialDoc = stripUndefined<UserAppData>({
           ...initialToSave,
           version: 1,
           lastUpdated: Date.now(),
-        };
+        });
         setDoc(userRef, initialDoc).catch((err) => {
           console.warn('Initial cloud seed notice:', err?.message || err);
         });
@@ -721,11 +760,11 @@ export function subscribeToUserDoc(
 
 export async function saveUserDataToCloud(userId: string, data: UserAppData): Promise<void> {
   const nextVersion = (data.version || 1) + 1;
-  const dataToSave: UserAppData = {
+  const dataToSave = stripUndefined<UserAppData>({
     ...data,
     version: nextVersion,
     lastUpdated: Date.now(),
-  };
+  });
   saveLocalData(dataToSave);
 
   if (!auth.currentUser) {

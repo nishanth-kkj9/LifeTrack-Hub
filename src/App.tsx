@@ -46,7 +46,7 @@ const InsightsView = React.lazy(() =>
   import('./components/views/InsightsView.tsx').then((m) => ({ default: m.InsightsView }))
 );
 import { INITIAL_VTU_PROFILE } from './lib/vtuData.ts';
-import { AddTaskModal } from './components/modals/AddTaskModal.tsx';
+import { AddTaskModal, AddTaskDefaults } from './components/modals/AddTaskModal.tsx';
 import { AddTransactionModal } from './components/modals/AddTransactionModal.tsx';
 import { AddExamModal } from './components/modals/AddExamModal.tsx';
 import { AddNoteModal } from './components/modals/AddNoteModal.tsx';
@@ -58,6 +58,8 @@ import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
 import { useHabitManager } from './hooks/useHabitManager.ts';
 import { getLocalDateString } from './lib/dateUtils.ts';
 import { touch, tombstone, isActive } from './lib/entity.ts';
+import { completeTask, reopenTask } from './lib/taskActions.ts';
+import { getTaskRemindersPreference, scheduleTaskReminders } from './lib/taskUtils.ts';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -69,6 +71,7 @@ export default function App() {
 
   // Modal & Drawer Open States
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [addTaskDefaults, setAddTaskDefaults] = useState<AddTaskDefaults | null>(null);
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
   const [isAddExamOpen, setIsAddExamOpen] = useState(false);
   const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
@@ -81,8 +84,13 @@ export default function App() {
 
   // Status message / toast for auth / sync
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [taskToast, setTaskToast] = useState<string | null>(null);
+  const [taskRemindersEnabled, setTaskRemindersEnabled] = useState<boolean>(() =>
+    getTaskRemindersPreference()
+  );
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const docUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // 1. Listen for Auth State Changes
@@ -158,6 +166,10 @@ export default function App() {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
       unsubscribe();
     };
   }, []);
@@ -201,6 +213,23 @@ export default function App() {
     window.addEventListener('lifetrack-storage-full', onStorageFull);
     return () => window.removeEventListener('lifetrack-storage-full', onStorageFull);
   }, []);
+
+  // Listen for Task reminders toggle updates from SettingsView
+  useEffect(() => {
+    const onRemindersChanged = (e: Event) => {
+      const detail = (e as CustomEvent<boolean>).detail;
+      setTaskRemindersEnabled(typeof detail === 'boolean' ? detail : getTaskRemindersPreference());
+    };
+    window.addEventListener('lifetrack-task-reminders-changed', onRemindersChanged);
+    return () => window.removeEventListener('lifetrack-task-reminders-changed', onRemindersChanged);
+  }, []);
+
+  // Schedule Notification reminders while app is open for tasks due in the next 24 hours
+  useEffect(() => {
+    if (!taskRemindersEnabled) return;
+    const active = appData.tasks.filter(isActive);
+    return scheduleTaskReminders(active);
+  }, [taskRemindersEnabled, appData.tasks]);
 
   // 2. Persist data helper (local and cloud)
   const commitAppData = useCallback(
@@ -312,36 +341,88 @@ export default function App() {
     }
   };
 
+  const showNextOccurrenceToast = useCallback((dueDate: string) => {
+    setTaskToast(`Next: ${dueDate}`);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => {
+      setTaskToast(null);
+      toastTimerRef.current = null;
+    }, 4500);
+  }, []);
+
   // Task Operations
   const handleToggleTask = (taskId: string) => {
-    commitAppData((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) =>
-        t.id === taskId
-          ? touch({
-              ...t,
-              completed: !t.completed,
-              completedAt: !t.completed ? Date.now() : undefined,
-              subtasks: !t.completed
-                ? t.subtasks.map((s) => ({ ...s, completed: true }))
-                : t.subtasks,
-            })
-          : t
-      ),
-    }));
-  };
+    const now = Date.now();
+    const currentTarget = appData.tasks.find((t) => t.id === taskId);
+    const precomputed = currentTarget
+      ? currentTarget.completed
+        ? { completed: touch(reopenTask(currentTarget), now), nextTask: undefined }
+        : (() => {
+            const res = completeTask(currentTarget, now);
+            return {
+              completed: touch(res.completed, now),
+              nextTask: res.nextTask ? touch(res.nextTask, now) : undefined,
+            };
+          })()
+      : null;
 
-  const handleUpdateTask = (updatedTask: Task) => {
-    const stamped = touch(updatedTask);
     commitAppData((prev) => {
-      const exists = prev.tasks.some((t) => t.id === stamped.id);
+      const target = prev.tasks.find((t) => t.id === taskId);
+      if (!target) return prev;
+
+      const resolved =
+        precomputed && currentTarget && target.completed === currentTarget.completed
+          ? precomputed
+          : target.completed
+          ? { completed: touch(reopenTask(target), now), nextTask: undefined }
+          : (() => {
+              const res = completeTask(target, now);
+              return {
+                completed: touch(res.completed, now),
+                nextTask: res.nextTask ? touch(res.nextTask, now) : undefined,
+              };
+            })();
+
+      const updatedList = prev.tasks.map((t) => (t.id === taskId ? resolved.completed : t));
+      const alreadyHasNext =
+        resolved.nextTask && updatedList.some((t) => t.id === resolved.nextTask!.id);
+
       return {
         ...prev,
-        tasks: exists
-          ? prev.tasks.map((t) => (t.id === stamped.id ? stamped : t))
-          : [stamped, ...prev.tasks],
+        tasks:
+          resolved.nextTask && !alreadyHasNext
+            ? [resolved.nextTask, ...updatedList]
+            : updatedList,
       };
     });
+
+    if (precomputed?.nextTask) {
+      showNextOccurrenceToast(precomputed.nextTask.dueDate);
+    }
+  };
+
+  const handleUpdateTask = (updatedTask: Task, nextTask?: Task) => {
+    const now = Date.now();
+    const stamped = touch(updatedTask, now);
+    const stampedNext = nextTask ? touch(nextTask, now) : undefined;
+    commitAppData((prev) => {
+      const exists = prev.tasks.some((t) => t.id === stamped.id);
+      const baseTasks = exists
+        ? prev.tasks.map((t) => (t.id === stamped.id ? stamped : t))
+        : [stamped, ...prev.tasks];
+      const alreadyHasNext =
+        stampedNext && baseTasks.some((t) => t.id === stampedNext.id);
+      return {
+        ...prev,
+        tasks:
+          stampedNext && !alreadyHasNext ? [stampedNext, ...baseTasks] : baseTasks,
+      };
+    });
+    if (stampedNext) {
+      showNextOccurrenceToast(stampedNext.dueDate);
+    }
     if (selectedDetailTask?.id === stamped.id) {
       setSelectedDetailTask(stamped);
     }
@@ -529,6 +610,16 @@ export default function App() {
     setIsFocusModalOpen(true);
   };
 
+  const handleOpenAddTaskModal = (defaults?: AddTaskDefaults) => {
+    const isPlainDefaults =
+      defaults &&
+      typeof defaults === 'object' &&
+      !('nativeEvent' in defaults) &&
+      !('preventDefault' in defaults);
+    setAddTaskDefaults(isPlainDefaults ? defaults : null);
+    setIsAddTaskOpen(true);
+  };
+
   // Active non-tombstoned views of collections for UI & badges
   const activeTasks = appData.tasks.filter(isActive);
   const activeTransactions = appData.transactions.filter(isActive);
@@ -635,8 +726,9 @@ export default function App() {
                 tasks: [...newTasks.map((t) => touch(t)), ...prev.tasks],
               }))
             }
-            onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
+            onOpenAddTaskModal={handleOpenAddTaskModal}
             onClearCompletedTasks={handleClearCompletedTasks}
+            onAddFocusMinutes={handleAddFocusMinutes}
           />
         )}
 
@@ -765,7 +857,8 @@ export default function App() {
       />
 
       <PomodoroFocusModal
-        task={focusTask}
+        task={focusTask ? activeTasks.find((t) => t.id === focusTask.id) ?? focusTask : null}
+        tasks={activeTasks}
         isOpen={isFocusModalOpen}
         onClose={() => {
           setIsFocusModalOpen(false);
@@ -789,8 +882,12 @@ export default function App() {
 
       <AddTaskModal
         isOpen={isAddTaskOpen}
-        onClose={() => setIsAddTaskOpen(false)}
+        onClose={() => {
+          setIsAddTaskOpen(false);
+          setAddTaskDefaults(null);
+        }}
         onAddTask={handleAddTask}
+        initialDefaults={addTaskDefaults}
       />
 
       <AddTransactionModal
@@ -823,6 +920,25 @@ export default function App() {
         onSelectGoogleAccount={handleSelectGoogleAccount}
         onTryFirebasePopup={handleTryFirebasePopup}
       />
+
+      {taskToast && (
+        <div
+          id="task-toast-banner"
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-5 right-5 z-[60] bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-slate-700 text-xs font-bold flex items-center gap-3"
+        >
+          <span>{taskToast}</span>
+          <button
+            type="button"
+            onClick={() => setTaskToast(null)}
+            className="text-slate-400 hover:text-white cursor-pointer"
+            aria-label="Dismiss notification"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

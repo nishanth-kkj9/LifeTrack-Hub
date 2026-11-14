@@ -24,6 +24,7 @@ import { EmptyState } from '../ui/EmptyState.tsx';
 import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
 import { getLocalDateString, parseLocalDate } from '../../lib/dateUtils.ts';
 import { getHabitStats } from '../../lib/habitScoring.ts';
+import { isOverdue } from '../../lib/taskUtils.ts';
 
 interface TodayViewProps {
   tasks: Task[];
@@ -109,11 +110,11 @@ export const TodayView: React.FC<TodayViewProps> = ({
           completedToday.push(task);
         }
       } else {
-        const isOverdue = task.dueDate && task.dueDate < todayStr;
+        const taskOverdue = isOverdue(task, now);
         const isUrgent = task.priority === 'urgent';
         const isDueToday = task.dueDate === todayStr;
 
-        if (isOverdue) {
+        if (taskOverdue) {
           overdue.push(task);
         } else if (isUrgent) {
           urgent.push(task);
@@ -155,7 +156,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
       completedTodayTasks: completedToday,
       allRemainingToday: remaining,
     };
-  }, [tasks, todayStr]);
+  }, [tasks, todayStr, now]);
 
   // Filtered task list
   const displayTasks = useMemo(() => {
@@ -178,8 +179,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
     // Add tasks with dueTime
     tasks.forEach((t) => {
       if (t.dueDate === todayStr && t.dueTime) {
-        const [h, m] = t.dueTime.split(':').map(Number);
-        const isPast = currentHour > h || (currentHour === h && now.getMinutes() > (m || 0));
+        const isPast = isOverdue(t, now);
         items.push({
           time: t.dueTime,
           title: t.title,
@@ -504,6 +504,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
                   <TaskRow
                     key={task.id}
                     task={task}
+                    now={now}
                     onToggle={onToggleTask}
                     onClick={onSelectTask}
                   />

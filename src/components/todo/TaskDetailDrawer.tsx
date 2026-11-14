@@ -30,13 +30,14 @@ import {
 } from '../../types/index.ts';
 import { playTaskCompleteSound, triggerTaskConfetti } from '../../lib/todoUtils.ts';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { completeTask, reopenTask, setStatus } from '../../lib/taskActions.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
 
 interface TaskDetailDrawerProps {
   task: Task | null;
   isOpen: boolean;
   onClose: () => void;
-  onUpdateTask: (task: Task) => void;
+  onUpdateTask: (task: Task, nextTask?: Task) => void;
   onDeleteTask: (taskId: string) => void;
   onStartFocus: (task: Task) => void;
 }
@@ -93,21 +94,14 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   };
 
   const handleToggleComplete = () => {
-    const nextCompleted = !task.completed;
-    if (nextCompleted) {
+    if (task.completed) {
+      onUpdateTask(reopenTask(task));
+    } else {
+      const { completed, nextTask } = completeTask(task);
       playTaskCompleteSound();
       triggerTaskConfetti();
+      onUpdateTask(completed, nextTask);
     }
-    const updated: Task = {
-      ...task,
-      completed: nextCompleted,
-      completedAt: nextCompleted ? Date.now() : undefined,
-      status: nextCompleted ? 'done' : 'todo',
-      subtasks: nextCompleted
-        ? task.subtasks.map((s) => ({ ...s, completed: true }))
-        : task.subtasks,
-    };
-    onUpdateTask(updated);
   };
 
   const handleToggleStar = () => {
@@ -119,7 +113,7 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
     if (!newSubtaskTitle.trim()) return;
 
     const newSub: Subtask = {
-      id: `st-${Date.now()}-${task.subtasks.length}`,
+      id: `st-${crypto.randomUUID()}`,
       title: newSubtaskTitle.trim(),
       completed: false,
       estimatedMinutes: Number(newSubtaskEst) || 20,
@@ -136,11 +130,16 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
       s.id === subtaskId ? { ...s, completed: !s.completed } : s
     );
     const allDone = updatedSubtasks.length > 0 && updatedSubtasks.every((s) => s.completed);
-    handleFieldChange({
+    const nextBase: Task = {
+      ...task,
       subtasks: updatedSubtasks,
-      completed: allDone ? true : task.completed,
-      status: allDone ? 'done' : task.status,
-    });
+    };
+    if (allDone && !task.completed) {
+      const { completed, nextTask } = completeTask(nextBase);
+      onUpdateTask(completed, nextTask);
+    } else {
+      onUpdateTask(nextBase);
+    }
   };
 
   const handleDeleteSubtask = (subtaskId: string) => {
@@ -166,15 +165,17 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   };
 
   const handleDuplicate = () => {
-    const duplicated: Task = {
+    const duplicated: Task = reopenTask({
       ...task,
-      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `task-${crypto.randomUUID()}`,
       title: `${task.title} (Copy)`,
-      completed: false,
-      status: 'todo',
       createdAt: Date.now(),
-      subtasks: task.subtasks.map((s) => ({ ...s, completed: false })),
-    };
+      subtasks: task.subtasks.map((s) => ({
+        ...s,
+        id: `st-${crypto.randomUUID()}`,
+        completed: false,
+      })),
+    });
     onUpdateTask(duplicated);
     setCopySuccess(true);
     setTimeout(() => setCopySuccess(false), 2000);
@@ -302,11 +303,12 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                 onChange={(e) => {
                   const s = e.target.value as TaskStatus;
                   setEditedStatus(s);
-                  handleFieldChange({
-                    status: s,
-                    completed: s === 'done',
-                    completedAt: s === 'done' ? Date.now() : undefined,
-                  });
+                  const { task: next, nextTask } = setStatus(task, s);
+                  if (next.completed && !task.completed) {
+                    playTaskCompleteSound();
+                    triggerTaskConfetti();
+                  }
+                  onUpdateTask(next, nextTask);
                 }}
                 className="w-full bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden"
               >
@@ -404,7 +406,10 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                 onChange={(e) => {
                   const r = e.target.value as TaskRecurrence;
                   setEditedRecurring(r);
-                  handleFieldChange({ recurring: r !== 'none' ? r : undefined });
+                  handleFieldChange({
+                    recurring: r !== 'none' ? r : undefined,
+                    ...(r === 'none' ? { recurAfterCompletion: undefined } : {}),
+                  });
                 }}
                 className="w-full bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden capitalize"
               >
@@ -415,6 +420,22 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                 <option value="monthly">Every Month</option>
               </select>
             </div>
+
+            {task.recurring && task.recurring !== 'none' && (
+              <label className="col-span-2 flex items-center gap-2 text-[11px] text-slate-700 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(task.recurAfterCompletion)}
+                  onChange={(e) =>
+                    handleFieldChange({
+                      recurAfterCompletion: e.target.checked ? true : undefined,
+                    })
+                  }
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="font-semibold">Repeat from completion date (after completion)</span>
+              </label>
+            )}
           </div>
 
           {/* Description & Rich Notes */}

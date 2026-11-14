@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, Clock, AlertCircle, Star } from 'lucide-react';
 import { Task } from '../../types/index.ts';
+import { isOverdue } from '../../lib/taskUtils.ts';
 
 export interface TaskRowProps {
   task: Task;
@@ -8,6 +9,7 @@ export interface TaskRowProps {
   onClick?: (task: Task) => void;
   showCategory?: boolean;
   className?: string;
+  now?: Date;
 }
 
 export const TaskRow: React.FC<TaskRowProps> = ({
@@ -16,9 +18,11 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   onClick,
   showCategory = true,
   className = '',
+  now,
 }) => {
   const isUrgent = task.priority === 'urgent';
   const isHigh = task.priority === 'high';
+  const overdue = isOverdue(task, now);
 
   return (
     <div
@@ -90,6 +94,11 @@ export const TaskRow: React.FC<TaskRowProps> = ({
 
       {/* Right side indicators */}
       <div className="flex items-center gap-2 shrink-0">
+        {overdue && (
+          <span className="flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">
+            Overdue
+          </span>
+        )}
         {task.isStarred && (
           <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" aria-label="Starred task" />
         )}

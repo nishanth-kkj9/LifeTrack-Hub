@@ -27,6 +27,7 @@ export interface Task {
   actualMinutes?: number;
   isStarred?: boolean;
   recurring?: TaskRecurrence;
+  recurAfterCompletion?: boolean;
   status?: TaskStatus;
   notes?: string;
   updatedAt?: number;

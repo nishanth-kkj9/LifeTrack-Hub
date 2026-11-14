@@ -431,6 +431,228 @@ async function runBrowserUiTests() {
   const insightsView = document.getElementById('insights-view');
   assert(insightsView !== null, 'Insights view renders with LifeInsightsPanel integrated');
 
+  // Test 16: Recurring task completion creates next occurrence & displays "Next: <date>" toast
+  console.log('\n[Test 16] Recurring Task Completion & Next-Occurrence Toast');
+  const todayNavBtn = document.getElementById('tab-nav-today');
+  await act(async () => {
+    todayNavBtn?.click();
+  });
+
+  const recurringQuickInput = document.getElementById('quick-add-task-input') as HTMLInputElement | null;
+  assert(recurringQuickInput !== null, 'QuickAddBar input renders on Today tab');
+  await act(async () => {
+    if (recurringQuickInput) {
+      setReactInputValue(recurringQuickInput, 'Anki drill daily today #study');
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  await act(async () => {
+    recurringQuickInput
+      ?.closest('form')
+      ?.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  const completeDailyBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+    (b.getAttribute('aria-label') || '').includes('Anki drill')
+  ) as HTMLButtonElement | undefined;
+  assert(completeDailyBtn !== undefined, 'Complete toggle button exists for Anki drill');
+
+  await act(async () => {
+    completeDailyBtn?.click();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  const expectedTomorrow = getLocalDateOffset(1);
+  const toastEl = document.getElementById('task-toast-banner');
+  assert(
+    toastEl !== null && (toastEl.textContent || '').includes(`Next: ${expectedTomorrow}`),
+    `Recurring completion displays "Next: ${expectedTomorrow}" toast`
+  );
+
+  const savedRaw = localStorage.getItem('lifetrack_app_data_v1');
+  const savedParsed = savedRaw ? JSON.parse(savedRaw) : { tasks: [] };
+  const matchingTasks = (savedParsed.tasks || []).filter(
+    (t: { title?: string }) => t.title === 'Anki drill'
+  );
+  const completedHist = matchingTasks.find((t: { completed?: boolean }) => t.completed === true);
+  const nextScheduled = matchingTasks.find(
+    (t: { completed?: boolean; dueDate?: string }) =>
+      t.completed === false && t.dueDate === expectedTomorrow
+  );
+  assert(
+    completedHist !== undefined && nextScheduled !== undefined && completedHist.id !== nextScheduled.id,
+    'Original recurring task kept as completed history and new occurrence created for tomorrow'
+  );
+
+  // Test 17: Pomodoro settings persistence, >= 30s close flush, and non-stale task state
+  console.log('\n[Test 17] Pomodoro Settings Persistence & Focus Minutes Saving');
+  const tasksNavBtnForPomo = document.getElementById('tab-nav-tasks');
+  await act(async () => {
+    tasksNavBtnForPomo?.click();
+  });
+
+  const launchFocusBtn = document.querySelector('button[title="Launch Pomodoro focus timer"]') as HTMLButtonElement | null;
+  assert(launchFocusBtn !== null, 'Task row has Launch Pomodoro focus timer button');
+  await act(async () => {
+    launchFocusBtn?.click();
+  });
+
+  const pomoDialog = document.querySelector('[role="dialog"][aria-label="Pomodoro focus timer"]');
+  assert(pomoDialog !== null, 'Pomodoro modal opens for task');
+
+  const settingsToggleBtn = document.getElementById('pomodoro-settings-toggle') as HTMLButtonElement | null;
+  assert(settingsToggleBtn !== null, 'Pomodoro settings toggle button renders');
+  await act(async () => {
+    settingsToggleBtn?.click();
+  });
+
+  const focusInput = document.getElementById('pomodoro-setting-focus') as HTMLInputElement | null;
+  const longEveryInput = document.getElementById('pomodoro-setting-long-every') as HTMLInputElement | null;
+  const autoStartSwitch = document.getElementById('pomodoro-setting-autostart') as HTMLButtonElement | null;
+  assert(focusInput !== null && longEveryInput !== null && autoStartSwitch !== null, 'Pomodoro settings inputs render');
+
+  await act(async () => {
+    if (focusInput) setReactInputValue(focusInput, '30');
+    if (longEveryInput) setReactInputValue(longEveryInput, '2');
+    autoStartSwitch?.click();
+  });
+
+  const savedPomoRaw = localStorage.getItem('lifetrack_pomodoro_settings');
+  const savedPomo = savedPomoRaw ? JSON.parse(savedPomoRaw) : null;
+  assert(
+    savedPomo !== null &&
+      savedPomo.focus === 30 &&
+      savedPomo.longEvery === 2 &&
+      savedPomo.autoStart === true,
+    'Pomodoro settings persisted to localStorage (focus=30, longEvery=2, autoStart=true)'
+  );
+
+  // Start timer, advance wall clock by 45 seconds, and close -> should save rounded 1 minute
+  const realDateNow = Date.now;
+  let fakeNow = realDateNow();
+  Date.now = () => fakeNow;
+  try {
+    const startBtn = document.querySelector('button[aria-label="Start timer"]') as HTMLButtonElement | null;
+    assert(startBtn !== null, 'Start timer button renders');
+    await act(async () => {
+      startBtn?.click();
+    });
+
+    fakeNow += 45 * 1000;
+    const closeFocusBtn = document.querySelector('button[aria-label="Close focus timer"]') as HTMLButtonElement | null;
+    await act(async () => {
+      closeFocusBtn?.click();
+    });
+  } finally {
+    Date.now = realDateNow;
+  }
+
+  const afterCloseRaw = localStorage.getItem('lifetrack_app_data_v1');
+  const afterCloseTasks: Array<{ actualMinutes?: number }> = afterCloseRaw
+    ? JSON.parse(afterCloseRaw).tasks || []
+    : [];
+  const taskWithFocusMinute = afterCloseTasks.find((t) => (t.actualMinutes || 0) >= 1);
+  assert(
+    taskWithFocusMinute !== undefined,
+    'Closing Pomodoro after >= 30s saves rounded focus minutes to task via onAddFocusMinutes'
+  );
+
+  // Test 18: Kanban/Matrix pre-filled Add modal (create only on Save), UUID IDs & Matrix quadrant move
+  console.log('\n[Test 18] Kanban/Matrix Pre-filled Add Modal, UUIDs & Matrix Quadrants');
+  const kanbanTabBtn = Array.from(document.querySelectorAll('button')).find(
+    (b) => b.textContent?.trim() === 'Kanban'
+  ) as HTMLButtonElement | undefined;
+  assert(kanbanTabBtn !== undefined, 'Kanban view mode button exists');
+  await act(async () => {
+    kanbanTabBtn?.click();
+  });
+
+  const beforeModalCount = JSON.parse(localStorage.getItem('lifetrack_app_data_v1') || '{"tasks":[]}').tasks.length;
+  const kanbanAddInProgressBtn = document.querySelector(
+    'button[title="Add task to In Progress"]'
+  ) as HTMLButtonElement | null;
+  assert(kanbanAddInProgressBtn !== null, 'Kanban In Progress add button exists');
+  await act(async () => {
+    kanbanAddInProgressBtn?.click();
+  });
+
+  const prefilledStatusSelect = document.getElementById('task-status-select') as HTMLSelectElement | null;
+  assert(
+    prefilledStatusSelect !== null && prefilledStatusSelect.value === 'in_progress',
+    'Kanban add opens AddTaskModal pre-filled with status="in_progress"'
+  );
+
+  const countWhileOpen = JSON.parse(localStorage.getItem('lifetrack_app_data_v1') || '{"tasks":[]}').tasks.length;
+  assert(
+    countWhileOpen === beforeModalCount,
+    'Opening Kanban new-item modal does NOT create a task before Save'
+  );
+
+  const cancelAddBtn = Array.from(document.querySelectorAll('#add-task-modal-card button')).find(
+    (b) => b.textContent?.trim() === 'Cancel'
+  ) as HTMLButtonElement | undefined;
+  await act(async () => {
+    cancelAddBtn?.click();
+  });
+  const countAfterCancel = JSON.parse(localStorage.getItem('lifetrack_app_data_v1') || '{"tasks":[]}').tasks.length;
+  assert(
+    countAfterCancel === beforeModalCount,
+    'Cancelling pre-filled AddTaskModal creates no task'
+  );
+
+  const matrixTabBtn = Array.from(document.querySelectorAll('button')).find(
+    (b) => b.textContent?.trim() === 'Matrix'
+  ) as HTMLButtonElement | undefined;
+  assert(matrixTabBtn !== undefined, 'Matrix view mode button exists');
+  await act(async () => {
+    matrixTabBtn?.click();
+  });
+
+  const matrixAddQ2Btn = document.querySelector(
+    'button[title="Add task to Not Urgent & Important"]'
+  ) as HTMLButtonElement | null;
+  assert(matrixAddQ2Btn !== null, 'Matrix Q2 add button exists');
+  await act(async () => {
+    matrixAddQ2Btn?.click();
+  });
+
+  const prefilledPriority = document.getElementById('task-priority-select') as HTMLSelectElement | null;
+  const prefilledDueDate = document.getElementById('task-date-input') as HTMLInputElement | null;
+  const expectedQ2Date = getLocalDateOffset(3);
+  assert(
+    prefilledPriority?.value === 'high' && prefilledDueDate?.value === expectedQ2Date,
+    `Matrix Q2 add pre-fills priority="high" and dueDate="${expectedQ2Date}"`
+  );
+
+  const modalTitleInput = document.getElementById('task-title-input') as HTMLInputElement | null;
+  const saveTaskBtn = document.getElementById('submit-create-task-btn') as HTMLButtonElement | null;
+  await act(async () => {
+    if (modalTitleInput) setReactInputValue(modalTitleInput, 'UUID Matrix Goal');
+  });
+  await act(async () => {
+    saveTaskBtn?.closest('form')?.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  const savedAfterMatrixCreate = JSON.parse(localStorage.getItem('lifetrack_app_data_v1') || '{"tasks":[]}').tasks as Array<{
+    id: string;
+    title: string;
+    dueDate: string;
+    priority: string;
+  }>;
+  const createdMatrixTask = savedAfterMatrixCreate.find((t) => t.title === 'UUID Matrix Goal');
+  assert(
+    createdMatrixTask !== undefined && /^task-[0-9a-f]{8}-[0-9a-f]{4}-/i.test(createdMatrixTask.id),
+    'Saved Matrix task uses crypto.randomUUID() ID and persists only after Save'
+  );
+
+  const q2Container = document.querySelector('[data-quadrant="q2"]');
+  assert(
+    q2Container !== null && (q2Container.textContent || '').includes('UUID Matrix Goal'),
+    'Newly saved Q2 task renders inside Q2 quadrant'
+  );
+
   // Teardown
   await act(async () => {
     root?.unmount();

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Plus,
   Search,
@@ -48,20 +48,24 @@ import {
   triggerStreakCelebration,
 } from '../../lib/todoUtils.ts';
 import { getLocalDateString, getLocalDateOffset, formatAppTime } from '../../lib/dateUtils.ts';
+import { completeTask, reopenTask, setStatus } from '../../lib/taskActions.ts';
+import { computeDailyProgress, isOverdue } from '../../lib/taskUtils.ts';
+import { AddTaskDefaults } from '../modals/AddTaskModal.tsx';
 
 interface TasksViewProps {
   tasks: Task[];
   onToggleTask: (taskId: string) => void;
-  onUpdateTask: (task: Task) => void;
+  onUpdateTask: (task: Task, nextTask?: Task) => void;
   onDeleteTask: (taskId: string) => void;
-  onOpenAddTaskModal: () => void;
+  onOpenAddTaskModal: (defaults?: AddTaskDefaults) => void;
   onClearCompletedTasks: () => void;
   onAddTask?: (task: Task) => void;
   onImportTasks?: (tasks: Task[]) => void;
+  onAddFocusMinutes?: (taskId: string, minutes: number) => void;
 }
 
 type ViewMode = 'list' | 'kanban' | 'matrix' | 'schedule';
-type FilterKey = 'all' | 'today' | 'upcoming' | 'urgent' | 'starred' | 'study' | 'work' | 'finance' | 'completed';
+type FilterKey = 'all' | 'today' | 'overdue' | 'upcoming' | 'urgent' | 'starred' | 'study' | 'work' | 'finance' | 'completed';
 type GroupByKey = 'date' | 'priority' | 'category' | 'none';
 
 export const TasksView: React.FC<TasksViewProps> = ({
@@ -73,6 +77,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   onClearCompletedTasks,
   onAddTask,
   onImportTasks,
+  onAddFocusMinutes,
 }) => {
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -91,7 +96,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Record<string, boolean>>({});
 
-  const todayStr = getLocalDateString();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const todayStr = getLocalDateString(now);
 
   const handleCreateTask = (task: Task) => {
     if (onAddTask) {
@@ -123,12 +134,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
     if (!task.subtasks.find((s) => s.id === subtaskId)?.completed) {
       playTaskCompleteSound();
     }
-    onUpdateTask({
+    const updatedTaskBase: Task = {
       ...task,
       subtasks: updatedSubtasks,
-      completed: allDone ? true : task.completed,
-      status: allDone ? 'done' : task.status,
-    });
+    };
+    if (allDone && !task.completed) {
+      const { completed, nextTask } = completeTask(updatedTaskBase);
+      onUpdateTask(completed, nextTask);
+    } else {
+      onUpdateTask(updatedTaskBase);
+    }
   };
 
   const handleAddManualSubtask = (task: Task, e: React.MouseEvent | React.KeyboardEvent) => {
@@ -137,7 +152,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     if (!title) return;
 
     const newSub: Subtask = {
-      id: `manual-st-${Date.now()}`,
+      id: `st-${crypto.randomUUID()}`,
       title,
       completed: false,
       estimatedMinutes: 20,
@@ -170,20 +185,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const handleDirectToggleTask = (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
-    const nextCompleted = !task.completed;
-    if (nextCompleted) {
+    if (task.completed) {
+      onUpdateTask(reopenTask(task));
+    } else {
+      const { completed, nextTask } = completeTask(task);
       playTaskCompleteSound();
       triggerTaskConfetti();
+      onUpdateTask(completed, nextTask);
     }
-    onUpdateTask({
-      ...task,
-      completed: nextCompleted,
-      completedAt: nextCompleted ? Date.now() : undefined,
-      status: nextCompleted ? 'done' : 'todo',
-      subtasks: nextCompleted
-        ? task.subtasks.map((s) => ({ ...s, completed: true }))
-        : task.subtasks,
-    });
   };
 
   // Productivity Metrics
@@ -193,14 +202,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
     () => tasks.filter((t) => t.dueDate === todayStr),
     [tasks, todayStr]
   );
-  const todayCompleted = useMemo(
-    () => todayDueTasks.filter((t) => t.completed).length,
-    [todayDueTasks]
-  );
-  const dailyTarget = 5;
-  const dailyProgressPercent = Math.min(
-    100,
-    Math.round((completedTasks.length / Math.max(tasks.length, 1)) * 100)
+  const {
+    completedToday,
+    dueToday,
+    percent: dailyProgressPercent,
+  } = useMemo(() => computeDailyProgress(tasks, todayStr), [tasks, todayStr]);
+
+  const overdueTasks = useMemo(
+    () => tasks.filter((t) => isOverdue(t, now)),
+    [tasks, now]
   );
 
   // Filter Tasks
@@ -216,8 +226,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
       if (activeFilter === 'today') {
         return task.dueDate === todayStr && !task.completed;
       }
+      if (activeFilter === 'overdue') {
+        return isOverdue(task, now);
+      }
       if (activeFilter === 'upcoming') {
-        const nextWeekStr = getLocalDateOffset(7);
+        const nextWeekStr = getLocalDateOffset(7, now);
         return task.dueDate >= todayStr && task.dueDate <= nextWeekStr && !task.completed;
       }
       if (activeFilter === 'urgent') {
@@ -240,7 +253,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       }
       return !task.completed; // 'all' active
     });
-  }, [tasks, searchTerm, activeFilter, todayStr]);
+  }, [tasks, searchTerm, activeFilter, todayStr, now]);
 
   // Grouping for List View
   const groupedTasks = useMemo(() => {
@@ -257,14 +270,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
         'Later / Someday': [],
       };
 
-      const tomorrowStr = getLocalDateOffset(1);
-      const endOfWeekStr = getLocalDateOffset(6);
+      const tomorrowStr = getLocalDateOffset(1, now);
+      const endOfWeekStr = getLocalDateOffset(6, now);
 
       filteredTasks.forEach((t) => {
         if (t.completed) {
           if (!groups['Completed']) groups['Completed'] = [];
           groups['Completed'].push(t);
-        } else if (t.dueDate < todayStr) {
+        } else if (isOverdue(t, now)) {
           groups['Overdue'].push(t);
         } else if (t.dueDate === todayStr) {
           groups['Today'].push(t);
@@ -340,13 +353,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
     selectedIds.forEach((id) => {
       const task = tasks.find((t) => t.id === id);
-      if (task) {
-        onUpdateTask({
-          ...task,
-          completed: true,
-          completedAt: Date.now(),
-          status: 'done',
-        });
+      if (task && !task.completed) {
+        const { completed, nextTask } = completeTask(task);
+        onUpdateTask(completed, nextTask);
       }
     });
     handleDeselectAll();
@@ -396,11 +405,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
         {/* Daily Velocity & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Daily Goal Badge */}
-          <div className="bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 flex items-center gap-3 shadow-2xs">
+          <div
+            className="bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 flex items-center gap-3 shadow-2xs"
+            title="Tasks completed today / tasks due today"
+          >
             <div className="flex items-center gap-1.5 text-amber-600">
               <Flame className="w-3.5 h-3.5 fill-amber-500" />
               <span className="text-xs font-bold text-slate-800">
-                {completedTasks.length}/{tasks.length} Done
+                {completedToday}/{dueToday} Today
               </span>
             </div>
             <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/60">
@@ -435,7 +447,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           {/* New Task Advanced Modal */}
           <button
             id="tasks-add-task-btn"
-            onClick={onOpenAddTaskModal}
+            onClick={() => onOpenAddTaskModal()}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs hover:shadow-sm min-h-[36px]"
           >
             <Plus className="w-4 h-4" />
@@ -445,7 +457,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       </div>
 
       {/* 2. NATURAL LANGUAGE QUICK ADD BAR */}
-      <QuickAddBar onAddTask={handleCreateTask} onOpenAdvancedModal={onOpenAddTaskModal} />
+      <QuickAddBar onAddTask={handleCreateTask} onOpenAdvancedModal={() => onOpenAddTaskModal()} />
 
       {/* 3. VIEW MODE & FILTER TOOLBAR */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/90 shadow-2xs">
@@ -535,6 +547,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         {[
           { key: 'all', label: `Active (${activeTasks.length})` },
           { key: 'today', label: `Due Today (${todayDueTasks.filter((t) => !t.completed).length})` },
+          { key: 'overdue', label: `Overdue (${overdueTasks.length})` },
           { key: 'upcoming', label: 'Next 7 Days' },
           { key: 'urgent', label: '🔴 Urgent / High' },
           { key: 'starred', label: '⭐ Starred' },
@@ -618,23 +631,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           onUpdateTask={onUpdateTask}
           onSelectTask={(task) => setActiveDetailTask(task)}
           onOpenQuickAddWithStatus={(status) => {
-            const newTask: Task = {
-              id: `task-${crypto.randomUUID()}`,
-              title: 'New Kanban Item',
-              category: 'study',
-              priority: 'medium',
-              dueDate: todayStr,
-              completed: status === 'done',
-              status,
-              subtasks: [],
-              createdAt: Date.now(),
-            };
-            if (onAddTask) {
-              onAddTask(newTask);
-            } else {
-              onUpdateTask(newTask);
-            }
-            setActiveDetailTask(newTask);
+            onOpenAddTaskModal({ status, dueDate: todayStr });
           }}
           onStartFocus={(task) => setActiveFocusTask(task)}
         />
@@ -646,24 +643,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
           tasks={filteredTasks}
           onUpdateTask={onUpdateTask}
           onSelectTask={(task) => setActiveDetailTask(task)}
-          onOpenQuickAddWithPriority={(priority) => {
-            const newTask: Task = {
-              id: `task-${crypto.randomUUID()}`,
-              title: `New P${priority === 'urgent' ? 1 : priority === 'high' ? 2 : 3} Target`,
-              category: 'study',
-              priority,
-              dueDate: todayStr,
-              completed: false,
-              status: 'todo',
-              subtasks: [],
-              createdAt: Date.now(),
-            };
-            if (onAddTask) {
-              onAddTask(newTask);
+          onOpenQuickAddForQuadrant={(quadrant) => {
+            if (quadrant === 'q1') {
+              onOpenAddTaskModal({ priority: 'urgent', dueDate: todayStr });
+            } else if (quadrant === 'q2') {
+              onOpenAddTaskModal({ priority: 'high', dueDate: getLocalDateOffset(3, now) });
+            } else if (quadrant === 'q3') {
+              onOpenAddTaskModal({ priority: 'medium', dueDate: todayStr });
             } else {
-              onUpdateTask(newTask);
+              onOpenAddTaskModal({ priority: 'low', dueDate: getLocalDateOffset(3, now) });
             }
-            setActiveDetailTask(newTask);
           }}
         />
       )}
@@ -698,7 +687,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   Browse Templates
                 </button>
                 <button
-                  onClick={onOpenAddTaskModal}
+                  onClick={() => onOpenAddTaskModal()}
                   className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer"
                 >
                   Create Custom Task
@@ -728,8 +717,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         task.subtasks.length > 0
                           ? Math.round((completedSubtasks / task.subtasks.length) * 100)
                           : 0;
-                      const isOverdue = !task.completed && task.dueDate < todayStr;
-                      const isDueToday = !task.completed && task.dueDate === todayStr;
+                      const taskOverdue = isOverdue(task, now);
+                      const isDueToday = !task.completed && !taskOverdue && task.dueDate === todayStr;
                       const isSelected = !!selectedTaskIds[task.id];
 
                       return (
@@ -751,7 +740,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                               ? 'border-slate-200/80 bg-slate-50/40 opacity-75'
                               : isSelected
                               ? 'border-indigo-600 ring-2 ring-indigo-500/10 shadow-xs'
-                              : isOverdue
+                              : taskOverdue
                               ? 'border-rose-300 shadow-2xs hover:border-rose-400'
                               : task.priority === 'urgent'
                               ? 'border-slate-200 border-l-4 border-l-rose-500 hover:border-slate-300 shadow-2xs'
@@ -822,7 +811,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 )}
 
                                 {/* Overdue / Due Today Warnings */}
-                                {isOverdue && (
+                                {taskOverdue && (
                                   <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-rose-100 text-rose-700">
                                     Overdue
                                   </span>
@@ -1046,8 +1035,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
         task={activeDetailTask}
         isOpen={!!activeDetailTask}
         onClose={() => setActiveDetailTask(null)}
-        onUpdateTask={(updated) => {
-          onUpdateTask(updated);
+        onUpdateTask={(updated, nextTask) => {
+          onUpdateTask(updated, nextTask);
           setActiveDetailTask(updated);
         }}
         onDeleteTask={(taskId) => {
@@ -1062,10 +1051,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
       {/* 6. POMODORO FOCUS MODAL */}
       <PomodoroFocusModal
-        task={activeFocusTask}
+        task={activeFocusTask ? tasks.find((t) => t.id === activeFocusTask.id) ?? activeFocusTask : null}
+        tasks={tasks}
         isOpen={!!activeFocusTask}
         onClose={() => setActiveFocusTask(null)}
         onUpdateTask={onUpdateTask}
+        onAddFocusMinutes={onAddFocusMinutes}
       />
 
       {/* 7. TASK TEMPLATES MODAL */}

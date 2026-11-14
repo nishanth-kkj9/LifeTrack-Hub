@@ -47,34 +47,10 @@ export function parseNaturalLanguageTask(
         category = cleanTag as TaskCategory;
       }
     });
-    text = text.replace(/(?:^|\s)#[a-zA-Z0-9_-]+/g, ' ').trim();
+    text = text.replace(/(?:^|\s)#[a-zA-Z0-9_-]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
-  // 2. Extract Priority strictly from explicit tokens (!1..4, !urgent/!high/!med/!low, p1..p4, urgent, asap)
-  // Never strip plain English words like "low" from "Buy low-fat milk" or "high" from "high-quality report".
-  const priorityTokenRegex = /(?:^|\s)(?:!(1|2|3|4|urgent|high|med|medium|low)|p([1-4]))(?=\s|$|[,.!?])|\b(urgent|asap)\b/gi;
-  let pMatch: RegExpExecArray | null;
-  const priorityMatches: string[] = [];
-  while ((pMatch = priorityTokenRegex.exec(text)) !== null) {
-    const bang = pMatch[1]?.toLowerCase();
-    const pNum = pMatch[2];
-    const word = pMatch[3]?.toLowerCase();
-    if (bang === '1' || bang === 'urgent' || pNum === '1' || word === 'urgent' || word === 'asap') {
-      priority = 'urgent';
-    } else if (bang === '2' || bang === 'high' || pNum === '2') {
-      priority = 'high';
-    } else if (bang === '3' || bang === 'med' || bang === 'medium' || pNum === '3') {
-      priority = 'medium';
-    } else if (bang === '4' || bang === 'low' || pNum === '4') {
-      priority = 'low';
-    }
-    priorityMatches.push(pMatch[0]);
-  }
-  if (priorityMatches.length > 0) {
-    text = text.replace(priorityTokenRegex, ' ').replace(/\s{2,}/g, ' ').trim();
-  }
-
-  // 3. Extract Duration / Estimates: ~30m, 1h, 45mins, 2hours
+  // 2. Extract Duration / Estimates BEFORE edge priority checks so trailing `~30m` doesn't hide trailing `p2`/`asap`
   const estMatch = text.match(/(?:^|\s)(~?(\d+)\s*(m|min|mins|minutes|h|hr|hrs|hours))(?=\s|$|[,.!?])/i);
   if (estMatch) {
     const val = parseInt(estMatch[2], 10);
@@ -83,25 +59,67 @@ export function parseNaturalLanguageTask(
     text = text.replace(estMatch[1], ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
+  // 3. Extract Priority strictly:
+  // - `!`-prefixed tokens (`!1..4`, `!p1..p4`, `!urgent`, `!asap`, `!high`, `!med`, `!medium`, `!low`) anywhere
+  // - bare `p1..p4`, `urgent`, `asap` ONLY at the start or end of text, and never `"urgent care"`
+  const applyPriorityToken = (tokenRaw: string) => {
+    const token = tokenRaw.toLowerCase();
+    if (token === '1' || token === 'p1' || token === 'urgent' || token === 'asap') {
+      priority = 'urgent';
+    } else if (token === '2' || token === 'p2' || token === 'high') {
+      priority = 'high';
+    } else if (token === '3' || token === 'p3' || token === 'med' || token === 'medium') {
+      priority = 'medium';
+    } else if (token === '4' || token === 'p4' || token === 'low') {
+      priority = 'low';
+    }
+  };
+
+  const bangPriorityRegex = /(?:^|\s)!(p?[1-4]|urgent|asap|high|med|medium|low)(?=\s|$|[,.!?])/gi;
+  let bMatch: RegExpExecArray | null;
+  let foundBangPriority = false;
+  while ((bMatch = bangPriorityRegex.exec(text)) !== null) {
+    applyPriorityToken(bMatch[1]);
+    foundBangPriority = true;
+  }
+  if (foundBangPriority) {
+    text = text.replace(bangPriorityRegex, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  const startPriorityRegex = /^(p[1-4]|urgent(?!\s+care\b)|asap)(?=\s|$|[,.!?])/i;
+  const startMatch = text.match(startPriorityRegex);
+  if (startMatch) {
+    applyPriorityToken(startMatch[1]);
+    text = text.replace(startPriorityRegex, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  const endPriorityRegex = /(?:^|\s)(p[1-4]|urgent|asap)[,.!?]*$/i;
+  const endMatch = text.match(endPriorityRegex);
+  if (endMatch) {
+    // Do not strip "urgent" if text ends with "urgent care" (handled because "care" is at end)
+    applyPriorityToken(endMatch[1]);
+    text = text.replace(endPriorityRegex, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+
   // 4. Extract Recurrence: every day / daily / weekdays / weekly / monthly
   if (/\b(every\s*day|daily)\b/i.test(text)) {
     recurring = 'daily';
-    text = text.replace(/\b(every\s*day|daily)\b/gi, ' ').trim();
+    text = text.replace(/\b(every\s*day|daily)\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
   } else if (/\b(every\s*weekday|weekdays)\b/i.test(text)) {
     recurring = 'weekdays';
-    text = text.replace(/\b(every\s*weekday|weekdays)\b/gi, ' ').trim();
+    text = text.replace(/\b(every\s*weekday|weekdays)\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
   } else if (/\b(every\s*week|weekly)\b/i.test(text)) {
     recurring = 'weekly';
-    text = text.replace(/\b(every\s*week|weekly)\b/gi, ' ').trim();
+    text = text.replace(/\b(every\s*week|weekly)\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
   } else if (/\b(every\s*month|monthly)\b/i.test(text)) {
     recurring = 'monthly';
-    text = text.replace(/\b(every\s*month|monthly)\b/gi, ' ').trim();
+    text = text.replace(/\b(every\s*month|monthly)\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
-  const hadTonight = /\btonight\b/i.test(text);
+  const hadTonight = /\btonight\b(?!['’]s)/i.test(text);
 
-  // 5. Extract Time BEFORE stripping date words so "tonight at 8" keeps evening hint,
-  // but require standalone `at` / `@`, `HH:MM`, or `am/pm` so "Read page 7" never parses 7 as 07:00.
+  // 5. Extract Time BEFORE stripping date words so "tonight at 8" keeps evening hint.
+  // Require `at`/`@`, `HH:MM`, or `am`/`pm` so numbers inside titles ("Read page 7") are never misparsed.
   const atTimeRegex = /(?:^|\s)((?:at\b|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)(?=\s|$|[,.!?])/i;
   const amPmTimeRegex = /(?:^|\s)((\d{1,2})(?::(\d{2}))?\s*(am|pm))(?=\s|$|[,.!?])/i;
   const colonTimeRegex = /(?:^|\s)((\d{1,2}):(\d{2}))(?=\s|$|[,.!?])/;
@@ -115,9 +133,30 @@ export function parseNaturalLanguageTask(
     const minutes = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
     const meridian = timeMatch[4]?.toLowerCase();
 
-    if (meridian === 'pm' && hours >= 1 && hours < 12) hours += 12;
-    else if (meridian === 'am' && hours === 12) hours = 0;
-    else if (!meridian && hadTonight && hours >= 1 && hours <= 11) hours += 12;
+    if (meridian === 'pm' && hours >= 1 && hours < 12) {
+      hours += 12;
+    } else if (meridian === 'am' && hours === 12) {
+      hours = 0;
+    } else if (!meridian) {
+      if (hadTonight && hours >= 1 && hours <= 11) {
+        hours += 12;
+      } else if (hours >= 1 && hours <= 11) {
+        const refMins = referenceDate.getHours() * 60 + referenceDate.getMinutes();
+        const amMins = hours * 60 + minutes;
+        const pmMins = (hours + 12) * 60 + minutes;
+        if (hours >= 1 && hours <= 6) {
+          // Hours 1-6 default to PM unless reference time is already past that PM hour
+          if (refMins <= pmMins) {
+            hours += 12;
+          }
+        } else {
+          // Hours 7-11 pick the next upcoming occurrence relative to reference time
+          if (refMins > amMins && refMins <= pmMins) {
+            hours += 12;
+          }
+        }
+      }
+    }
 
     if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
       dueTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
@@ -125,53 +164,135 @@ export function parseNaturalLanguageTask(
     }
   }
 
-  // 6. Extract Relative Dates: today, tonight, tomorrow/tmrw, in N days, weekday names & 3-letter abbrevs
-  if (/\b(today|tonight)\b/i.test(text)) {
+  // 6. Extract Dates:
+  // - today / tonight / tomorrow / tmrw (word boundary and NOT followed by 's)
+  // - in N days
+  // - next week (next Monday), next month
+  // - "25 Nov", "Nov 25", "20 nov"
+  // - weekdays only when preceded by next|this|on|by|due OR as the entire remaining input
+  const MONTH_MAP: Record<string, number> = {
+    jan: 0, january: 0,
+    feb: 1, february: 1,
+    mar: 2, march: 2,
+    apr: 3, april: 3,
+    may: 4,
+    jun: 5, june: 5,
+    jul: 6, july: 6,
+    aug: 7, august: 7,
+    sep: 8, sept: 8, september: 8,
+    oct: 9, october: 9,
+    nov: 10, november: 10,
+    dec: 11, december: 11,
+  };
+  const MONTH_PATTERN =
+    'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+
+  const todayMatch = text.match(/(?:^|\s)((?:(?:on|by|due)\s+)?(?:today|tonight)\b(?!['’]s))/i);
+  const tomorrowMatch = text.match(/(?:^|\s)((?:(?:on|by|due)\s+)?(?:tomorrow|tmrw)\b(?!['’]s))/i);
+  const inDaysMatch = text.match(/(?:^|\s)((?:(?:on|by|due)\s+)?in\s+(\d+)\s+days?)\b/i);
+  const nextWeekMatch = text.match(/(?:^|\s)((?:(?:on|by|due)\s+)?next\s+week)\b/i);
+  const nextMonthMatch = text.match(/(?:^|\s)((?:(?:on|by|due)\s+)?next\s+month)\b/i);
+  const dayMonthMatch = text.match(
+    new RegExp(
+      `(?:^|\\s)((?:(?:on|by|due)\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_PATTERN}))(?=\\s|$|[,.!?])`,
+      'i'
+    )
+  );
+  const monthDayMatch = text.match(
+    new RegExp(
+      `(?:^|\\s)((?:(?:on|by|due)\\s+)?(${MONTH_PATTERN})\\s+(\\d{1,2})(?:st|nd|rd|th)?)(?=\\s|$|[,.!?])`,
+      'i'
+    )
+  );
+
+  if (todayMatch) {
     targetDate = new Date(today);
     hasExplicitDate = true;
-    text = text.replace(/\b(today|tonight)\b/gi, ' ').trim();
-  } else if (/\b(tomorrow|tmrw)\b/i.test(text)) {
+    text = text.replace(todayMatch[1], ' ').replace(/\s{2,}/g, ' ').trim();
+  } else if (tomorrowMatch) {
     targetDate = new Date(today);
     targetDate.setDate(targetDate.getDate() + 1);
     hasExplicitDate = true;
-    text = text.replace(/\b(tomorrow|tmrw)\b/gi, ' ').trim();
-  } else {
-    const daysMatch = text.match(/\bin\s+(\d+)\s+days?\b/i);
-    if (daysMatch) {
-      const days = parseInt(daysMatch[1], 10);
-      targetDate = new Date(today);
-      targetDate.setDate(targetDate.getDate() + days);
-      hasExplicitDate = true;
-      text = text.replace(daysMatch[0], ' ').trim();
-    } else {
-      const weekdayMap: Array<{ day: number; pattern: string }> = [
-        { day: 0, pattern: 'sunday|sun' },
-        { day: 1, pattern: 'monday|mon' },
-        { day: 2, pattern: 'tuesday|tues|tue' },
-        { day: 3, pattern: 'wednesday|wed' },
-        { day: 4, pattern: 'thursday|thurs|thur|thu' },
-        { day: 5, pattern: 'friday|fri' },
-        { day: 6, pattern: 'saturday|sat' },
-      ];
-      for (const wd of weekdayMap) {
-        const re = new RegExp(`\\b(?:(next|this|on|by)\\s+)?(${wd.pattern})\\b`, 'i');
-        const m = text.match(re);
-        if (m) {
-          const currentDay = today.getDay();
-          let diff = wd.day - currentDay;
-          if (diff <= 0) diff += 7;
-          targetDate = new Date(today);
-          targetDate.setDate(targetDate.getDate() + diff);
-          hasExplicitDate = true;
-          text = text.replace(m[0], ' ').trim();
-          break;
+    text = text.replace(tomorrowMatch[1], ' ').replace(/\s{2,}/g, ' ').trim();
+  } else if (inDaysMatch) {
+    const days = parseInt(inDaysMatch[2], 10);
+    targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + days);
+    hasExplicitDate = true;
+    text = text.replace(inDaysMatch[1], ' ').replace(/\s{2,}/g, ' ').trim();
+  } else if (nextWeekMatch) {
+    // Next Monday
+    let diff = (1 - today.getDay() + 7) % 7;
+    if (diff === 0) diff = 7;
+    targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + diff);
+    hasExplicitDate = true;
+    text = text.replace(nextWeekMatch[1], ' ').replace(/\s{2,}/g, ' ').trim();
+  } else if (nextMonthMatch) {
+    const totalMonths = today.getMonth() + 1;
+    const targetYear = today.getFullYear() + Math.floor(totalMonths / 12);
+    const targetMonth = totalMonths % 12;
+    const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+    targetDate = new Date(targetYear, targetMonth, Math.min(today.getDate(), maxDay));
+    hasExplicitDate = true;
+    text = text.replace(nextMonthMatch[1], ' ').replace(/\s{2,}/g, ' ').trim();
+  } else if (dayMonthMatch || monthDayMatch) {
+    const matchedPhrase = dayMonthMatch ? dayMonthMatch[1] : monthDayMatch![1];
+    const day = parseInt(dayMonthMatch ? dayMonthMatch[2] : monthDayMatch![3], 10);
+    const monthToken = (dayMonthMatch ? dayMonthMatch[3] : monthDayMatch![2]).toLowerCase();
+    const monthIdx = MONTH_MAP[monthToken];
+    if (monthIdx !== undefined && day >= 1 && day <= 31) {
+      let year = today.getFullYear();
+      const maxThisYear = new Date(year, monthIdx + 1, 0).getDate();
+      if (day <= maxThisYear) {
+        let candidate = new Date(year, monthIdx, day);
+        if (candidate < today) {
+          year += 1;
+          const maxNextYear = new Date(year, monthIdx + 1, 0).getDate();
+          candidate = new Date(year, monthIdx, Math.min(day, maxNextYear));
         }
+        targetDate = candidate;
+        hasExplicitDate = true;
+        text = text.replace(matchedPhrase, ' ').replace(/\s{2,}/g, ' ').trim();
+      }
+    }
+  } else {
+    const weekdayMap: Array<{ day: number; pattern: string }> = [
+      { day: 0, pattern: 'sunday|sun' },
+      { day: 1, pattern: 'monday|mon' },
+      { day: 2, pattern: 'tuesday|tues|tue' },
+      { day: 3, pattern: 'wednesday|wed' },
+      { day: 4, pattern: 'thursday|thurs|thur|thu' },
+      { day: 5, pattern: 'friday|fri' },
+      { day: 6, pattern: 'saturday|sat' },
+    ];
+    for (const wd of weekdayMap) {
+      const re = new RegExp(
+        `(?:(?:^|\\s)((?:next|this|on|by|due)\\s*:?\\s+(?:${wd.pattern}))(?=\\s|$|[,.!?])|^\\s*(${wd.pattern})\\s*$)`,
+        'i'
+      );
+      const m = text.match(re);
+      if (m) {
+        const matchedPhrase = m[1] || m[2];
+        const currentDay = today.getDay();
+        let diff = wd.day - currentDay;
+        if (diff <= 0) diff += 7;
+        targetDate = new Date(today);
+        targetDate.setDate(targetDate.getDate() + diff);
+        hasExplicitDate = true;
+        text = text.replace(matchedPhrase, ' ').replace(/\s{2,}/g, ' ').trim();
+        break;
       }
     }
   }
 
   if (!hasExplicitDate) {
     targetDate = new Date(today);
+  }
+
+  // Collapse whitespace and remove trailing connectors left over after date/time removal
+  if (hasExplicitDate || dueTime !== undefined) {
+    text = text.replace(/(?:\s+\b(?:on|by|at|due))+\s*$/i, '');
   }
 
   const cleanTitle = text

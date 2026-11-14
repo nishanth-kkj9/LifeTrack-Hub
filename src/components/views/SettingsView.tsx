@@ -29,6 +29,10 @@ import {
   getLocalDateString,
   type TimeFormat,
 } from '../../lib/dateUtils.ts';
+import {
+  getTaskRemindersPreference,
+  setTaskRemindersPreference,
+} from '../../lib/taskUtils.ts';
 
 interface SettingsViewProps {
   currentUser: User | null;
@@ -59,6 +63,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
   const [timeFormat, setTimeFormatState] = useState<TimeFormat>(() => getTimeFormatPreference());
+  const [taskReminders, setTaskReminders] = useState<boolean>(() => getTaskRemindersPreference());
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,6 +72,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTimeFormatPreference(fmt);
     setSyncStatusMsg(`Time format updated to ${fmt === '12h' ? '12-Hour' : '24-Hour'}`);
     setTimeout(() => setSyncStatusMsg(null), 2500);
+  };
+
+  const handleToggleTaskReminders = async () => {
+    if (taskReminders) {
+      setTaskReminders(false);
+      setTaskRemindersPreference(false);
+      setSyncStatusMsg('Task reminders disabled');
+      setTimeout(() => setSyncStatusMsg(null), 2500);
+      return;
+    }
+
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      setSyncStatusMsg('Browser notifications are not supported in this environment.');
+      setTimeout(() => setSyncStatusMsg(null), 3500);
+      return;
+    }
+
+    let permission = Notification.permission;
+    if (permission === 'default') {
+      try {
+        permission = await Notification.requestPermission();
+      } catch {
+        permission = 'denied';
+      }
+    }
+
+    if (permission === 'granted') {
+      setTaskReminders(true);
+      setTaskRemindersPreference(true);
+      setSyncStatusMsg('Task reminders enabled for tasks due in the next 24 hours.');
+      setTimeout(() => setSyncStatusMsg(null), 3000);
+    } else {
+      setTaskReminders(false);
+      setTaskRemindersPreference(false);
+      setSyncStatusMsg('Notification permission denied. Enable notifications in browser settings.');
+      setTimeout(() => setSyncStatusMsg(null), 4000);
+    }
   };
 
   // Export JSON backup
@@ -340,6 +382,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 24-Hour
               </button>
             </div>
+          </div>
+
+          <div className="py-3 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-bold text-slate-800">Task reminders</p>
+              <p className="text-slate-500">
+                Notify via browser notifications while the app is open for tasks due in the next 24 hours
+              </p>
+            </div>
+            <button
+              type="button"
+              id="pref-task-reminders-toggle"
+              role="switch"
+              aria-checked={taskReminders}
+              aria-label="Task reminders"
+              onClick={handleToggleTaskReminders}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                taskReminders ? 'bg-emerald-600' : 'bg-slate-200'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                  taskReminders ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
         </div>
       </div>

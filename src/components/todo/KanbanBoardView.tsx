@@ -16,10 +16,11 @@ import {
 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority } from '../../types/index.ts';
 import { playTaskCompleteSound, triggerTaskConfetti } from '../../lib/todoUtils.ts';
+import { setStatus } from '../../lib/taskActions.ts';
 
 interface KanbanBoardViewProps {
   tasks: Task[];
-  onUpdateTask: (task: Task) => void;
+  onUpdateTask: (task: Task, nextTask?: Task) => void;
   onSelectTask: (task: Task) => void;
   onOpenQuickAddWithStatus: (status: TaskStatus) => void;
   onStartFocus: (task: Task) => void;
@@ -48,17 +49,12 @@ export const KanbanBoardView: React.FC<KanbanBoardViewProps> = ({
 
   const handleMoveStatus = (task: Task, nextStatus: TaskStatus, e: React.MouseEvent) => {
     e.stopPropagation();
-    const isCompleted = nextStatus === 'done';
-    if (isCompleted && !task.completed) {
+    const { task: next, nextTask } = setStatus(task, nextStatus);
+    if (next.completed && !task.completed) {
       playTaskCompleteSound();
       triggerTaskConfetti();
     }
-    onUpdateTask({
-      ...task,
-      status: nextStatus,
-      completed: isCompleted,
-      completedAt: isCompleted ? Date.now() : undefined,
-    });
+    onUpdateTask(next, nextTask);
   };
 
   const getPriorityBorder = (p: TaskPriority) => {

@@ -64,7 +64,7 @@ export const QuickAddBar: React.FC<QuickAddBarProps> = ({
     const parsed = parsedPreview || parseNaturalLanguageTask(inputValue);
 
     const newTask: Task = {
-      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `task-${crypto.randomUUID()}`,
       title: parsed.title || inputValue.trim(),
       category: parsed.category || defaultCategory,
       priority: parsed.priority || 'medium',

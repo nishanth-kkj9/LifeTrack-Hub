@@ -3,7 +3,21 @@ import { getHabitStats } from '../src/lib/habitScoring.ts';
 import { getLocalDateOffset, getLocalDateString, getLocalMonthPrefix, parseLocalDate } from '../src/lib/dateUtils.ts';
 import { calculateHabitStreaks, generateDueDates } from '../src/lib/schedule.ts';
 import { formatCurrency } from '../src/lib/format.ts';
-import { Habit } from '../src/types/index.ts';
+import { computeDailyProgress, getTaskDueTimestamp, isOverdue } from '../src/lib/taskUtils.ts';
+import {
+  classifyMatrixTask,
+  isMatrixImportant,
+  isMatrixUrgent,
+  moveTaskToQuadrant,
+} from '../src/lib/matrixUtils.ts';
+import {
+  DEFAULT_POMODORO_SETTINGS,
+  computeRoundedFocusMinutes,
+  getNextPomodoroTransition,
+  loadPomodoroSettings,
+  sanitizePomodoroSettings,
+} from '../src/lib/pomodoroUtils.ts';
+import { Habit, Task } from '../src/types/index.ts';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -22,6 +36,18 @@ function makeHabit(overrides: Partial<Habit> = {}): Habit {
     completedDates: [],
     targetDaysPerWeek: 7,
     createdAt: new Date(2026, 0, 1).getTime(),
+    ...overrides,
+  };
+}
+
+function makeTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: 'task-unit-1',
+    title: 'Sample Task',
+    completed: false,
+    priority: 'medium',
+    category: 'study',
+    createdAt: new Date(2026, 10, 1).getTime(),
     ...overrides,
   };
 }
@@ -124,6 +150,125 @@ function runTasksHabitsDateTests() {
     emailAt.dueTime === '15:00' && emailAt.category === 'work' && emailAt.title === 'Email',
     '@3pm syntax and #work category parsed cleanly'
   );
+
+  // Table-driven tests (fixed reference: Thu Nov 12, 2026 10:00 AM unless overridden)
+  interface NlpCase {
+    input: string;
+    ref?: Date;
+    expectedTitle: string;
+    expectedDueDate?: string;
+    expectedDueTime?: string;
+    expectedPriority?: 'urgent' | 'high' | 'medium' | 'low';
+    expectedRecurring?: 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
+  }
+
+  const nlpCases: NlpCase[] = [
+    {
+      input: 'Practice SAT test',
+      expectedTitle: 'Practice SAT test',
+      expectedDueDate: '2026-11-12',
+    },
+    {
+      input: "Today's meeting",
+      expectedTitle: "Today's meeting",
+      expectedDueDate: '2026-11-12',
+    },
+    {
+      input: "Tomorrow's quiz",
+      expectedTitle: "Tomorrow's quiz",
+      expectedDueDate: '2026-11-12',
+    },
+    {
+      input: 'Read chapter p2 notes',
+      expectedTitle: 'Read chapter p2 notes',
+      expectedPriority: 'medium',
+    },
+    {
+      input: 'urgent care visit',
+      expectedTitle: 'urgent care visit',
+      expectedPriority: 'medium',
+    },
+    {
+      input: 'call mom at 3',
+      ref: new Date(2026, 10, 12, 10, 0, 0),
+      expectedTitle: 'call mom',
+      expectedDueTime: '15:00',
+    },
+    {
+      input: 'call mom at 3',
+      ref: new Date(2026, 10, 12, 16, 0, 0),
+      expectedTitle: 'call mom',
+      expectedDueTime: '03:00',
+    },
+    {
+      input: 'submit form 25 Nov',
+      expectedTitle: 'submit form',
+      expectedDueDate: '2026-11-25',
+    },
+    {
+      input: 'pay rent Nov 25',
+      expectedTitle: 'pay rent',
+      expectedDueDate: '2026-11-25',
+    },
+    {
+      input: 'plan next week',
+      expectedTitle: 'plan',
+      expectedDueDate: '2026-11-16', // Mon Nov 16 from Thu Nov 12
+    },
+    {
+      input: 'budget review next month',
+      expectedTitle: 'budget review',
+      expectedDueDate: '2026-12-12',
+    },
+    {
+      input: 'meet at 5pm on 20 nov',
+      expectedTitle: 'meet',
+      expectedDueDate: '2026-11-20',
+      expectedDueTime: '17:00',
+    },
+    {
+      input: 'Sun cream and Mon ami wed prep',
+      expectedTitle: 'Sun cream and Mon ami wed prep',
+      expectedDueDate: '2026-11-12',
+    },
+    {
+      input: '!p2 Read chapter notes',
+      expectedTitle: 'Read chapter notes',
+      expectedPriority: 'high',
+    },
+  ];
+
+  for (const tc of nlpCases) {
+    const parsed = parseNaturalLanguageTask(tc.input, tc.ref ?? refDate);
+    assert(
+      parsed.title === tc.expectedTitle,
+      `[${tc.input}] title === "${tc.expectedTitle}" (got "${parsed.title}")`
+    );
+    if (tc.expectedDueDate !== undefined) {
+      assert(
+        parsed.dueDate === tc.expectedDueDate,
+        `[${tc.input}] dueDate === "${tc.expectedDueDate}" (got "${parsed.dueDate}")`
+      );
+    }
+    if (tc.expectedDueTime !== undefined) {
+      assert(
+        parsed.dueTime === tc.expectedDueTime,
+        `[${tc.input}] dueTime === "${tc.expectedDueTime}" (got "${parsed.dueTime}")`
+      );
+    }
+    if (tc.expectedPriority !== undefined) {
+      assert(
+        parsed.priority === tc.expectedPriority,
+        `[${tc.input}] priority === "${tc.expectedPriority}" (got "${parsed.priority}")`
+      );
+    }
+    if (tc.expectedRecurring !== undefined) {
+      assert(
+        parsed.recurring === tc.expectedRecurring,
+        `[${tc.input}] recurring === "${tc.expectedRecurring}" (got "${parsed.recurring}")`
+      );
+    }
+  }
 
   // ------------------------------------------------------------------
   // 2. Canonical Habit Scoring Engine (Loop Exponential Model)
@@ -240,6 +385,207 @@ function runTasksHabitsDateTests() {
   assert(
     formattedPos.includes('₹') && formattedPos.includes('1,234.50'),
     `formatCurrency formats INR with commas and 2 decimals (got ${formattedPos})`
+  );
+
+  // ------------------------------------------------------------------
+  // 4. Overdue Task Detection & Due Timestamp Calculation
+  // ------------------------------------------------------------------
+  console.log('\n[4. Overdue Task Detection & Due Timestamp]');
+  const overdueNow = new Date(2026, 10, 12, 10, 30, 0); // 2026-11-12 10:30
+
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-11' }), overdueNow) === true,
+    'isOverdue: uncompleted task with dueDate < today returns true'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-11', completed: true }), overdueNow) === false,
+    'isOverdue: completed task with dueDate < today returns false'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-12', dueTime: '09:15' }), overdueNow) === true,
+    'isOverdue: today task with dueTime < current HH:MM (09:15 < 10:30) returns true'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-12', dueTime: '9:15' }), overdueNow) === true,
+    'isOverdue: today task with single-digit dueTime (9:15 < 10:30) returns true'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-12', dueTime: '10:30' }), overdueNow) === false,
+    'isOverdue: today task with dueTime === current HH:MM (10:30 === 10:30) returns false'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-12', dueTime: '14:00' }), overdueNow) === false,
+    'isOverdue: today task with dueTime > current HH:MM (14:00 > 10:30) returns false'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-12' }), overdueNow) === false,
+    'isOverdue: all-day today task without dueTime returns false'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-13', dueTime: '01:00' }), overdueNow) === false,
+    'isOverdue: future task (dueDate > today) with early dueTime returns false'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: undefined }), overdueNow) === false,
+    'isOverdue: task without dueDate returns false'
+  );
+  assert(
+    isOverdue(makeTask({ dueDate: '2026-11-12', dueTime: '08:00' }), overdueNow.getTime()) === true,
+    'isOverdue: accepts numeric epoch ms timestamp for `now`'
+  );
+
+  const timedDueMs = getTaskDueTimestamp(makeTask({ dueDate: '2026-11-12', dueTime: '15:45' }));
+  assert(
+    timedDueMs === new Date(2026, 10, 12, 15, 45, 0, 0).getTime(),
+    'getTaskDueTimestamp resolves local date + explicit dueTime accurately'
+  );
+  const dateOnlyDueMs = getTaskDueTimestamp(makeTask({ dueDate: '2026-11-12' }));
+  assert(
+    dateOnlyDueMs === new Date(2026, 10, 12, 9, 0, 0, 0).getTime(),
+    'getTaskDueTimestamp defaults date-only task to 09:00 local time'
+  );
+
+  // ------------------------------------------------------------------
+  // 5. Pomodoro Settings, Cycle Transitions & Focus Minute Rounding
+  // ------------------------------------------------------------------
+  console.log('\n[5. Pomodoro Settings, Cycles & Focus Rounding]');
+  const defaultPomo = loadPomodoroSettings();
+  assert(
+    defaultPomo.focus === 25 &&
+      defaultPomo.short === 5 &&
+      defaultPomo.long === 15 &&
+      defaultPomo.longEvery === 4 &&
+      defaultPomo.autoStart === false,
+    'loadPomodoroSettings falls back cleanly to default settings (25/5/15/4/false)'
+  );
+
+  const sanitizedPomo = sanitizePomodoroSettings({
+    focus: 0,
+    short: 200,
+    long: 30,
+    longEvery: -2,
+    autoStart: true,
+  });
+  assert(
+    sanitizedPomo.focus === 1 &&
+      sanitizedPomo.short === 60 &&
+      sanitizedPomo.long === 30 &&
+      sanitizedPomo.longEvery === 1 &&
+      sanitizedPomo.autoStart === true,
+    'sanitizePomodoroSettings clamps bounds and preserves valid fields'
+  );
+
+  const pomoSettings = { ...DEFAULT_POMODORO_SETTINGS, longEvery: 4, autoStart: true };
+  const t1 = getNextPomodoroTransition('focus', 0, pomoSettings);
+  const t2 = getNextPomodoroTransition('focus', 1, pomoSettings);
+  const t3 = getNextPomodoroTransition('focus', 2, pomoSettings);
+  const t4 = getNextPomodoroTransition('focus', 3, pomoSettings);
+  const tBreak = getNextPomodoroTransition('long_break', 4, pomoSettings);
+  assert(
+    t1.nextMode === 'short_break' &&
+      t1.nextFocusCount === 1 &&
+      t2.nextMode === 'short_break' &&
+      t2.nextFocusCount === 2 &&
+      t3.nextMode === 'short_break' &&
+      t3.nextFocusCount === 3 &&
+      t4.nextMode === 'long_break' &&
+      t4.nextFocusCount === 4 &&
+      t4.shouldAutoStart === true &&
+      tBreak.nextMode === 'focus' &&
+      tBreak.nextFocusCount === 4 &&
+      tBreak.shouldAutoStart === true,
+    'getNextPomodoroTransition sends every longEvery-th focus session to long_break and honors autoStart'
+  );
+
+  assert(
+    computeRoundedFocusMinutes(0, 30) === 0 &&
+      computeRoundedFocusMinutes(29, 30) === 0 &&
+      computeRoundedFocusMinutes(30, 30) === 1 &&
+      computeRoundedFocusMinutes(89, 30) === 1 &&
+      computeRoundedFocusMinutes(90, 30) === 2 &&
+      computeRoundedFocusMinutes(1500, 30) === 25,
+    'computeRoundedFocusMinutes enforces >=30s threshold and rounds minutes accurately'
+  );
+
+  // ------------------------------------------------------------------
+  // 6. Eisenhower Matrix Derivation, Quadrant Moves & Daily Progress
+  // ------------------------------------------------------------------
+  console.log('\n[6. Eisenhower Matrix Derivation & Daily Progress]');
+  const matrixNow = new Date(2026, 10, 12, 10, 30, 0); // 2026-11-12 10:30
+
+  assert(
+    isMatrixUrgent(makeTask({ dueDate: '2026-11-11' }), matrixNow) === true &&
+      isMatrixUrgent(makeTask({ dueDate: '2026-11-12', dueTime: '09:00' }), matrixNow) === true &&
+      isMatrixUrgent(makeTask({ dueDate: '2026-11-14' }), matrixNow) === true &&
+      isMatrixUrgent(makeTask({ dueDate: '2026-11-15' }), matrixNow) === false &&
+      isMatrixUrgent(makeTask({ dueDate: undefined }), matrixNow) === false,
+    'isMatrixUrgent derives true for overdue or due within 2 days, false beyond 2 days'
+  );
+
+  assert(
+    isMatrixImportant(makeTask({ priority: 'urgent', isStarred: false })) === true &&
+      isMatrixImportant(makeTask({ priority: 'high', isStarred: false })) === true &&
+      isMatrixImportant(makeTask({ priority: 'medium', isStarred: true })) === true &&
+      isMatrixImportant(makeTask({ priority: 'medium', isStarred: false })) === false &&
+      isMatrixImportant(makeTask({ priority: 'low', isStarred: false })) === false,
+    'isMatrixImportant derives true for urgent/high priority or isStarred'
+  );
+
+  const q1Sample = makeTask({ dueDate: '2026-11-12', priority: 'high' });
+  const q2Sample = makeTask({ dueDate: '2026-11-20', priority: 'medium', isStarred: true });
+  const q3Sample = makeTask({ dueDate: '2026-11-13', priority: 'medium', isStarred: false });
+  const q4Sample = makeTask({ dueDate: '2026-11-20', priority: 'low', isStarred: false });
+  assert(
+    classifyMatrixTask(q1Sample, matrixNow).quadrant === 'q1' &&
+      classifyMatrixTask(q2Sample, matrixNow).quadrant === 'q2' &&
+      classifyMatrixTask(q3Sample, matrixNow).quadrant === 'q3' &&
+      classifyMatrixTask(q4Sample, matrixNow).quadrant === 'q4',
+    'classifyMatrixTask derives all 4 quadrants accurately from urgent + important'
+  );
+
+  const movedQ1ToQ2 = moveTaskToQuadrant(q1Sample, 'q2', matrixNow);
+  assert(
+    movedQ1ToQ2.dueDate === '2026-11-15' &&
+      movedQ1ToQ2.priority === 'high' &&
+      classifyMatrixTask(movedQ1ToQ2, matrixNow).quadrant === 'q2',
+    'Moving Q1 -> Q2 updates dueDate outside 2-day window while keeping important priority'
+  );
+
+  const movedQ2ToQ3 = moveTaskToQuadrant(q2Sample, 'q3', matrixNow);
+  assert(
+    movedQ2ToQ3.dueDate === '2026-11-12' &&
+      movedQ2ToQ3.isStarred === false &&
+      classifyMatrixTask(movedQ2ToQ3, matrixNow).quadrant === 'q3',
+    'Moving Q2 (starred) -> Q3 updates dueDate to today and clears isStarred'
+  );
+
+  const movedQ4ToQ1 = moveTaskToQuadrant(q4Sample, 'q1', matrixNow);
+  assert(
+    movedQ4ToQ1.dueDate === '2026-11-12' &&
+      movedQ4ToQ1.priority === 'urgent' &&
+      classifyMatrixTask(movedQ4ToQ1, matrixNow).quadrant === 'q1',
+    'Moving Q4 -> Q1 updates dueDate to today and priority to urgent'
+  );
+
+  const dailyProg = computeDailyProgress(
+    [
+      makeTask({ id: 'dp-1', dueDate: '2026-11-12', completed: true, completedAt: matrixNow.getTime() }),
+      makeTask({ id: 'dp-2', dueDate: '2026-11-12', completed: false }),
+      makeTask({ id: 'dp-3', dueDate: '2026-11-15', completed: false }),
+    ],
+    '2026-11-12'
+  );
+  const emptyDayProg = computeDailyProgress(
+    [makeTask({ id: 'dp-4', dueDate: '2026-11-15', completed: false })],
+    '2026-11-12'
+  );
+  assert(
+    dailyProg.completedToday === 1 &&
+      dailyProg.dueToday === 2 &&
+      dailyProg.percent === 50 &&
+      emptyDayProg.dueToday === 0 &&
+      emptyDayProg.percent === 0,
+    'computeDailyProgress computes completedToday / tasksDueToday accurately'
   );
 
   console.log('\n--- All Tasks, Habits & Date Logic Tests Passed! ---');

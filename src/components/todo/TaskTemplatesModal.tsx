@@ -36,7 +36,7 @@ export const TaskTemplatesModal: React.FC<TaskTemplatesModalProps> = ({
   const handleApplyTemplate = (tpl: TaskTemplate) => {
     const todayStr = getLocalDateString();
     const newTasks: Task[] = tpl.tasks.map((t, idx) => ({
-      id: `task-tpl-${Date.now()}-${idx}`,
+      id: `task-${crypto.randomUUID()}`,
       title: t.title,
       description: t.description,
       category: t.category,
@@ -47,8 +47,8 @@ export const TaskTemplatesModal: React.FC<TaskTemplatesModalProps> = ({
       actualMinutes: 0,
       tags: t.tags,
       status: 'todo',
-      subtasks: t.subtasks.map((sub, sIdx) => ({
-        id: `st-tpl-${Date.now()}-${idx}-${sIdx}`,
+      subtasks: t.subtasks.map((sub) => ({
+        id: `st-${crypto.randomUUID()}`,
         title: sub,
         completed: false,
         estimatedMinutes: Math.round(t.estimatedMinutes / t.subtasks.length) || 20,

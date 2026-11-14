@@ -14,10 +14,11 @@ import {
 import { Task, TaskPriority } from '../../types/index.ts';
 import { playTaskCompleteSound, triggerTaskConfetti } from '../../lib/todoUtils.ts';
 import { getLocalDateString, parseLocalDate, getLocalDateOffset, formatAppTime } from '../../lib/dateUtils.ts';
+import { completeTask, reopenTask } from '../../lib/taskActions.ts';
 
 interface DailyScheduleViewProps {
   tasks: Task[];
-  onUpdateTask: (task: Task) => void;
+  onUpdateTask: (task: Task, nextTask?: Task) => void;
   onSelectTask: (task: Task) => void;
   onStartFocus: (task: Task) => void;
 }
@@ -50,17 +51,14 @@ export const DailyScheduleView: React.FC<DailyScheduleViewProps> = ({
 
   const handleToggleComplete = (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
-    const isCompleted = !task.completed;
-    if (isCompleted) {
+    if (task.completed) {
+      onUpdateTask(reopenTask(task));
+    } else {
+      const { completed, nextTask } = completeTask(task);
       playTaskCompleteSound();
       triggerTaskConfetti();
+      onUpdateTask(completed, nextTask);
     }
-    onUpdateTask({
-      ...task,
-      completed: isCompleted,
-      completedAt: isCompleted ? Date.now() : undefined,
-      status: isCompleted ? 'done' : 'todo',
-    });
   };
 
   // Day's tasks

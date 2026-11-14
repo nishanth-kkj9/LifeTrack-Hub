@@ -14,35 +14,70 @@ import {
   TaskPriority,
   TaskCategory,
   TaskRecurrence,
-  Subtask,
+  TaskStatus,
 } from '../../types/index.ts';
-import { getLocalDateOffset, getLocalDateString } from '../../lib/dateUtils.ts';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { setStatus as applyTaskStatus } from '../../lib/taskActions.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
+
+export interface AddTaskDefaults {
+  title?: string;
+  priority?: TaskPriority;
+  category?: TaskCategory;
+  dueDate?: string;
+  dueTime?: string;
+  status?: TaskStatus;
+  isStarred?: boolean;
+}
 
 interface AddTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddTask: (task: Task) => void;
+  initialDefaults?: AddTaskDefaults | null;
 }
 
 export const AddTaskModal: React.FC<AddTaskModalProps> = ({
   isOpen,
   onClose,
   onAddTask,
+  initialDefaults,
 }) => {
   const { containerRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TaskCategory>('study');
   const [priority, setPriority] = useState<TaskPriority>('medium');
+  const [status, setStatus] = useState<TaskStatus>('todo');
+  const [isStarred, setIsStarred] = useState(false);
   const [dueDate, setDueDate] = useState(() => getLocalDateString());
   const [dueTime, setDueTime] = useState('18:00');
   const [estimatedMinutes, setEstimatedMinutes] = useState(30);
   const [recurring, setRecurring] = useState<TaskRecurrence>('none');
+  const [recurAfterCompletion, setRecurAfterCompletion] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [subtaskInput, setSubtaskInput] = useState('');
   const [subtasks, setSubtasks] = useState<Array<{ id: string; title: string; estimatedMinutes?: number }>>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setTitle(initialDefaults?.title ?? '');
+    setDescription('');
+    setCategory(initialDefaults?.category ?? 'study');
+    setPriority(initialDefaults?.priority ?? 'medium');
+    setStatus(initialDefaults?.status ?? 'todo');
+    setIsStarred(Boolean(initialDefaults?.isStarred));
+    setDueDate(initialDefaults?.dueDate ?? getLocalDateString());
+    setDueTime(initialDefaults?.dueTime ?? '18:00');
+    setEstimatedMinutes(30);
+    setRecurring('none');
+    setRecurAfterCompletion(false);
+    setTagInput('');
+    setTags([]);
+    setSubtaskInput('');
+    setSubtasks([]);
+  }, [isOpen, initialDefaults]);
 
   if (!isOpen) return null;
 
@@ -50,7 +85,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
     if (!subtaskInput.trim()) return;
     setSubtasks((prev) => [
       ...prev,
-      { id: `st-${Date.now()}-${prev.length}`, title: subtaskInput.trim(), estimatedMinutes: 20 },
+      { id: `st-${crypto.randomUUID()}`, title: subtaskInput.trim(), estimatedMinutes: 20 },
     ]);
     setSubtaskInput('');
   };
@@ -75,8 +110,8 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
 
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
+    const baseTask: Task = {
+      id: `task-${crypto.randomUUID()}`,
       title: title.trim(),
       description: description.trim() || undefined,
       category,
@@ -84,11 +119,13 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
       dueDate,
       dueTime: dueTime || undefined,
       completed: false,
+      isStarred: isStarred || undefined,
       estimatedMinutes: Number(estimatedMinutes) || 30,
       actualMinutes: 0,
       tags: tags.length > 0 ? tags : undefined,
       recurring: recurring !== 'none' ? recurring : undefined,
-      status: 'todo',
+      recurAfterCompletion: recurring !== 'none' && recurAfterCompletion ? true : undefined,
+      status,
       subtasks: subtasks.map((s) => ({
         id: s.id,
         title: s.title,
@@ -98,11 +135,17 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
       createdAt: Date.now(),
     };
 
+    const newTask = status === 'done' ? applyTaskStatus(baseTask, 'done').task : baseTask;
+
     onAddTask(newTask);
     onClose();
     // reset form
     setTitle('');
     setDescription('');
+    setStatus('todo');
+    setIsStarred(false);
+    setRecurring('none');
+    setRecurAfterCompletion(false);
     setTags([]);
     setSubtasks([]);
   };
@@ -170,8 +213,8 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
             />
           </div>
 
-          {/* Priority and Category */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Priority, Category & Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label htmlFor="task-priority-select" className="block text-xs font-bold text-slate-700 mb-1">
                 Priority
@@ -206,6 +249,23 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
                 <option value="health">Health</option>
                 <option value="project">Project</option>
                 <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="task-status-select" className="block text-xs font-bold text-slate-700 mb-1">
+                Status
+              </label>
+              <select
+                id="task-status-select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="todo">To Do</option>
+                <option value="in_progress">In Progress</option>
+                <option value="in_review">In Review</option>
+                <option value="done">Completed</option>
               </select>
             </div>
           </div>
@@ -272,6 +332,18 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({
               </select>
             </div>
           </div>
+
+          {recurring !== 'none' && (
+            <label className="flex items-center gap-2 text-xs text-slate-700 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={recurAfterCompletion}
+                onChange={(e) => setRecurAfterCompletion(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="font-medium">Repeat from completion date (instead of due date)</span>
+            </label>
+          )}
 
           {/* Tags */}
           <div>
