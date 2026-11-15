@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { Task, ExamReminder, Habit, QuickNote } from '../../types/index.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
+import { formatAppTime } from '../../lib/dateUtils.ts';
+import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 
 export interface CommandPaletteProps {
   isOpen: boolean;
@@ -51,6 +53,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const timeFormat = useTimeFormat();
   const inputRef = useRef<HTMLInputElement>(null);
   const { containerRef } = useModalFocus<HTMLDivElement>({
     isOpen,
@@ -240,7 +243,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     .map((t) => ({
       id: `task-${t.id}`,
       title: t.title,
-      subtitle: `${t.category} • ${t.dueDate}${t.dueTime ? ` ${t.dueTime}` : ''}`,
+      subtitle: `${t.category} • ${t.dueDate}${t.dueTime ? ` ${formatAppTime(t.dueTime, timeFormat)}` : ''}`,
       category: 'Tasks',
       icon: CheckSquare,
       action: () => {

@@ -739,8 +739,10 @@ export default function App() {
               tasks={activeTasks}
               exams={activeExams}
               onToggleTask={handleToggleTask}
+              onUpdateTask={handleUpdateTask}
               onSelectTask={(task) => setSelectedDetailTask(task)}
-              onOpenAddTaskModal={() => setIsAddTaskOpen(true)}
+              onOpenAddTaskModal={handleOpenAddTaskModal}
+              onNavigateTab={setActiveTab}
             />
           </React.Suspense>
         )}

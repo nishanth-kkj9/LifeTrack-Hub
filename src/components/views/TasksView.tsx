@@ -50,6 +50,7 @@ import {
 import { getLocalDateString, getLocalDateOffset, formatAppTime } from '../../lib/dateUtils.ts';
 import { completeTask, reopenTask, setStatus } from '../../lib/taskActions.ts';
 import { computeDailyProgress, isOverdue } from '../../lib/taskUtils.ts';
+import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 import { AddTaskDefaults } from '../modals/AddTaskModal.tsx';
 
 interface TasksViewProps {
@@ -81,6 +82,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 }) => {
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const timeFormat = useTimeFormat();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [groupBy, setGroupBy] = useState<GroupByKey>('date');
@@ -834,7 +836,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 <span className="flex items-center gap-1 font-medium text-slate-600">
                                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                                   <span>{task.dueDate}</span>
-                                  {task.dueTime && <span>@{task.dueTime}</span>}
+                                  {task.dueTime && <span>@{formatAppTime(task.dueTime, timeFormat)}</span>}
                                 </span>
 
                                 {task.estimatedMinutes && (

@@ -37,18 +37,18 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header id="main-header" className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between gap-2 h-16 min-w-0">
           {/* Logo and Tagline */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div
               id="brand-badge"
-              className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs ring-1 ring-slate-800/10 transition-transform hover:scale-105"
+              className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs ring-1 ring-slate-800/10 transition-transform hover:scale-105"
             >
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 stroke-[2.2]" />
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 stroke-[2.2]" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-lg text-slate-900 tracking-tight leading-none">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight leading-none truncate">
                   LifeTrack Hub
                 </span>
               </div>
@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Actions & Auth */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Quick Search */}
             {onOpenCommandPalette && (
               <button
@@ -167,9 +167,9 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 id="user-login-button"
                 onClick={onLogin}
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer shadow-xs hover:shadow-sm"
+                className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer shadow-xs hover:shadow-sm whitespace-nowrap"
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -187,7 +187,9 @@ export const Header: React.FC<HeaderProps> = ({
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>Sign in with Google</span>
+                <span>
+                  Sign in<span className="hidden sm:inline"> with Google</span>
+                </span>
               </button>
             )}
           </div>

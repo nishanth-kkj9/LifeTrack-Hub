@@ -26,8 +26,11 @@ import { Button } from '../ui/Button.tsx';
 import {
   getTimeFormatPreference,
   setTimeFormatPreference,
+  getWeekStartPreference,
+  setWeekStartPreference,
   getLocalDateString,
   type TimeFormat,
+  type WeekStart,
 } from '../../lib/dateUtils.ts';
 import {
   getTaskRemindersPreference,
@@ -63,6 +66,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
   const [timeFormat, setTimeFormatState] = useState<TimeFormat>(() => getTimeFormatPreference());
+  const [weekStart, setWeekStartState] = useState<WeekStart>(() => getWeekStartPreference());
   const [taskReminders, setTaskReminders] = useState<boolean>(() => getTaskRemindersPreference());
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +75,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTimeFormatState(fmt);
     setTimeFormatPreference(fmt);
     setSyncStatusMsg(`Time format updated to ${fmt === '12h' ? '12-Hour' : '24-Hour'}`);
+    setTimeout(() => setSyncStatusMsg(null), 2500);
+  };
+
+  const handleWeekStartChange = (ws: WeekStart) => {
+    setWeekStartState(ws);
+    setWeekStartPreference(ws);
+    setSyncStatusMsg(`Calendar week start updated to ${ws === 'mon' ? 'Monday' : 'Sunday'}`);
     setTimeout(() => setSyncStatusMsg(null), 2500);
   };
 
@@ -380,6 +391,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }`}
               >
                 24-Hour
+              </button>
+            </div>
+          </div>
+
+          <div className="py-3 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-bold text-slate-800">Week Start</p>
+              <p className="text-slate-500">Choose whether calendar grids begin on Sunday or Monday</p>
+            </div>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg shrink-0">
+              <button
+                type="button"
+                id="pref-week-start-sun"
+                aria-pressed={weekStart === 'sun'}
+                onClick={() => handleWeekStartChange('sun')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
+                  weekStart === 'sun' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Sunday
+              </button>
+              <button
+                type="button"
+                id="pref-week-start-mon"
+                aria-pressed={weekStart === 'mon'}
+                onClick={() => handleWeekStartChange('mon')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${
+                  weekStart === 'mon' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Monday
               </button>
             </div>
           </div>

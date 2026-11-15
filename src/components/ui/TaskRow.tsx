@@ -2,6 +2,8 @@ import React from 'react';
 import { Check, Clock, AlertCircle, Star } from 'lucide-react';
 import { Task } from '../../types/index.ts';
 import { isOverdue } from '../../lib/taskUtils.ts';
+import { formatAppTime } from '../../lib/dateUtils.ts';
+import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 
 export interface TaskRowProps {
   task: Task;
@@ -23,6 +25,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   const isUrgent = task.priority === 'urgent';
   const isHigh = task.priority === 'high';
   const overdue = isOverdue(task, now);
+  const timeFormat = useTimeFormat();
 
   return (
     <div
@@ -65,7 +68,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
             {task.dueTime && (
               <span className="flex items-center gap-1 font-mono text-[11px] tabular-nums">
                 <Clock className="w-3 h-3 text-slate-400" />
-                <span>{task.dueTime}</span>
+                <span>{formatAppTime(task.dueTime, timeFormat)}</span>
               </span>
             )}
             {task.estimatedMinutes && (

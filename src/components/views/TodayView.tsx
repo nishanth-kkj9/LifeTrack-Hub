@@ -22,9 +22,10 @@ import { TimelineItem } from '../ui/TimelineItem.tsx';
 import { Button } from '../ui/Button.tsx';
 import { EmptyState } from '../ui/EmptyState.tsx';
 import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
-import { getLocalDateString, parseLocalDate } from '../../lib/dateUtils.ts';
+import { getLocalDateString, parseLocalDate, formatAppTime } from '../../lib/dateUtils.ts';
 import { getHabitStats } from '../../lib/habitScoring.ts';
 import { isOverdue } from '../../lib/taskUtils.ts';
+import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 
 interface TodayViewProps {
   tasks: Task[];
@@ -59,6 +60,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
   onSelectTask,
 }) => {
   const [taskFilter, setTaskFilter] = useState<'remaining' | 'all' | 'completed'>('remaining');
+  const timeFormat = useTimeFormat();
 
   // Time-boundary dynamic clock (refreshes every 30s without heavy 1s global timer)
   const [now, setNow] = useState(() => new Date());
@@ -543,7 +545,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
                       {nextExam.subject}
                     </h3>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      Exam Date: {nextExam.examDate} {nextExam.examTime ? `at ${nextExam.examTime}` : ''}
+                      Exam Date: {nextExam.examDate} {nextExam.examTime ? `at ${formatAppTime(nextExam.examTime, timeFormat)}` : ''}
                     </p>
                   </div>
                 </div>

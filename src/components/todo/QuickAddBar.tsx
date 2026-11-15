@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { Task, TaskPriority, TaskCategory } from '../../types/index.ts';
 import { parseNaturalLanguageTask, ParsedTaskInput } from '../../lib/todoUtils.ts';
+import { formatAppTime } from '../../lib/dateUtils.ts';
+import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 
 interface QuickAddBarProps {
   onAddTask: (task: Task) => void;
@@ -28,6 +30,7 @@ export const QuickAddBar: React.FC<QuickAddBarProps> = ({
   const [isFocused, setIsFocused] = useState(false);
   const [parsedPreview, setParsedPreview] = useState<ParsedTaskInput | null>(null);
   const [flashCreated, setFlashCreated] = useState(false);
+  const timeFormat = useTimeFormat();
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Parse natural language as user types
@@ -178,7 +181,7 @@ export const QuickAddBar: React.FC<QuickAddBarProps> = ({
               <span className="inline-flex items-center gap-1 text-[11px] text-slate-600">
                 <Calendar className="w-3 h-3 text-slate-400" />
                 <span>{parsedPreview.dueDate}</span>
-                {parsedPreview.dueTime && <span>@{parsedPreview.dueTime}</span>}
+                {parsedPreview.dueTime && <span>@{formatAppTime(parsedPreview.dueTime, timeFormat)}</span>}
               </span>
 
               {/* Priority */}

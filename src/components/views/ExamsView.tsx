@@ -14,6 +14,8 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { ExamReminder, ExamTopic, ExamStatus } from '../../types/index.ts';
+import { formatAppTime } from '../../lib/dateUtils.ts';
+import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 
 interface ExamsViewProps {
   exams: ExamReminder[];
@@ -30,6 +32,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
   onOpenAddExamModal,
 }) => {
   const [now, setNow] = useState(Date.now());
+  const timeFormat = useTimeFormat();
   const [expandedExamIds, setExpandedExamIds] = useState<Record<string, boolean>>({});
   const [newTopicInputs, setNewTopicInputs] = useState<Record<string, string>>({});
 
@@ -237,7 +240,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          {exam.examTime}
+                          {formatAppTime(exam.examTime, timeFormat)}
                         </span>
                         {exam.roomOrVenue && (
                           <span className="flex items-center gap-1">

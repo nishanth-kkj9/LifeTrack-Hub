@@ -1,4 +1,6 @@
 import React from 'react';
+import { formatAppTime } from '../../lib/dateUtils.ts';
+import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 
 export interface TimelineItemProps {
   time: string;
@@ -19,6 +21,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   isCurrent = false,
   onClick,
 }) => {
+  const timeFormat = useTimeFormat();
   const dotColor = {
     task: 'bg-emerald-600',
     exam: 'bg-indigo-600',
@@ -33,8 +36,8 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         onClick ? 'cursor-pointer hover:bg-slate-50' : ''
       } ${isPast ? 'opacity-50' : ''}`}
     >
-      <span className="text-xs font-mono font-medium text-slate-500 w-12 shrink-0 tabular-nums pt-0.5">
-        {time}
+      <span className="text-xs font-mono font-medium text-slate-500 min-w-[3.5rem] shrink-0 tabular-nums pt-0.5">
+        {formatAppTime(time, timeFormat)}
       </span>
       <div className="flex items-center gap-2 pt-1 shrink-0">
         <span

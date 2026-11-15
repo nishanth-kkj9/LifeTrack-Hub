@@ -68,6 +68,36 @@ export function setTimeFormatPreference(format: TimeFormat): void {
   }
 }
 
+export type WeekStart = 'sun' | 'mon';
+
+const WEEK_START_KEY = 'lifetrack_week_start';
+
+/**
+ * Get the user's persisted calendar week start preference ('sun' | 'mon', default 'sun').
+ */
+export function getWeekStartPreference(): WeekStart {
+  if (typeof window === 'undefined') return 'sun';
+  try {
+    const saved = localStorage.getItem(WEEK_START_KEY);
+    return saved === 'mon' ? 'mon' : 'sun';
+  } catch {
+    return 'sun';
+  }
+}
+
+/**
+ * Set and persist the user's calendar week start preference and notify subscribers.
+ */
+export function setWeekStartPreference(weekStart: WeekStart): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(WEEK_START_KEY, weekStart);
+    window.dispatchEvent(new CustomEvent('lifetrack-week-start-changed', { detail: weekStart }));
+  } catch {
+    // Ignore storage errors in restricted contexts
+  }
+}
+
 /**
  * Formats a 24-hour time string ("HH:mm") into 12-hour or 24-hour display format.
  */

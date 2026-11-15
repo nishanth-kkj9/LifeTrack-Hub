@@ -98,6 +98,17 @@ export function computeNextDueDate(
 }
 
 /**
+ * Alias for `computeNextDueDate` that computes the next `YYYY-MM-DD` occurrence
+ * after `todayStr` for a recurring task.
+ */
+export function nextOccurrence(
+  task: Pick<Task, 'dueDate' | 'recurring' | 'recurAfterCompletion'>,
+  todayStr: string = getLocalDateString()
+): string | null {
+  return computeNextDueDate(task, todayStr);
+}
+
+/**
  * Marks a task complete:
  * - sets `completed: true` and `status: 'done'`
  * - stamps `completedAt` with `now`
