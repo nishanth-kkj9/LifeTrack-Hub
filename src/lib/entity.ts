@@ -30,6 +30,19 @@ export function tombstone<T extends SyncEntity>(item: T, now: number = Date.now(
 }
 
 /**
+ * Restores a softly deleted transaction by clearing its deletedAt tombstone
+ * and bumping updatedAt so the restoration supersedes the tombstone during sync merges.
+ */
+export function restoreTransaction<T extends SyncEntity>(tx: T, now: number = Date.now()): T {
+  const { deletedAt: _ignored, ...rest } = tx;
+  const minNextTs = Math.max(tx.updatedAt ?? 0, tx.deletedAt ?? 0) + 1;
+  return {
+    ...(rest as T),
+    updatedAt: Math.max(now, minNextTs),
+  };
+}
+
+/**
  * Returns true if the entity has not been softly deleted.
  */
 export function isActive<T extends { deletedAt?: number }>(item: T | null | undefined): item is T {

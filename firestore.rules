@@ -20,9 +20,10 @@ service cloud.firestore {
     }
 
     function isValidUserDoc(data) {
-      return data.keys().hasOnly(['tasks', 'transactions', 'budget', 'exams', 'habits', 'notes', 'dailyMetrics', 'vtuProfile', 'masterPlan', 'lastUpdated', 'version'])
+      return data.keys().hasOnly(['tasks', 'transactions', 'recurringTransactions', 'budget', 'exams', 'habits', 'notes', 'dailyMetrics', 'vtuProfile', 'masterPlan', 'lastUpdated', 'version'])
         && (!('tasks' in data) || (data.tasks is list && data.tasks.size() <= 5000))
         && (!('transactions' in data) || (data.transactions is list && data.transactions.size() <= 5000))
+        && (!('recurringTransactions' in data) || (data.recurringTransactions is list && data.recurringTransactions.size() <= 5000))
         && (!('exams' in data) || (data.exams is list && data.exams.size() <= 5000))
         && (!('habits' in data) || (data.habits is list && data.habits.size() <= 5000))
         && (!('notes' in data) || (data.notes is list && data.notes.size() <= 5000))

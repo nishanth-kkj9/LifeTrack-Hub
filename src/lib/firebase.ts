@@ -21,6 +21,7 @@ import {
   UserAppData,
   Task,
   Transaction,
+  RecurringTransaction,
   ExamReminder,
   Habit,
   QuickNote,
@@ -410,11 +411,12 @@ export function hasUserCreatedContent(data: UserAppData | null | undefined): boo
   if (!data) return false;
   const hasTask = Array.isArray(data.tasks) && data.tasks.some((t) => t && t.id && !t.deletedAt && !SEED_IDS.has(t.id));
   const hasTx = Array.isArray(data.transactions) && data.transactions.some((tx) => tx && tx.id && !tx.deletedAt && !SEED_IDS.has(tx.id));
+  const hasRecurring = Array.isArray(data.recurringTransactions) && data.recurringTransactions.some((r) => r && r.id && !r.deletedAt && !SEED_IDS.has(r.id));
   const hasExam = Array.isArray(data.exams) && data.exams.some((e) => e && e.id && !e.deletedAt && !SEED_IDS.has(e.id));
   const hasHabit = Array.isArray(data.habits) && data.habits.some((h) => h && h.id && !h.deletedAt && !SEED_IDS.has(h.id));
   const hasNote = Array.isArray(data.notes) && data.notes.some((n) => n && n.id && !n.deletedAt && !SEED_IDS.has(n.id));
   const hasMetric = Array.isArray(data.dailyMetrics) && data.dailyMetrics.some((m) => m && !m.deletedAt);
-  return hasTask || hasTx || hasExam || hasHabit || hasNote || hasMetric;
+  return hasTask || hasTx || hasRecurring || hasExam || hasHabit || hasNote || hasMetric;
 }
 
 /**
@@ -460,10 +462,21 @@ export function mergeArraysById<T extends { id: string; updatedAt?: number; dele
  */
 export function mergeUserAppData(cloudData: UserAppData, localData: UserAppData, now: number = Date.now()): UserAppData {
   const isLocalNewer = (localData.lastUpdated || 0) > (cloudData.lastUpdated || 0);
+  const hasRecurring =
+    cloudData.recurringTransactions !== undefined || localData.recurringTransactions !== undefined;
   return {
     ...cloudData,
     tasks: mergeArraysById(cloudData.tasks, localData.tasks, now),
     transactions: mergeArraysById(cloudData.transactions, localData.transactions, now),
+    ...(hasRecurring
+      ? {
+          recurringTransactions: mergeArraysById(
+            cloudData.recurringTransactions || [],
+            localData.recurringTransactions || [],
+            now
+          ),
+        }
+      : {}),
     exams: mergeArraysById(cloudData.exams, localData.exams, now),
     habits: mergeArraysById(cloudData.habits, localData.habits, now),
     notes: mergeArraysById(cloudData.notes, localData.notes, now),
@@ -522,13 +535,42 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     })
   );
 
+  const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
   const transactions = cleanArray<Transaction>(
     src.transactions,
-    (t) => isRecord(t) && typeof t.id === 'string' && typeof t.amount === 'number',
-    (t) => ({
-      ...t,
-      updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : 0,
-    })
+    (t) =>
+      isRecord(t) &&
+      typeof t.id === 'string' &&
+      t.id.trim().length > 0 &&
+      typeof t.title === 'string' &&
+      typeof t.amount === 'number' &&
+      Number.isFinite(t.amount) &&
+      t.amount > 0 &&
+      (t.type === 'income' || t.type === 'expense') &&
+      typeof t.date === 'string' &&
+      YMD_RE.test(t.date),
+    (t) => {
+      const category =
+        typeof t.category === 'string' && t.category.trim().length > 0
+          ? t.category
+          : ((repaired = true), 'Other');
+      const paymentMethod =
+        typeof t.paymentMethod === 'string' && t.paymentMethod.trim().length > 0
+          ? t.paymentMethod
+          : ((repaired = true), 'Other');
+      const createdAt =
+        typeof t.createdAt === 'number' && Number.isFinite(t.createdAt)
+          ? t.createdAt
+          : ((repaired = true), Date.now());
+      return {
+        ...t,
+        category,
+        paymentMethod,
+        createdAt,
+        updatedAt: typeof t.updatedAt === 'number' && Number.isFinite(t.updatedAt) ? t.updatedAt : 0,
+      };
+    }
   );
 
   const exams = cleanArray<ExamReminder>(
@@ -560,25 +602,154 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     })
   );
 
-  const dailyMetrics = cleanArray<DailyLifeMetric>(
-    src.dailyMetrics,
-    (m) => isRecord(m) && typeof m.date === 'string',
-    (m) => ({
-      ...m,
-      id: typeof m.id === 'string' && m.id ? m.id : m.date,
-      updatedAt: typeof m.updatedAt === 'number' ? m.updatedAt : 0,
-    })
-  );
+  const dailyMetrics =
+    src.dailyMetrics === undefined
+      ? []
+      : cleanArray<DailyLifeMetric>(
+          src.dailyMetrics,
+          (m) => isRecord(m) && typeof m.date === 'string',
+          (m) => ({
+            ...m,
+            id: typeof m.id === 'string' && m.id ? m.id : m.date,
+            updatedAt: typeof m.updatedAt === 'number' ? m.updatedAt : 0,
+          })
+        );
 
-  const budget: BudgetSettings =
-    isRecord(src.budget) && typeof src.budget.monthlyBudget === 'number'
-      ? (src.budget as BudgetSettings)
-      : (repaired = true, { monthlyBudget: 0, savingsGoal: 0 });
+  const isValidBudgetNum = (val: unknown): val is number =>
+    typeof val === 'number' && Number.isFinite(val) && val >= 0;
+
+  let budget: BudgetSettings;
+  if (isRecord(src.budget) && !Array.isArray(src.budget)) {
+    const monthlyBudget = isValidBudgetNum(src.budget.monthlyBudget)
+      ? src.budget.monthlyBudget
+      : ((repaired = true), 0);
+    const savingsGoal = isValidBudgetNum(src.budget.savingsGoal)
+      ? src.budget.savingsGoal
+      : ((repaired = true), 0);
+    budget = { monthlyBudget, savingsGoal };
+
+    if (src.budget.categoryBudgets !== undefined) {
+      if (isRecord(src.budget.categoryBudgets) && !Array.isArray(src.budget.categoryBudgets)) {
+        const cleanCategoryBudgets: Record<string, number> = {};
+        for (const [cat, limit] of Object.entries(src.budget.categoryBudgets)) {
+          if (isValidBudgetNum(limit)) {
+            cleanCategoryBudgets[cat] = limit;
+          } else {
+            repaired = true;
+          }
+        }
+        budget.categoryBudgets = cleanCategoryBudgets;
+      } else {
+        repaired = true;
+      }
+    }
+
+    if (src.budget.rollover !== undefined) {
+      if (typeof src.budget.rollover === 'boolean') {
+        budget.rollover = src.budget.rollover;
+      } else {
+        repaired = true;
+      }
+    }
+  } else {
+    repaired = true;
+    budget = { monthlyBudget: 0, savingsGoal: 0 };
+  }
+
+  let recurringTransactions: RecurringTransaction[] | undefined;
+  if (src.recurringTransactions !== undefined) {
+    recurringTransactions = cleanArray<RecurringTransaction>(
+      src.recurringTransactions,
+      (r) =>
+        isRecord(r) &&
+        typeof r.id === 'string' &&
+        r.id.trim().length > 0 &&
+        typeof r.title === 'string' &&
+        typeof r.amount === 'number' &&
+        Number.isFinite(r.amount) &&
+        r.amount > 0 &&
+        (r.type === 'income' || r.type === 'expense') &&
+        (r.frequency === 'weekly' || r.frequency === 'monthly') &&
+        typeof r.startDate === 'string' &&
+        YMD_RE.test(r.startDate),
+      (r) => {
+        const category =
+          typeof r.category === 'string' && r.category.trim().length > 0
+            ? r.category
+            : ((repaired = true), 'Other');
+        const paymentMethod =
+          typeof r.paymentMethod === 'string' && r.paymentMethod.trim().length > 0
+            ? r.paymentMethod
+            : ((repaired = true), 'Other');
+
+        const cleaned: RecurringTransaction = {
+          id: r.id,
+          title: r.title,
+          amount: r.amount,
+          type: r.type,
+          category,
+          paymentMethod,
+          frequency: r.frequency,
+          startDate: r.startDate,
+          updatedAt:
+            typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : 0,
+        };
+
+        if (r.dayOfMonth !== undefined) {
+          if (
+            typeof r.dayOfMonth === 'number' &&
+            Number.isInteger(r.dayOfMonth) &&
+            r.dayOfMonth >= 1 &&
+            r.dayOfMonth <= 31
+          ) {
+            cleaned.dayOfMonth = r.dayOfMonth;
+          } else {
+            repaired = true;
+          }
+        }
+
+        if (r.endDate !== undefined) {
+          if (typeof r.endDate === 'string' && YMD_RE.test(r.endDate)) {
+            cleaned.endDate = r.endDate;
+          } else {
+            repaired = true;
+          }
+        }
+
+        if (r.lastGeneratedOn !== undefined) {
+          if (typeof r.lastGeneratedOn === 'string' && YMD_RE.test(r.lastGeneratedOn)) {
+            cleaned.lastGeneratedOn = r.lastGeneratedOn;
+          } else {
+            repaired = true;
+          }
+        }
+
+        if (r.createdAt !== undefined) {
+          if (typeof r.createdAt === 'number' && Number.isFinite(r.createdAt)) {
+            cleaned.createdAt = r.createdAt;
+          } else {
+            repaired = true;
+          }
+        }
+
+        if (r.deletedAt !== undefined) {
+          if (typeof r.deletedAt === 'number' && Number.isFinite(r.deletedAt) && r.deletedAt > 0) {
+            cleaned.deletedAt = r.deletedAt;
+          } else {
+            repaired = true;
+          }
+        }
+
+        return cleaned;
+      }
+    );
+  }
 
   const data: UserAppData = {
     ...src,
     tasks,
     transactions,
+    ...(recurringTransactions !== undefined ? { recurringTransactions } : {}),
     exams,
     habits,
     notes,
@@ -692,6 +863,7 @@ function hasMergedChanges(cloudData: UserAppData, merged: UserAppData): boolean 
     JSON.stringify({
       tasks: d.tasks,
       transactions: d.transactions,
+      recurringTransactions: d.recurringTransactions || [],
       exams: d.exams,
       habits: d.habits,
       notes: d.notes,

@@ -1,52 +1,112 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, DollarSign } from 'lucide-react';
-import { Transaction, TransactionType, FinanceCategory } from '../../types/index.ts';
+import {
+  Transaction,
+  TransactionType,
+  FinanceCategory,
+  FinancePaymentMethod,
+} from '../../types/index.ts';
 import { getLocalDateString } from '../../lib/dateUtils.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
+import {
+  EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
+  PAYMENT_METHODS,
+  getLastPaymentMethod,
+  saveLastPaymentMethod,
+} from '../../lib/financeCategories.ts';
 
 interface AddTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddTransaction: (transaction: Transaction) => void;
+  onUpdateTransaction?: (transaction: Transaction) => void;
+  initialTransaction?: Transaction | null;
 }
-
-const CATEGORIES: FinanceCategory[] = [
-  'Food & Dining',
-  'Groceries',
-  'Housing & Rent',
-  'Tuition & Education',
-  'Books & Supplies',
-  'Transportation',
-  'Bills & Utilities',
-  'Shopping',
-  'Health & Wellness',
-  'Salary & Wages',
-  'Freelance & Gigs',
-  'Allowance & Grants',
-  'Investments & Savings',
-  'Other',
-];
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   isOpen,
   onClose,
   onAddTransaction,
+  onUpdateTransaction,
+  initialTransaction = null,
 }) => {
   const { containerRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
+  const isEditing = Boolean(initialTransaction);
   const [type, setType] = useState<TransactionType>('expense');
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<FinanceCategory>('Food & Dining');
+  const [category, setCategory] = useState<FinanceCategory>(EXPENSE_CATEGORIES[0]);
   const [date, setDate] = useState(() => getLocalDateString());
-  const [paymentMethod, setPaymentMethod] = useState<'Card' | 'Cash' | 'Bank Transfer' | 'Online Wallet' | 'Other'>('Card');
+  const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>(() =>
+    getLastPaymentMethod()
+  );
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialTransaction) {
+      setType(initialTransaction.type);
+      setTitle(initialTransaction.title);
+      setAmount(String(initialTransaction.amount));
+      setCategory(initialTransaction.category);
+      setDate(initialTransaction.date);
+      setPaymentMethod(initialTransaction.paymentMethod);
+      setNotes(initialTransaction.notes || '');
+    } else {
+      setType('expense');
+      setTitle('');
+      setAmount('');
+      setCategory(EXPENSE_CATEGORIES[0]);
+      setDate(getLocalDateString());
+      setPaymentMethod(getLastPaymentMethod());
+      setNotes('');
+    }
+  }, [isOpen, initialTransaction]);
+
   if (!isOpen) return null;
+
+  const baseCategories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const visibleCategories =
+    initialTransaction &&
+    initialTransaction.type === type &&
+    !baseCategories.includes(initialTransaction.category)
+      ? [initialTransaction.category, ...baseCategories]
+      : baseCategories;
+
+  const handleTypeChange = (nextType: TransactionType) => {
+    if (nextType === type) return;
+    setType(nextType);
+    const nextList = nextType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+    setCategory(nextList[0]);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedAmount = parseFloat(amount);
     if (!title.trim() || isNaN(parsedAmount) || parsedAmount <= 0) return;
+
+    saveLastPaymentMethod(paymentMethod);
+
+    if (initialTransaction) {
+      const updatedTx: Transaction = {
+        ...initialTransaction,
+        title: title.trim(),
+        amount: parsedAmount,
+        type,
+        category,
+        date,
+        paymentMethod,
+        notes: notes.trim() || undefined,
+      };
+      if (onUpdateTransaction) {
+        onUpdateTransaction(updatedTx);
+      } else {
+        onAddTransaction(updatedTx);
+      }
+      onClose();
+      return;
+    }
 
     const tx: Transaction = {
       id: `tx-${crypto.randomUUID()}`,
@@ -85,7 +145,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-          <h2 id="add-tx-modal-title" className="text-base font-bold text-slate-900">Log Transaction</h2>
+          <h2 id="add-tx-modal-title" className="text-base font-bold text-slate-900">
+            {isEditing ? 'Edit Transaction' : 'Log Transaction'}
+          </h2>
           <button
             id="close-add-tx-modal-btn"
             onClick={onClose}
@@ -100,12 +162,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <button
             type="button"
             id="tx-toggle-expense-btn"
-            onClick={() => {
-              setType('expense');
-              if (category === 'Salary & Wages' || category === 'Freelance & Gigs' || category === 'Allowance & Grants') {
-                setCategory('Food & Dining');
-              }
-            }}
+            onClick={() => handleTypeChange('expense')}
             className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               type === 'expense'
                 ? 'bg-rose-600 text-white shadow-xs'
@@ -117,12 +174,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <button
             type="button"
             id="tx-toggle-income-btn"
-            onClick={() => {
-              setType('income');
-              if (category === 'Food & Dining' || category === 'Shopping' || category === 'Housing & Rent') {
-                setCategory('Salary & Wages');
-              }
-            }}
+            onClick={() => handleTypeChange('income')}
             className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
               type === 'income'
                 ? 'bg-emerald-600 text-white shadow-xs'
@@ -193,7 +245,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 onChange={(e) => setCategory(e.target.value as FinanceCategory)}
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                {CATEGORIES.map((c) => (
+                {visibleCategories.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -208,14 +260,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               <select
                 id="tx-method-select"
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as any)}
+                onChange={(e) => setPaymentMethod(e.target.value as FinancePaymentMethod)}
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="Card">Card</option>
-                <option value="Cash">Cash</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Online Wallet">Online Wallet</option>
-                <option value="Other">Other</option>
+                {PAYMENT_METHODS.map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -247,7 +299,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               id="submit-create-tx-btn"
               className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl cursor-pointer shadow-xs"
             >
-              Save Transaction
+              {isEditing ? 'Save Changes' : 'Save Transaction'}
             </button>
           </div>
         </form>

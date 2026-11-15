@@ -16,7 +16,8 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { Task, Habit, Transaction, BudgetSettings, ExamReminder, DailyLifeMetric, UserAppData } from '../../types/index.ts';
-import { getLocalDateString, getLocalMonthPrefix } from '../../lib/dateUtils.ts';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { isActive } from '../../lib/entity.ts';
 import { analyzeLifeMetricCorrelations } from '../../lib/correlationEngine.ts';
 import {
   exportAppDataJson,
@@ -32,6 +33,12 @@ import { LifeDashboard } from '../../features/dashboard/LifeDashboard.tsx';
 import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
 import { getHabitStats } from '../../lib/habitScoring.ts';
 import { formatCurrency } from '../../lib/format.ts';
+import {
+  monthKey,
+  summarizeMonth,
+  summarizeAllTime,
+  budgetStatus,
+} from '../../lib/financeUtils.ts';
 
 interface InsightsViewProps {
   tasks: Task[];
@@ -131,27 +138,26 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
     return { avgStreak, bestStreak, checkedInToday };
   }, [habits, todayStr]);
 
-  // 3. Financial Review
+  // 3. Financial Review (shared financeUtils rules)
   const financeStats = useMemo(() => {
-    const totalIncome = transactions
-      .filter((tx) => tx.type === 'income')
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const totalExpense = transactions
-      .filter((tx) => tx.type === 'expense')
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const savings = totalIncome - totalExpense;
-    const savingsRate = totalIncome > 0 ? Math.round((savings / totalIncome) * 100) : 0;
-    const currentMonthPrefix = getLocalMonthPrefix();
-    const monthlyExpense = transactions
-      .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const budgetUsage =
-      budget.monthlyBudget > 0
-        ? Math.round((monthlyExpense / budget.monthlyBudget) * 100)
+    const currentMonth = monthKey(todayStr);
+    const allTimeSummary = summarizeAllTime(transactions, todayStr);
+    const currentMonthSummary = summarizeMonth(transactions, currentMonth, todayStr);
+    const budgetHealth = budgetStatus(currentMonthSummary.expense, budget.monthlyBudget ?? 0);
+    const savingsRate =
+      allTimeSummary.income > 0
+        ? Math.round((allTimeSummary.net / allTimeSummary.income) * 100)
         : 0;
 
-    return { totalIncome, totalExpense, savings, savingsRate, budgetUsage };
-  }, [transactions, budget]);
+    return {
+      totalIncome: allTimeSummary.income,
+      totalExpense: allTimeSummary.expense,
+      savings: allTimeSummary.net,
+      savingsRate,
+      budgetUsage: budgetHealth.percent,
+      budgetOver: budgetHealth.over,
+    };
+  }, [transactions, budget, todayStr]);
 
   // 4. Academic Readiness
   const academicStats = useMemo(() => {
@@ -417,7 +423,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           >
             <div>
               <p className="text-xs font-bold text-slate-900">Finances CSV</p>
-              <p className="text-[10px] text-slate-500">{transactions.length} transactions</p>
+              <p className="text-[10px] text-slate-500">{transactions.filter(isActive).length} transactions</p>
             </div>
             <FileSpreadsheet className="w-4 h-4 text-blue-600" />
           </button>

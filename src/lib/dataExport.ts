@@ -61,6 +61,9 @@ export function exportAppDataJson(appData: UserAppData) {
     ...appData,
     tasks: (appData.tasks || []).filter(isActive),
     transactions: (appData.transactions || []).filter(isActive),
+    ...(appData.recurringTransactions !== undefined
+      ? { recurringTransactions: appData.recurringTransactions.filter(isActive) }
+      : {}),
     exams: (appData.exams || []).filter(isActive),
     habits: (appData.habits || []).filter(isActive),
     notes: (appData.notes || []).filter(isActive),

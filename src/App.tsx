@@ -19,6 +19,7 @@ import {
   UserAppData,
   Task,
   Transaction,
+  RecurringTransaction,
   ExamReminder,
   Habit,
   QuickNote,
@@ -57,17 +58,30 @@ import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
 import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
 import { useHabitManager } from './hooks/useHabitManager.ts';
 import { getLocalDateString } from './lib/dateUtils.ts';
-import { touch, tombstone, isActive } from './lib/entity.ts';
+import { touch, tombstone, restoreTransaction, isActive } from './lib/entity.ts';
 import { completeTask, reopenTask } from './lib/taskActions.ts';
 import { getTaskRemindersPreference, scheduleTaskReminders } from './lib/taskUtils.ts';
+import { generateMissingRecurringTransactions } from './lib/recurringTransactions.ts';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('today');
 
-  // Core Application Data State
-  const [appData, setAppData] = useState<UserAppData>(() => loadLocalData());
+  // Core Application Data State (materialize due recurring transactions on startup)
+  const [appData, setAppData] = useState<UserAppData>(() => {
+    const initial = loadLocalData();
+    const res = generateMissingRecurringTransactions(initial);
+    if (!res.changed) return initial;
+    const updated: UserAppData = {
+      ...initial,
+      transactions: res.transactions,
+      recurringTransactions: res.recurringTransactions,
+      lastUpdated: Date.now(),
+    };
+    saveLocalData(updated);
+    return updated;
+  });
 
   // Modal & Drawer Open States
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -85,12 +99,14 @@ export default function App() {
   // Status message / toast for auth / sync
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [taskToast, setTaskToast] = useState<string | null>(null);
+  const [txUndoToast, setTxUndoToast] = useState<{ txId: string } | null>(null);
   const [taskRemindersEnabled, setTaskRemindersEnabled] = useState<boolean>(() =>
     getTaskRemindersPreference()
   );
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const txUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
   const docUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // 1. Listen for Auth State Changes
@@ -169,6 +185,10 @@ export default function App() {
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
         toastTimerRef.current = null;
+      }
+      if (txUndoTimerRef.current) {
+        clearTimeout(txUndoTimerRef.current);
+        txUndoTimerRef.current = null;
       }
       unsubscribe();
     };
@@ -256,6 +276,24 @@ export default function App() {
     },
     [currentUser]
   );
+
+  // Generate any missing past/current recurring transactions on app start, when Finances opens, or when schedules change
+  useEffect(() => {
+    const todayStr = getLocalDateString();
+    const now = Date.now();
+    const res = generateMissingRecurringTransactions(appData, todayStr, now);
+    if (!res.changed) return;
+
+    commitAppData((prev) => {
+      const innerRes = generateMissingRecurringTransactions(prev, todayStr, now);
+      if (!innerRes.changed) return prev;
+      return {
+        ...prev,
+        transactions: innerRes.transactions,
+        recurringTransactions: innerRes.recurringTransactions,
+      };
+    });
+  }, [activeTab, appData.recurringTransactions, commitAppData]);
 
   // Force sync immediately
   const handleForceSync = useCallback(() => {
@@ -472,17 +510,74 @@ export default function App() {
     }));
   };
 
+  const handleUpdateTransaction = (updatedTx: Transaction) => {
+    const stamped = touch({ ...updatedTx });
+    commitAppData((prev) => {
+      const exists = prev.transactions.some((t) => t.id === stamped.id);
+      return {
+        ...prev,
+        transactions: exists
+          ? prev.transactions.map((t) => (t.id === stamped.id ? stamped : t))
+          : [stamped, ...prev.transactions],
+      };
+    });
+  };
+
+  const handleRestoreTransaction = (txId: string) => {
+    commitAppData((prev) => ({
+      ...prev,
+      transactions: prev.transactions.map((t) => (t.id === txId ? restoreTransaction(t) : t)),
+    }));
+  };
+
   const handleDeleteTransaction = (txId: string) => {
     commitAppData((prev) => ({
       ...prev,
       transactions: prev.transactions.map((t) => (t.id === txId ? tombstone(t) : t)),
     }));
+    if (txUndoTimerRef.current) {
+      clearTimeout(txUndoTimerRef.current);
+    }
+    setTxUndoToast({ txId });
+    txUndoTimerRef.current = setTimeout(() => {
+      setTxUndoToast(null);
+      txUndoTimerRef.current = null;
+    }, 6000);
   };
 
   const handleUpdateBudget = (newBudget: BudgetSettings) => {
     commitAppData((prev) => ({
       ...prev,
       budget: newBudget,
+    }));
+  };
+
+  const handleAddRecurringTransaction = (schedule: RecurringTransaction) => {
+    const stamped = touch(schedule);
+    commitAppData((prev) => {
+      const nextSchedules = [stamped, ...(prev.recurringTransactions || [])];
+      const genRes = generateMissingRecurringTransactions(
+        {
+          transactions: prev.transactions,
+          recurringTransactions: nextSchedules,
+        },
+        getLocalDateString(),
+        Date.now()
+      );
+      return {
+        ...prev,
+        transactions: genRes.transactions,
+        recurringTransactions: genRes.recurringTransactions,
+      };
+    });
+  };
+
+  const handleDeleteRecurringTransaction = (scheduleId: string) => {
+    commitAppData((prev) => ({
+      ...prev,
+      recurringTransactions: (prev.recurringTransactions || []).map((r) =>
+        r.id === scheduleId ? tombstone(r) : r
+      ),
     }));
   };
 
@@ -547,6 +642,11 @@ export default function App() {
       ...prev,
       tasks: data.tasks && data.tasks.length ? data.tasks : prev.tasks,
       transactions: data.transactions && data.transactions.length ? data.transactions : prev.transactions,
+      ...(data.recurringTransactions !== undefined
+        ? { recurringTransactions: data.recurringTransactions }
+        : prev.recurringTransactions !== undefined
+        ? { recurringTransactions: prev.recurringTransactions }
+        : {}),
       budget: data.budget || prev.budget,
       exams: data.exams && data.exams.length ? data.exams : prev.exams,
       habits: data.habits && data.habits.length ? data.habits : prev.habits,
@@ -623,6 +723,7 @@ export default function App() {
   // Active non-tombstoned views of collections for UI & badges
   const activeTasks = appData.tasks.filter(isActive);
   const activeTransactions = appData.transactions.filter(isActive);
+  const activeRecurringTransactions = (appData.recurringTransactions || []).filter(isActive);
   const activeExams = appData.exams.filter(isActive);
   const activeHabits = appData.habits.filter(isActive);
   const activeNotes = appData.notes.filter(isActive);
@@ -767,11 +868,17 @@ export default function App() {
           <React.Suspense fallback={<ViewSkeleton />}>
             <FinancesView
               transactions={activeTransactions}
+              recurringTransactions={activeRecurringTransactions}
               budget={appData.budget}
               onAddTransaction={handleAddTransaction}
+              onUpdateTransaction={handleUpdateTransaction}
               onDeleteTransaction={handleDeleteTransaction}
+              onRestoreTransaction={handleRestoreTransaction}
               onUpdateBudget={handleUpdateBudget}
+              onAddRecurringTransaction={handleAddRecurringTransaction}
+              onDeleteRecurringTransaction={handleDeleteRecurringTransaction}
               onOpenAddTransactionModal={() => setIsAddTxOpen(true)}
+              handlesDeleteToast
             />
           </React.Suspense>
         )}
@@ -923,22 +1030,68 @@ export default function App() {
         onTryFirebasePopup={handleTryFirebasePopup}
       />
 
-      {taskToast && (
-        <div
-          id="task-toast-banner"
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-5 right-5 z-[60] bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-slate-700 text-xs font-bold flex items-center gap-3"
-        >
-          <span>{taskToast}</span>
-          <button
-            type="button"
-            onClick={() => setTaskToast(null)}
-            className="text-slate-400 hover:text-white cursor-pointer"
-            aria-label="Dismiss notification"
-          >
-            ✕
-          </button>
+      {(taskToast || txUndoToast) && (
+        <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 items-end">
+          {txUndoToast && (
+            <div
+              id="tx-undo-toast-banner"
+              data-testid="tx-undo-toast"
+              role="status"
+              aria-live="polite"
+              className="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-slate-700 text-xs font-bold flex items-center gap-3"
+            >
+              <span>Transaction deleted - </span>
+              <button
+                type="button"
+                id="tx-undo-toast-btn"
+                onClick={() => {
+                  const id = txUndoToast.txId;
+                  if (txUndoTimerRef.current) {
+                    clearTimeout(txUndoTimerRef.current);
+                    txUndoTimerRef.current = null;
+                  }
+                  setTxUndoToast(null);
+                  handleRestoreTransaction(id);
+                }}
+                className="text-emerald-400 hover:text-emerald-300 underline cursor-pointer font-extrabold"
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (txUndoTimerRef.current) {
+                    clearTimeout(txUndoTimerRef.current);
+                    txUndoTimerRef.current = null;
+                  }
+                  setTxUndoToast(null);
+                }}
+                className="text-slate-400 hover:text-white cursor-pointer"
+                aria-label="Dismiss notification"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {taskToast && (
+            <div
+              id="task-toast-banner"
+              role="status"
+              aria-live="polite"
+              className="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-slate-700 text-xs font-bold flex items-center gap-3"
+            >
+              <span>{taskToast}</span>
+              <button
+                type="button"
+                onClick={() => setTaskToast(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+                aria-label="Dismiss notification"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

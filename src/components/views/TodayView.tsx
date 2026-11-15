@@ -25,6 +25,8 @@ import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
 import { getLocalDateString, parseLocalDate, formatAppTime } from '../../lib/dateUtils.ts';
 import { getHabitStats } from '../../lib/habitScoring.ts';
 import { isOverdue } from '../../lib/taskUtils.ts';
+import { formatCurrency } from '../../lib/format.ts';
+import { monthKey, summarizeMonth, budgetStatus } from '../../lib/financeUtils.ts';
 import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
 
 interface TodayViewProps {
@@ -49,6 +51,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
   tasks,
   habits,
   exams,
+  transactions = [],
+  budget = { monthlyBudget: 0, savingsGoal: 0 },
   dailyMetrics = [],
   onToggleTask,
   onToggleHabitToday,
@@ -237,6 +241,24 @@ export const TodayView: React.FC<TodayViewProps> = ({
     ).length;
   }, [habits, todayStr]);
 
+  // Monthly Cash metrics using shared financeUtils
+  const currentMonth = monthKey(todayStr);
+  const monthlyCashSummary = useMemo(
+    () => summarizeMonth(transactions, currentMonth, todayStr),
+    [transactions, currentMonth, todayStr]
+  );
+  const monthlyBudgetCap = budget?.monthlyBudget ?? 0;
+  const cashBudgetStatus = useMemo(
+    () => budgetStatus(monthlyCashSummary.expense, monthlyBudgetCap),
+    [monthlyCashSummary.expense, monthlyBudgetCap]
+  );
+  const cashStateLabel =
+    cashBudgetStatus.level === 'over'
+      ? 'Over'
+      : cashBudgetStatus.level === 'warn' || cashBudgetStatus.level === 'danger'
+      ? 'Watch'
+      : 'On track';
+
   // Overall day completion rate
   const totalItemsToday = allRemainingToday.length + completedTodayTasks.length + habits.length;
   const completedItemsToday = completedTodayTasks.length + habitsDoneTodayCount;
@@ -363,6 +385,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
         </div>
 
         <div
+          data-testid={nextExam ? 'today-next-exam-card' : 'today-monthly-cash-card'}
           onClick={() => onNavigateTab(nextExam ? 'academics' : 'finances')}
           className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer group"
         >
@@ -370,26 +393,59 @@ export const TodayView: React.FC<TodayViewProps> = ({
             <span className="text-xs font-medium text-slate-500">
               {nextExam ? 'Next Exam' : 'Monthly Cash'}
             </span>
-            <span className={`p-1.5 rounded-lg ${nextExam ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'} group-hover:scale-105 transition-transform`}>
+            <span
+              className={`p-1.5 rounded-lg ${
+                nextExam
+                  ? 'bg-indigo-50 text-indigo-600'
+                  : monthlyBudgetCap <= 0
+                  ? 'bg-slate-100 text-slate-600'
+                  : cashBudgetStatus.level === 'over'
+                  ? 'bg-rose-50 text-rose-600'
+                  : cashBudgetStatus.level === 'warn' || cashBudgetStatus.level === 'danger'
+                  ? 'bg-amber-50 text-amber-600'
+                  : 'bg-emerald-50 text-emerald-600'
+              } group-hover:scale-105 transition-transform`}
+            >
               {nextExam ? <GraduationCap className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
             </span>
           </div>
-          <div className="mt-2.5 flex items-baseline gap-1.5">
+          <div className="mt-2.5 flex items-baseline justify-between gap-1.5 min-w-0">
             {nextExam ? (
-              <>
+              <div className="flex items-baseline gap-1.5 min-w-0">
                 <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                   {examDaysLeft === 0 ? 'Today' : `${examDaysLeft}d`}
                 </span>
                 <span className="text-xs text-slate-500 truncate max-w-[90px]">
                   {nextExam.subject}
                 </span>
-              </>
+              </div>
+            ) : monthlyBudgetCap <= 0 ? (
+              <span className="text-base font-bold text-slate-800 truncate">
+                Set a budget
+              </span>
             ) : (
               <>
-                <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
-                  Healthy
+                <span
+                  className={`text-lg sm:text-xl font-bold font-mono tabular-nums truncate ${
+                    cashBudgetStatus.over ? 'text-rose-600' : 'text-slate-900'
+                  }`}
+                >
+                  {cashBudgetStatus.over
+                    ? `Over by ${formatCurrency(Math.abs(cashBudgetStatus.remaining))}`
+                    : `${formatCurrency(Math.max(0, cashBudgetStatus.remaining))} left`}
                 </span>
-                <span className="text-xs text-slate-500">on budget</span>
+                <span
+                  data-testid="today-monthly-cash-state"
+                  className={`text-xs font-semibold shrink-0 ${
+                    cashBudgetStatus.level === 'over'
+                      ? 'text-rose-600'
+                      : cashBudgetStatus.level === 'warn' || cashBudgetStatus.level === 'danger'
+                      ? 'text-amber-600'
+                      : 'text-emerald-600'
+                  }`}
+                >
+                  {cashStateLabel}
+                </span>
               </>
             )}
           </div>

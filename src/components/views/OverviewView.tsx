@@ -17,9 +17,15 @@ import {
 import { Task, Transaction, ExamReminder, Habit, BudgetSettings, VtuProfile } from '../../types/index.ts';
 import { calculateCumulativeCgpa, calculateAttendanceReport } from '../../lib/vtuData.ts';
 import { ActiveTab } from '../Navigation.tsx';
-import { getLocalDateString, getLocalMonthPrefix } from '../../lib/dateUtils.ts';
+import { getLocalDateString } from '../../lib/dateUtils.ts';
 import { formatCurrency } from '../../lib/format.ts';
 import { getHabitStats } from '../../lib/habitScoring.ts';
+import {
+  monthKey,
+  summarizeMonth,
+  summarizeAllTime,
+  budgetStatus,
+} from '../../lib/financeUtils.ts';
 
 interface OverviewViewProps {
   tasks: Task[];
@@ -68,19 +74,16 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     (t) => t.priority === 'urgent' || t.dueDate === todayStr || t.dueDate < todayStr
   );
 
-  // Compute Financial stats
-  const totalIncome = transactions
-    .filter((tx) => tx.type === 'income')
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const totalExpense = transactions
-    .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const netBalance = totalIncome - totalExpense;
-  const currentMonthPrefix = getLocalMonthPrefix();
-  const currentMonthExpense = transactions
-    .filter((tx) => tx.type === 'expense' && tx.date.startsWith(currentMonthPrefix))
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const budgetPercentage = budget.monthlyBudget > 0 ? Math.min(Math.round((currentMonthExpense / budget.monthlyBudget) * 100), 100) : 0;
+  // Compute Financial stats (shared financeUtils rules)
+  const currentMonth = monthKey(todayStr);
+  const allTimeSummary = summarizeAllTime(transactions, todayStr);
+  const currentMonthSummary = summarizeMonth(transactions, currentMonth, todayStr);
+  const monthlyBudgetCap = budget.monthlyBudget ?? 0;
+  const totalIncome = allTimeSummary.income;
+  const netBalance = allTimeSummary.net;
+  const currentMonthExpense = currentMonthSummary.expense;
+  const budgetHealth = budgetStatus(currentMonthExpense, monthlyBudgetCap);
+  const budgetBarWidth = Math.min(budgetHealth.percent, 100);
 
   // Upcoming Exams sorted by date
   const sortedExams = [...exams]
@@ -288,14 +291,24 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
-                  budgetPercentage > 90 ? 'bg-rose-500' : budgetPercentage > 75 ? 'bg-amber-500' : 'bg-emerald-500'
+                  budgetHealth.level === 'over' || budgetHealth.level === 'danger'
+                    ? 'bg-rose-500'
+                    : budgetHealth.level === 'warn'
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500'
                 }`}
-                style={{ width: `${budgetPercentage}%` }}
+                style={{ width: `${budgetBarWidth}%` }}
               />
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1.5">
-              <span>Budget: {formatCurrency(currentMonthExpense)} / {formatCurrency(budget.monthlyBudget)}</span>
-              <span className="font-semibold text-slate-700">{budgetPercentage}%</span>
+              <span>Budget: {formatCurrency(currentMonthExpense)} / {formatCurrency(monthlyBudgetCap)}</span>
+              <span
+                className={`font-semibold ${
+                  budgetHealth.over ? 'text-rose-600' : 'text-slate-700'
+                }`}
+              >
+                {budgetHealth.percent}%
+              </span>
             </div>
           </div>
         </div>

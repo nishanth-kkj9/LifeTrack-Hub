@@ -36,6 +36,14 @@ export interface Task {
 
 export type TransactionType = 'income' | 'expense';
 
+export type FinancePaymentMethod =
+  | 'UPI'
+  | 'Card'
+  | 'Cash'
+  | 'Bank Transfer'
+  | 'Online Wallet'
+  | 'Other';
+
 export type FinanceCategory =
   | 'Tuition & Education'
   | 'Books & Supplies'
@@ -43,9 +51,14 @@ export type FinanceCategory =
   | 'Food & Dining'
   | 'Groceries'
   | 'Transportation'
+  | 'Travel'
   | 'Bills & Utilities'
+  | 'Mobile & Internet'
+  | 'Subscriptions'
+  | 'Entertainment'
   | 'Shopping'
   | 'Health & Wellness'
+  | 'Fees & Fines'
   | 'Salary & Wages'
   | 'Freelance & Gigs'
   | 'Allowance & Grants'
@@ -59,9 +72,28 @@ export interface Transaction {
   type: TransactionType;
   category: FinanceCategory;
   date: string; // YYYY-MM-DD
-  paymentMethod: 'Card' | 'Cash' | 'Bank Transfer' | 'Online Wallet' | 'Other';
+  paymentMethod: FinancePaymentMethod;
   notes?: string;
   createdAt: number;
+  updatedAt?: number;
+  deletedAt?: number;
+}
+
+export type RecurringTransactionFrequency = 'weekly' | 'monthly';
+
+export interface RecurringTransaction {
+  id: string;
+  title: string;
+  amount: number;
+  type: TransactionType;
+  category: FinanceCategory;
+  paymentMethod: FinancePaymentMethod;
+  frequency: RecurringTransactionFrequency;
+  dayOfMonth?: number; // 1-31
+  startDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  lastGeneratedOn?: string; // YYYY-MM-DD
+  createdAt?: number;
   updatedAt?: number;
   deletedAt?: number;
 }
@@ -69,6 +101,8 @@ export interface Transaction {
 export interface BudgetSettings {
   monthlyBudget: number;
   savingsGoal: number;
+  categoryBudgets?: Record<string, number>;
+  rollover?: boolean;
 }
 
 export type ExamStatus = 'not_started' | 'studying' | 'reviewing' | 'ready';
@@ -337,6 +371,7 @@ export interface VtuProfile {
 export interface UserAppData {
   tasks: Task[];
   transactions: Transaction[];
+  recurringTransactions?: RecurringTransaction[];
   budget: BudgetSettings;
   exams: ExamReminder[];
   habits: Habit[];

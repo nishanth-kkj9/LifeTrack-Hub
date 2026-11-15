@@ -7,6 +7,7 @@
       "properties": {
         "tasks": { "type": "array", "description": "User tasks list" },
         "transactions": { "type": "array", "description": "Transactions list" },
+        "recurringTransactions": { "type": "array", "description": "Recurring transaction schedules" },
         "budget": { "type": "object", "description": "Budget settings" },
         "exams": { "type": "array", "description": "Exams list" },
         "habits": { "type": "array", "description": "Enhanced habits with scoring" },

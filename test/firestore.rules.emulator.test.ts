@@ -29,6 +29,7 @@ function simulateValidateUserDoc(data: Record<string, any>): { valid: boolean; r
   const allowedKeys = new Set([
     'tasks',
     'transactions',
+    'recurringTransactions',
     'budget',
     'exams',
     'habits',
@@ -46,7 +47,7 @@ function simulateValidateUserDoc(data: Record<string, any>): { valid: boolean; r
     }
   }
 
-  const listKeys = ['tasks', 'transactions', 'exams', 'habits', 'notes', 'dailyMetrics'];
+  const listKeys = ['tasks', 'transactions', 'recurringTransactions', 'exams', 'habits', 'notes', 'dailyMetrics'];
   for (const lk of listKeys) {
     if (lk in data) {
       if (!Array.isArray(data[lk])) {
@@ -157,6 +158,7 @@ async function runRulesVerification() {
   const validDoc = {
     tasks: [],
     transactions: [],
+    recurringTransactions: [],
     budget: { monthlyBudget: 500, savingsGoal: 100 },
     exams: [],
     habits: [],
@@ -165,6 +167,10 @@ async function runRulesVerification() {
     lastUpdated: Date.now(),
   };
   assert('Valid user document accepted', simulateValidateUserDoc(validDoc).valid === true);
+  assert(
+    'firestore.rules whitelists recurringTransactions on /users/{userId}',
+    rulesContent.includes("'recurringTransactions'")
+  );
 
   const unknownKeyDoc = {
     ...validDoc,

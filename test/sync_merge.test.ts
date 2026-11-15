@@ -4,8 +4,8 @@ import {
   sanitizeUserAppData,
   EMPTY_USER_DATA,
 } from '../src/lib/firebase.ts';
-import { touch, tombstone, isActive, TOMBSTONE_TTL_MS } from '../src/lib/entity.ts';
-import { Task, UserAppData } from '../src/types/index.ts';
+import { touch, tombstone, restoreTransaction, isActive, TOMBSTONE_TTL_MS } from '../src/lib/entity.ts';
+import { RecurringTransaction, Task, Transaction, UserAppData } from '../src/types/index.ts';
 
 function makeTask(id: string, title: string, updatedAt?: number, deletedAt?: number): Task {
   return {
@@ -100,6 +100,65 @@ function runSyncMergeTests() {
   const localDoc: UserAppData = { ...EMPTY_USER_DATA, lastUpdated: T0, version: 2 };
   const mergedDoc = mergeUserAppData(cloudDoc, localDoc, T2 + 999999);
   assert('mergeUserAppData preserves max source lastUpdated without forcing Date.now()', mergedDoc.lastUpdated === T1);
+
+  // Scenario (g): restoreTransaction clears deletedAt, bumps updatedAt, and restores active state across merge
+  const txBase: Transaction = touch(
+    {
+      id: 'tx-restore-1',
+      title: 'Hostel Mess',
+      amount: 1200,
+      type: 'expense',
+      category: 'Food & Dining',
+      date: '2026-11-15',
+      paymentMethod: 'Card',
+      createdAt: T0,
+    },
+    T0
+  );
+  const txDeleted = tombstone(txBase, T1);
+  assert('Tombstoned transaction is inactive and has deletedAt', !isActive(txDeleted) && txDeleted.deletedAt === T1);
+
+  const txRestored = restoreTransaction(txDeleted, T2);
+  assert(
+    'restoreTransaction clears deletedAt, keeps fields, bumps updatedAt, and makes tx active',
+    isActive(txRestored) &&
+      !('deletedAt' in txRestored) &&
+      txRestored.updatedAt === T2 &&
+      txRestored.amount === 1200
+  );
+
+  const mergedRestored = mergeArraysById([txDeleted], [txRestored], T2);
+  assert(
+    'Restored transaction wins merge over older cloud tombstone and remains active',
+    mergedRestored.length === 1 && isActive(mergedRestored[0]) && !mergedRestored[0]?.deletedAt
+  );
+
+  // Scenario (h): recurringTransactions sync merge preserves tombstones
+  const recItem: RecurringTransaction = touch(
+    {
+      id: 'rec-sync-1',
+      title: 'Cloud Storage',
+      amount: 199,
+      type: 'expense',
+      category: 'Subscriptions',
+      paymentMethod: 'Card',
+      frequency: 'monthly',
+      dayOfMonth: 5,
+      startDate: '2026-10-05',
+    },
+    T0
+  );
+  const recDeleted = tombstone(recItem, T1);
+  const recMerged = mergeUserAppData(
+    { ...EMPTY_USER_DATA, recurringTransactions: [recItem], lastUpdated: T0 },
+    { ...EMPTY_USER_DATA, recurringTransactions: [recDeleted], lastUpdated: T1 },
+    T2
+  );
+  assert(
+    'mergeUserAppData propagates recurringTransactions tombstones and keeps deleted item inactive',
+    recMerged.recurringTransactions?.length === 1 &&
+      recMerged.recurringTransactions.filter(isActive).length === 0
+  );
 
   console.log(`--- All ${passed}/${total} Sync Merge & Tombstone Tests Passed ---`);
 }
