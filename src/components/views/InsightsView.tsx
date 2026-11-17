@@ -293,6 +293,9 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           averageMood={weeklySummary.averageMood}
           averageEnergy={weeklySummary.averageEnergy}
           averageSleep={weeklySummary.averageSleep}
+          moodCount={weeklySummary.moodCount}
+          energyCount={weeklySummary.energyCount}
+          sleepCount={weeklySummary.sleepCount}
           insights={lifeInsights}
         />
 

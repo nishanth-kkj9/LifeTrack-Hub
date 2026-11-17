@@ -24,6 +24,7 @@ import {
   RecurringTransaction,
   ExamReminder,
   Habit,
+  VacationPeriod,
   QuickNote,
   BudgetSettings,
   DailyLifeMetric,
@@ -583,14 +584,178 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
     })
   );
 
+  const isValidYmd = (val: unknown): val is string => {
+    if (typeof val !== 'string' || !YMD_RE.test(val)) return false;
+    const [y, m, d] = val.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  };
+
   const habits = cleanArray<Habit>(
     src.habits,
-    (h) => isRecord(h) && typeof h.id === 'string',
-    (h) => ({
-      ...h,
-      completedDates: Array.isArray(h.completedDates) ? h.completedDates : (repaired = true, []),
-      updatedAt: typeof h.updatedAt === 'number' ? h.updatedAt : 0,
-    })
+    (h) => isRecord(h) && !Array.isArray(h) && typeof h.id === 'string' && h.id.trim().length > 0,
+    (h) => {
+      const name =
+        typeof h.name === 'string' && h.name.trim().length > 0
+          ? h.name
+          : ((repaired = true), 'Habit');
+
+      const targetDaysPerWeek =
+        typeof h.targetDaysPerWeek === 'number' &&
+        Number.isInteger(h.targetDaysPerWeek) &&
+        h.targetDaysPerWeek >= 1 &&
+        h.targetDaysPerWeek <= 7
+          ? h.targetDaysPerWeek
+          : ((repaired = true), 7);
+
+      let completedDates: string[];
+      if (!Array.isArray(h.completedDates)) {
+        repaired = true;
+        completedDates = [];
+      } else {
+        completedDates = h.completedDates.filter((d: unknown): d is string => isValidYmd(d));
+        if (completedDates.length !== h.completedDates.length) {
+          repaired = true;
+        }
+      }
+
+      const createdAt =
+        typeof h.createdAt === 'number' && Number.isFinite(h.createdAt)
+          ? h.createdAt
+          : ((repaired = true), Date.now());
+
+      const streak =
+        typeof h.streak === 'number' && Number.isFinite(h.streak) && h.streak >= 0
+          ? h.streak
+          : ((repaired = true), 0);
+
+      const bestStreak =
+        typeof h.bestStreak === 'number' && Number.isFinite(h.bestStreak) && h.bestStreak >= 0
+          ? h.bestStreak
+          : ((repaired = true), 0);
+
+      const cleaned: Habit = {
+        ...h,
+        name,
+        targetDaysPerWeek,
+        completedDates,
+        streak,
+        bestStreak,
+        createdAt,
+        updatedAt:
+          typeof h.updatedAt === 'number' && Number.isFinite(h.updatedAt) ? h.updatedAt : 0,
+      };
+
+      if (h.category !== undefined) {
+        if (typeof h.category === 'string') {
+          cleaned.category = h.category;
+        } else {
+          delete cleaned.category;
+          repaired = true;
+        }
+      }
+
+      if (h.customDays !== undefined) {
+        if (!Array.isArray(h.customDays)) {
+          cleaned.customDays = [];
+          repaired = true;
+        } else {
+          const validDays = h.customDays.filter(
+            (d: unknown): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6
+          );
+          if (validDays.length !== h.customDays.length) {
+            repaired = true;
+          }
+          cleaned.customDays = validDays;
+        }
+      }
+
+      if (h.vacationPeriods !== undefined) {
+        if (!Array.isArray(h.vacationPeriods)) {
+          cleaned.vacationPeriods = [];
+          repaired = true;
+        } else {
+          const validVacations: VacationPeriod[] = [];
+          for (const v of h.vacationPeriods) {
+            if (
+              isRecord(v) &&
+              !Array.isArray(v) &&
+              typeof v.id === 'string' &&
+              v.id.trim().length > 0 &&
+              isValidYmd(v.startDate) &&
+              isValidYmd(v.endDate) &&
+              v.startDate <= v.endDate
+            ) {
+              const vp: VacationPeriod = {
+                id: v.id,
+                startDate: v.startDate,
+                endDate: v.endDate,
+              };
+              if (v.reason !== undefined) {
+                if (typeof v.reason === 'string') {
+                  vp.reason = v.reason;
+                } else {
+                  repaired = true;
+                }
+              }
+              validVacations.push(vp);
+            } else {
+              repaired = true;
+            }
+          }
+          cleaned.vacationPeriods = validVacations;
+        }
+      }
+
+      if (h.scheduleType !== undefined) {
+        if (
+          h.scheduleType === 'daily' ||
+          h.scheduleType === 'weekly_target' ||
+          h.scheduleType === 'custom_days'
+        ) {
+          cleaned.scheduleType = h.scheduleType;
+        } else {
+          delete cleaned.scheduleType;
+          repaired = true;
+        }
+      }
+
+      if (h.notes !== undefined) {
+        if (!isRecord(h.notes) || Array.isArray(h.notes)) {
+          delete cleaned.notes;
+          repaired = true;
+        } else {
+          const cleanNotes: Record<string, string> = {};
+          for (const [dateKey, noteVal] of Object.entries(h.notes)) {
+            if (isValidYmd(dateKey) && typeof noteVal === 'string') {
+              if (noteVal.length > 280) {
+                cleanNotes[dateKey] = noteVal.slice(0, 280);
+                repaired = true;
+              } else {
+                cleanNotes[dateKey] = noteVal;
+              }
+            } else {
+              repaired = true;
+            }
+          }
+          cleaned.notes = cleanNotes;
+        }
+      }
+
+      if (h.reminderTime !== undefined) {
+        if (
+          typeof h.reminderTime === 'string' &&
+          /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(h.reminderTime)
+        ) {
+          cleaned.reminderTime = h.reminderTime;
+        } else {
+          delete cleaned.reminderTime;
+          repaired = true;
+        }
+      }
+
+      return cleaned;
+    }
   );
 
   const notes = cleanArray<QuickNote>(

@@ -61,6 +61,7 @@ import { getLocalDateString } from './lib/dateUtils.ts';
 import { touch, tombstone, restoreTransaction, isActive } from './lib/entity.ts';
 import { completeTask, reopenTask } from './lib/taskActions.ts';
 import { getTaskRemindersPreference, scheduleTaskReminders } from './lib/taskUtils.ts';
+import { scheduleHabitReminders } from './lib/habitReminders.ts';
 import { generateMissingRecurringTransactions } from './lib/recurringTransactions.ts';
 
 export default function App() {
@@ -100,6 +101,7 @@ export default function App() {
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [taskToast, setTaskToast] = useState<string | null>(null);
   const [txUndoToast, setTxUndoToast] = useState<{ txId: string } | null>(null);
+  const [habitUndoToast, setHabitUndoToast] = useState<{ habitId: string } | null>(null);
   const [taskRemindersEnabled, setTaskRemindersEnabled] = useState<boolean>(() =>
     getTaskRemindersPreference()
   );
@@ -107,6 +109,7 @@ export default function App() {
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const txUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const habitUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
   const docUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // 1. Listen for Auth State Changes
@@ -250,6 +253,14 @@ export default function App() {
     const active = appData.tasks.filter(isActive);
     return scheduleTaskReminders(active);
   }, [taskRemindersEnabled, appData.tasks]);
+
+  // In-memory deduplication for open-app habit reminders (stores nothing sensitive)
+  const sentHabitReminderKeysRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const active = appData.habits.filter(isActive);
+    if (!active.some((h) => Boolean(h.reminderTime))) return;
+    return scheduleHabitReminders(active, sentHabitReminderKeysRef.current);
+  }, [appData.habits]);
 
   // 2. Persist data helper (local and cloud)
   const commitAppData = useCallback(
@@ -609,7 +620,7 @@ export default function App() {
   const {
     toggleHabitDate: handleToggleHabitDate,
     addHabit: handleAddHabit,
-    deleteHabit: handleDeleteHabit,
+    deleteHabit: rawDeleteHabit,
     updateHabit: handleUpdateHabit,
   } = useHabitManager({
     habits: appData.habits,
@@ -621,6 +632,25 @@ export default function App() {
       }));
     },
   });
+
+  const handleRestoreHabit = (habitId: string) => {
+    commitAppData((prev) => ({
+      ...prev,
+      habits: prev.habits.map((h) => (h.id === habitId ? restoreTransaction(h) : h)),
+    }));
+  };
+
+  const handleDeleteHabit = (habitId: string) => {
+    rawDeleteHabit(habitId);
+    if (habitUndoTimerRef.current) {
+      clearTimeout(habitUndoTimerRef.current);
+    }
+    setHabitUndoToast({ habitId });
+    habitUndoTimerRef.current = setTimeout(() => {
+      setHabitUndoToast(null);
+      habitUndoTimerRef.current = null;
+    }, 6000);
+  };
 
   // Multi-Dimensional Daily Life Metrics Operations
   const handleSaveDailyMetric = (metric: DailyLifeMetric) => {
@@ -890,9 +920,11 @@ export default function App() {
             onToggleHabitDate={handleToggleHabitDate}
             onAddHabit={handleAddHabit}
             onDeleteHabit={handleDeleteHabit}
+            onRestoreHabit={handleRestoreHabit}
             onUpdateHabit={handleUpdateHabit}
             dailyMetrics={activeDailyMetrics}
             onSaveDailyMetric={handleSaveDailyMetric}
+            handlesDeleteToast
           />
         )}
 
@@ -1030,8 +1062,50 @@ export default function App() {
         onTryFirebasePopup={handleTryFirebasePopup}
       />
 
-      {(taskToast || txUndoToast) && (
+      {(taskToast || txUndoToast || habitUndoToast) && (
         <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 items-end">
+          {habitUndoToast && (
+            <div
+              id="habit-undo-toast-banner"
+              data-testid="habit-undo-toast"
+              role="status"
+              aria-live="polite"
+              className="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-slate-700 text-xs font-bold flex items-center gap-3"
+            >
+              <span>Habit deleted - </span>
+              <button
+                type="button"
+                id="habit-undo-toast-btn"
+                onClick={() => {
+                  const id = habitUndoToast.habitId;
+                  if (habitUndoTimerRef.current) {
+                    clearTimeout(habitUndoTimerRef.current);
+                    habitUndoTimerRef.current = null;
+                  }
+                  setHabitUndoToast(null);
+                  handleRestoreHabit(id);
+                }}
+                className="text-emerald-400 hover:text-emerald-300 underline cursor-pointer font-extrabold"
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (habitUndoTimerRef.current) {
+                    clearTimeout(habitUndoTimerRef.current);
+                    habitUndoTimerRef.current = null;
+                  }
+                  setHabitUndoToast(null);
+                }}
+                className="text-slate-400 hover:text-white cursor-pointer"
+                aria-label="Dismiss notification"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {txUndoToast && (
             <div
               id="tx-undo-toast-banner"

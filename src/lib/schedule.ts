@@ -1,4 +1,6 @@
 import { getLocalDateString, parseLocalDate } from './dateUtils.ts';
+import { getHabitStats } from './habitScoring.ts';
+import { VacationPeriod } from '../types/index.ts';
 
 export type HabitStatus =
   | 'COMPLETED'
@@ -84,64 +86,28 @@ export function generateDueDates({
 
 export function calculateHabitStreaks(
   completedDates: string[],
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  vacationPeriods?: VacationPeriod[]
 ): { current: number; longest: number } {
-  if (!completedDates || !completedDates.length) return { current: 0, longest: 0 };
-
-  const sortedAsc = [...new Set(completedDates)].sort();
-  const completionSet = new Set(sortedAsc);
-
-  let currentStreak = 0;
-  let longestStreak = 0;
-  let tempStreak = 0;
+  if (!Array.isArray(completedDates) || completedDates.length === 0) {
+    return { current: 0, longest: 0 };
+  }
 
   const todayStr = getLocalDateString(referenceDate);
-  const yesterday = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate() - 1);
-  const yesterdayStr = getLocalDateString(yesterday);
+  const stats = getHabitStats(
+    {
+      id: '__calculateHabitStreaks__',
+      name: 'Habit',
+      targetDaysPerWeek: 7,
+      completedDates,
+      streak: 0,
+      bestStreak: 0,
+      createdAt: referenceDate.getTime(),
+      scheduleType: 'daily',
+      ...(vacationPeriods ? { vacationPeriods } : {}),
+    },
+    todayStr
+  );
 
-  // Check if today or yesterday is completed (grace window)
-  const checkDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
-  if (completionSet.has(todayStr)) {
-    currentStreak = 1;
-    checkDate.setDate(checkDate.getDate() - 1);
-  } else if (completionSet.has(yesterdayStr)) {
-    currentStreak = 1;
-    checkDate.setTime(yesterday.getTime());
-    checkDate.setDate(checkDate.getDate() - 1);
-  }
-
-  // Calculate current streak backward
-  if (currentStreak > 0) {
-    while (true) {
-      const dateStr = getLocalDateString(checkDate);
-      if (completionSet.has(dateStr)) {
-        currentStreak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-  }
-
-  // Calculate longest streak in ascending order
-  for (let i = 0; i < sortedAsc.length; i++) {
-    if (i === 0) {
-      tempStreak = 1;
-    } else {
-      const [y1, m1, d1] = sortedAsc[i].split('-').map(Number);
-      const [y0, m0, d0] = sortedAsc[i - 1].split('-').map(Number);
-      const curr = new Date(y1, m1 - 1, d1);
-      const expected = new Date(y0, m0 - 1, d0 + 1);
-
-      if (getLocalDateString(curr) === getLocalDateString(expected)) {
-        tempStreak++;
-      } else {
-        longestStreak = Math.max(longestStreak, tempStreak);
-        tempStreak = 1;
-      }
-    }
-  }
-  longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
-
-  return { current: currentStreak, longest: longestStreak };
+  return { current: stats.currentStreak, longest: stats.bestStreak };
 }

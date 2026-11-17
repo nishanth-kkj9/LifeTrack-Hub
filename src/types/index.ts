@@ -154,8 +154,10 @@ export interface Habit {
   scheduleType?: 'daily' | 'weekly_target' | 'custom_days';
   customDays?: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
   vacationPeriods?: VacationPeriod[];
+  notes?: Record<string, string>; // key: 'YYYY-MM-DD', max 280 chars
+  reminderTime?: string; // 'HH:MM' 24-hour local reminder time
   habitScore?: number; // 0-100 calculated strength score
-  habitHealth?: 'Excellent' | 'Strong' | 'Stable' | 'Needs attention';
+  habitHealth?: 'Excellent' | 'Strong' | 'Stable' | 'Building' | 'Needs focus' | 'Needs attention';
   updatedAt?: number;
   deletedAt?: number;
 }

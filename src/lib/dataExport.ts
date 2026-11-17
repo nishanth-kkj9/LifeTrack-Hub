@@ -2,6 +2,7 @@ import { UserAppData, Task, Transaction, Habit, DailyLifeMetric } from '../types
 import { sanitizeUserAppData } from './firebase.ts';
 import { isActive } from './entity.ts';
 import { getLocalDateString } from './dateUtils.ts';
+import { getHabitStats } from './habitScoring.ts';
 
 /**
  * Triggers browser download of text content as file
@@ -76,23 +77,52 @@ export function exportAppDataJson(appData: UserAppData) {
 /**
  * Export Habits history to CSV
  */
-export function exportHabitsCsv(habits: Habit[]) {
-  const dateStr = getLocalDateString();
-  const records = (habits || []).filter(isActive).map((h) => ({
-    ID: h.id,
-    Name: h.name,
-    Category: h.category || 'General',
-    TargetDaysPerWeek: h.targetDaysPerWeek,
-    CurrentStreak: h.streak,
-    BestStreak: h.bestStreak,
-    CompletedCount: h.completedDates?.length || 0,
-    CompletedDates: (h.completedDates || []).join('; '),
-    ScheduleType: h.scheduleType || 'daily',
-    CreatedAt: new Date(h.createdAt).toISOString(),
-  }));
+export function exportHabitsCsv(habits: Habit[], todayStr: string = getLocalDateString()) {
+  const records = (habits || []).filter(isActive).map((h) => {
+    let createdAtIso = '';
+    if (typeof h.createdAt === 'number' && Number.isFinite(h.createdAt)) {
+      const dt = new Date(h.createdAt);
+      if (!Number.isNaN(dt.getTime())) {
+        createdAtIso = dt.toISOString();
+      }
+    }
+
+    const stats = getHabitStats(h, todayStr);
+    const vacationSummary = Array.isArray(h.vacationPeriods)
+      ? h.vacationPeriods
+          .filter((v) => v && v.startDate && v.endDate)
+          .map((v) =>
+            v.reason ? `${v.startDate}..${v.endDate} (${v.reason})` : `${v.startDate}..${v.endDate}`
+          )
+          .join('; ')
+      : '';
+    const notesSummary =
+      h.notes && typeof h.notes === 'object' && !Array.isArray(h.notes)
+        ? Object.entries(h.notes)
+            .filter(([, text]) => typeof text === 'string' && text.trim().length > 0)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([d, text]) => `${d}: ${text}`)
+            .join(' | ')
+        : '';
+
+    return {
+      ID: h.id,
+      Name: h.name,
+      Category: h.category || 'General',
+      TargetDaysPerWeek: h.targetDaysPerWeek,
+      CurrentStreak: stats.currentStreak,
+      BestStreak: stats.bestStreak,
+      CompletedCount: h.completedDates?.length || 0,
+      CompletedDates: (h.completedDates || []).join('; '),
+      ScheduleType: h.scheduleType || 'daily',
+      VacationPeriods: vacationSummary,
+      Notes: notesSummary,
+      CreatedAt: createdAtIso,
+    };
+  });
 
   const csv = convertToCsv(records);
-  downloadFile(`LifeTrack_Habits_${dateStr}.csv`, csv, 'text/csv;charset=utf-8;');
+  downloadFile(`LifeTrack_Habits_${todayStr}.csv`, csv, 'text/csv;charset=utf-8;');
 }
 
 /**
@@ -156,9 +186,9 @@ export function exportDailyMetricsCsv(metrics: DailyLifeMetric[]) {
     WaterLitres: m.waterLitres ?? '',
     StepsCount: m.stepsCount ?? '',
     FocusHours: m.focusHours ?? '',
-    WorkoutDone: m.workoutDone ? 'Yes' : 'No',
+    WorkoutDone: m.workoutDone === true ? 'Yes' : m.workoutDone === false ? 'No' : '',
     JournalNotes: m.journalNotes || '',
-    UpdatedAt: new Date(m.updatedAt).toISOString(),
+    UpdatedAt: typeof m.updatedAt === 'number' && Number.isFinite(m.updatedAt) ? new Date(m.updatedAt).toISOString() : '',
   }));
 
   const csv = convertToCsv(records);

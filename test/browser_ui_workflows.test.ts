@@ -3196,6 +3196,235 @@ async function runBrowserUiTests() {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
   }
 
+  // Test: HabitDetailModal Today's Status (DUE / REST, never FAILED) & Formula Popover
+  {
+    const { HabitDetailModal } = await import('../src/components/todo/HabitDetailModal.tsx');
+    const modalMount = document.createElement('div');
+    document.body.appendChild(modalMount);
+    const modalRoot = createRoot(modalMount);
+
+    const dueHabit = {
+      id: 'h-modal-due',
+      name: 'Morning Run',
+      category: 'health',
+      targetDaysPerWeek: 7,
+      completedDates: [],
+      streak: 0,
+      bestStreak: 0,
+      createdAt: Date.now(),
+      scheduleType: 'daily' as const,
+    };
+
+    await act(async () => {
+      modalRoot.render(
+        React.createElement(HabitDetailModal, {
+          isOpen: true,
+          onClose: () => {},
+          habit: dueHabit,
+          onUpdateHabit: () => {},
+          onDeleteHabit: () => {},
+        })
+      );
+    });
+
+    const modalTextBefore = modalMount.textContent || '';
+    assert(
+      modalTextBefore.includes('DUE') && !modalTextBefore.includes('FAILED'),
+      'HabitDetailModal displays Today Status DUE (never FAILED) when unchecked today'
+    );
+
+    const infoBtn = Array.from(modalMount.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('How is this calculated?')
+    );
+    assert(infoBtn !== undefined, 'HabitDetailModal has "How is this calculated?" popover toggle');
+
+    await act(async () => {
+      infoBtn?.click();
+    });
+
+    const modalTextAfter = modalMount.textContent || '';
+    assert(
+      modalTextAfter.includes('47%') && modalTextAfter.includes('80%'),
+      'Formula popover explains Loop model with 12 days (~47%) and 30 days (~80%) benchmarks'
+    );
+
+    // Mid-vacation day -> REST
+    const vacHabit = {
+      ...dueHabit,
+      id: 'h-modal-vac',
+      vacationPeriods: [
+        {
+          id: 'v-span',
+          startDate: getLocalDateOffset(-2),
+          endDate: getLocalDateOffset(2),
+          reason: 'Trip',
+        },
+      ],
+    };
+
+    await act(async () => {
+      modalRoot.render(
+        React.createElement(HabitDetailModal, {
+          isOpen: true,
+          onClose: () => {},
+          habit: vacHabit,
+          onUpdateHabit: () => {},
+          onDeleteHabit: () => {},
+        })
+      );
+    });
+
+    const vacText = modalMount.textContent || '';
+    assert(
+      vacText.includes('REST') && !vacText.includes('FAILED'),
+      'HabitDetailModal displays Today Status REST on a mid-vacation day'
+    );
+
+    await act(async () => {
+      modalRoot.unmount();
+    });
+    modalMount.remove();
+  }
+
+  // Test: Quick-add category select, HabitCard Daily label + case-insensitive color, and HabitDetailModal Edit (keeps id & completedDates)
+  {
+    const { HabitDetailModal } = await import('../src/components/todo/HabitDetailModal.tsx');
+    const { HabitCard } = await import('../src/components/habits/HabitCard.tsx');
+
+    // 1. Verify quick-add form category select in HabitsView (default Personal + all 7 options)
+    const habitsNav = document.getElementById('tab-nav-habits');
+    await act(async () => {
+      habitsNav?.click();
+    });
+    const catSelect = document.getElementById('habit-new-category-select') as HTMLSelectElement | null;
+    assert(catSelect !== null && catSelect.value === 'Personal', 'Quick-add category select defaults to Personal');
+    const optValues = catSelect ? Array.from(catSelect.options).map((o) => o.value) : [];
+    assert(
+      optValues.join(',') === 'Study,Health,Fitness,Mindfulness,Finance,Personal,Other',
+      `Quick-add category select lists all 7 categories (${optValues.join(',')})`
+    );
+
+    // 2. Verify HabitCard displays "Daily" instead of "7x per week" and uses case-insensitive border color
+    const cardMount = document.createElement('div');
+    document.body.appendChild(cardMount);
+    const cardRoot = createRoot(cardMount);
+
+    const upperHabit = {
+      id: 'h-card-color-1',
+      name: 'Stretch',
+      category: 'Fitness',
+      targetDaysPerWeek: 7,
+      completedDates: ['2026-11-10', '2026-11-11'],
+      streak: 2,
+      bestStreak: 2,
+      createdAt: Date.now(),
+      scheduleType: 'daily' as const,
+    };
+    const lowerHabit = { ...upperHabit, id: 'h-card-color-2', category: 'fitness' };
+
+    await act(async () => {
+      cardRoot.render(
+        React.createElement('div', null, [
+          React.createElement(HabitCard, { key: 'u', habit: upperHabit, onToggle: () => {} }),
+          React.createElement(HabitCard, { key: 'l', habit: lowerHabit, onToggle: () => {} }),
+        ])
+      );
+    });
+
+    const cardEls = Array.from(cardMount.querySelectorAll<HTMLElement>('.rounded-2xl.border'));
+    assert(
+      cardEls.length === 2 &&
+        cardEls[0].style.borderLeftColor !== '' &&
+        cardEls[0].style.borderLeftColor === cardEls[1].style.borderLeftColor,
+      `HabitCard uses identical border color for Fitness and fitness (${cardEls[0]?.style.borderLeftColor})`
+    );
+    const cardText = cardMount.textContent || '';
+    assert(
+      cardText.includes('Daily') && !cardText.includes('7x per week'),
+      'HabitCard displays "Daily" instead of "7x per week" on daily habits'
+    );
+
+    await act(async () => {
+      cardRoot.unmount();
+    });
+    cardMount.remove();
+
+    // 3. Verify HabitDetailModal Edit trims name, rejects blank name, updates category/target, and preserves id + completedDates
+    const editMount = document.createElement('div');
+    document.body.appendChild(editMount);
+    const editRoot = createRoot(editMount);
+    const updatedCalls: any[] = [];
+    const originalCompleted = ['2026-11-08', '2026-11-09', '2026-11-10'];
+
+    await act(async () => {
+      editRoot.render(
+        React.createElement(HabitDetailModal, {
+          isOpen: true,
+          onClose: () => {},
+          habit: {
+            id: 'habit-preserve-id-99',
+            name: 'Old Habit',
+            category: 'Personal',
+            targetDaysPerWeek: 7,
+            completedDates: originalCompleted,
+            streak: 3,
+            bestStreak: 3,
+            createdAt: 1700000000000,
+            scheduleType: 'daily' as const,
+          },
+          onUpdateHabit: (h) => updatedCalls.push(h),
+          onDeleteHabit: () => {},
+        })
+      );
+    });
+
+    const editNameInput = document.getElementById('habit-edit-name-input') as HTMLInputElement | null;
+    const editCatSelect = document.getElementById('habit-edit-category-select') as HTMLSelectElement | null;
+    const editTargetInput = document.getElementById('habit-edit-target-input') as HTMLInputElement | null;
+    const editSaveBtn = document.getElementById('habit-edit-save-btn') as HTMLButtonElement | null;
+
+    // Whitespace-only name must be rejected
+    await act(async () => {
+      if (editNameInput) setReactInputValue(editNameInput, '   ');
+    });
+    assert(
+      editSaveBtn?.disabled === true && updatedCalls.length === 0,
+      'HabitDetailModal Edit disables Save for whitespace-only name'
+    );
+
+    // Rename with surrounding whitespace + change category and target
+    await act(async () => {
+      if (editNameInput) setReactInputValue(editNameInput, '  Evening Mindfulness  ');
+      if (editCatSelect) {
+        editCatSelect.value = 'Mindfulness';
+        editCatSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      }
+      if (editTargetInput) setReactInputValue(editTargetInput, '5');
+    });
+
+    await act(async () => {
+      editSaveBtn?.click();
+      editNameInput?.closest('form')?.dispatchEvent(
+        new dom.window.Event('submit', { bubbles: true, cancelable: true })
+      );
+    });
+
+    assert(
+      updatedCalls.length >= 1 &&
+        updatedCalls[updatedCalls.length - 1].id === 'habit-preserve-id-99' &&
+        updatedCalls[updatedCalls.length - 1].name === 'Evening Mindfulness' &&
+        updatedCalls[updatedCalls.length - 1].category === 'Mindfulness' &&
+        updatedCalls[updatedCalls.length - 1].targetDaysPerWeek === 5 &&
+        JSON.stringify(updatedCalls[updatedCalls.length - 1].completedDates) === JSON.stringify(originalCompleted),
+      'HabitDetailModal Edit trims name, updates category & target, and preserves id + completedDates'
+    );
+
+    await act(async () => {
+      editRoot.unmount();
+    });
+    editMount.remove();
+  }
+
   // Teardown
   await act(async () => {
     root?.unmount();

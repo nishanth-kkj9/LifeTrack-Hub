@@ -16,24 +16,44 @@ export interface CorrelationResult {
   isSimulated: boolean;
 }
 
+function isFiniteNum(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 /**
  * Calculates Pearson Correlation Coefficient r for two numeric arrays of equal length
  */
 export function calculatePearsonCorrelation(x: number[], y: number[]): number {
-  if (x.length !== y.length || x.length < 3) return 0;
+  if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.length < 3) return 0;
 
-  const n = x.length;
-  const sumX = x.reduce((a, b) => a + b, 0);
-  const sumY = y.reduce((a, b) => a + b, 0);
-  const sumX2 = x.reduce((a, b) => a + b * b, 0);
-  const sumY2 = y.reduce((a, b) => a + b * b, 0);
-  const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < x.length; i++) {
+    if (isFiniteNum(x[i]) && isFiniteNum(y[i])) {
+      xs.push(x[i]);
+      ys.push(y[i]);
+    }
+  }
+
+  const n = xs.length;
+  if (n < 3) return 0;
+
+  const sumX = xs.reduce((a, b) => a + b, 0);
+  const sumY = ys.reduce((a, b) => a + b, 0);
+  const sumX2 = xs.reduce((a, b) => a + b * b, 0);
+  const sumY2 = ys.reduce((a, b) => a + b * b, 0);
+  const sumXY = xs.reduce((sum, xi, i) => sum + xi * ys[i], 0);
 
   const numerator = n * sumXY - sumX * sumY;
-  const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+  const varianceProduct = (n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY);
+  if (!Number.isFinite(varianceProduct) || varianceProduct <= 0) return 0;
 
-  if (denominator === 0) return 0;
-  return Number((numerator / denominator).toFixed(2));
+  const denominator = Math.sqrt(varianceProduct);
+  if (!Number.isFinite(denominator) || denominator === 0) return 0;
+
+  const raw = Math.max(-1, Math.min(1, numerator / denominator));
+  if (!Number.isFinite(raw)) return 0;
+  return Number(raw.toFixed(2)) || 0;
 }
 
 /**
@@ -41,10 +61,11 @@ export function calculatePearsonCorrelation(x: number[], y: number[]): number {
  */
 export function analyzeLifeMetricCorrelations(
   metrics: DailyLifeMetric[] = [],
-  tasks: Task[] = [],
-  habits: Habit[] = []
+  _tasks: Task[] = [],
+  _habits: Habit[] = []
 ): CorrelationResult[] {
-  if (!metrics || metrics.length < 3) {
+  const activeMetrics = (metrics || []).filter((m) => m && !m.deletedAt);
+  if (activeMetrics.length < 3) {
     // Provide sample initial insights if user is building up history
     return [
       {
@@ -85,8 +106,8 @@ export function analyzeLifeMetricCorrelations(
   // Pair 1: Sleep Hours vs Mood Level
   const sleepVsMoodX: number[] = [];
   const sleepVsMoodY: number[] = [];
-  metrics.forEach((m) => {
-    if (m.sleepHours !== undefined && m.moodLevel !== undefined) {
+  activeMetrics.forEach((m) => {
+    if (isFiniteNum(m.sleepHours) && isFiniteNum(m.moodLevel)) {
       sleepVsMoodX.push(m.sleepHours);
       sleepVsMoodY.push(m.moodLevel);
     }
@@ -106,7 +127,7 @@ export function analyzeLifeMetricCorrelations(
           ? `Negative correlation detected between sleep duration and mood (r = ${r}).`
           : `Sleep duration has a steady baseline impact on mood (r = ${r}).`,
       relationship:
-        r >= 0.6 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.4 ? 'Strong Negative' : 'Neutral',
+        r >= 0.6 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.4 ? 'Strong Negative' : r <= -0.2 ? 'Moderate Negative' : 'Neutral',
       color: r >= 0.3 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-slate-700 bg-slate-50 border-slate-200',
       isSimulated: false,
     });
@@ -115,8 +136,8 @@ export function analyzeLifeMetricCorrelations(
   // Pair 2: Focus Hours vs Energy Level
   const focusVsEnergyX: number[] = [];
   const focusVsEnergyY: number[] = [];
-  metrics.forEach((m) => {
-    if (m.focusHours !== undefined && m.energyLevel !== undefined) {
+  activeMetrics.forEach((m) => {
+    if (isFiniteNum(m.focusHours) && isFiniteNum(m.energyLevel)) {
       focusVsEnergyX.push(m.focusHours);
       focusVsEnergyY.push(m.energyLevel);
     }
@@ -133,7 +154,7 @@ export function analyzeLifeMetricCorrelations(
         r > 0.3
           ? `Deep focus sessions align with higher energy levels throughout the day (r = +${r}).`
           : `Focus time displays balanced energy dynamics (r = ${r}).`,
-      relationship: r >= 0.5 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : 'Neutral',
+      relationship: r >= 0.5 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.5 ? 'Strong Negative' : r <= -0.2 ? 'Moderate Negative' : 'Neutral',
       color: 'text-indigo-700 bg-indigo-50 border-indigo-200',
       isSimulated: false,
     });
@@ -142,8 +163,8 @@ export function analyzeLifeMetricCorrelations(
   // Pair 3: Water Intake vs Energy Level
   const waterVsEnergyX: number[] = [];
   const waterVsEnergyY: number[] = [];
-  metrics.forEach((m) => {
-    if (m.waterLitres !== undefined && m.energyLevel !== undefined) {
+  activeMetrics.forEach((m) => {
+    if (isFiniteNum(m.waterLitres) && isFiniteNum(m.energyLevel)) {
       waterVsEnergyX.push(m.waterLitres);
       waterVsEnergyY.push(m.energyLevel);
     }
@@ -156,8 +177,8 @@ export function analyzeLifeMetricCorrelations(
       metricB: 'Energy Level',
       coefficient: r,
       sampleSize: waterVsEnergyX.length,
-      insightText: `Hydration (>2.5L) yields an energetic correlation rating of r = ${r > 0 ? '+' : ''}${r}.`,
-      relationship: r >= 0.4 ? 'Strong Positive' : 'Moderate Positive',
+      insightText: `Hydration yields an energetic correlation rating of r = ${r > 0 ? '+' : ''}${r}.`,
+      relationship: r >= 0.4 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.4 ? 'Strong Negative' : r <= -0.2 ? 'Moderate Negative' : 'Neutral',
       color: 'text-sky-700 bg-sky-50 border-sky-200',
       isSimulated: false,
     });
@@ -176,3 +197,4 @@ export function analyzeLifeMetricCorrelations(
     },
   ];
 }
+

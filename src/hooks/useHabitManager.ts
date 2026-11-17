@@ -6,7 +6,7 @@
 import { useCallback } from 'react';
 import { Habit, DailyLifeMetric } from '../types/index.ts';
 import { getHabitStats } from '../lib/habitScoring.ts';
-import { touch, tombstone, isActive } from '../lib/entity.ts';
+import { touch, tombstone, restoreTransaction, isActive } from '../lib/entity.ts';
 
 export interface UseHabitManagerOptions {
   habits: Habit[];
@@ -35,7 +35,7 @@ export function useHabitManager({ habits, onUpdate }: UseHabitManagerOptions) {
         return touch({
           ...nextDraft,
           streak: stats.currentStreak,
-          bestStreak: Math.max(stats.bestStreak, h.bestStreak || 0),
+          bestStreak: stats.bestStreak,
           habitScore: stats.strengthScore,
           habitHealth: stats.healthLabel,
         });
@@ -52,7 +52,7 @@ export function useHabitManager({ habits, onUpdate }: UseHabitManagerOptions) {
       const habitWithScore: Habit = touch({
         ...newHabit,
         streak: stats.currentStreak,
-        bestStreak: Math.max(stats.bestStreak, newHabit.bestStreak || 0),
+        bestStreak: stats.bestStreak,
         habitScore: stats.strengthScore,
         habitHealth: stats.healthLabel,
       });
@@ -69,6 +69,13 @@ export function useHabitManager({ habits, onUpdate }: UseHabitManagerOptions) {
     [habits, onUpdate]
   );
 
+  const restoreHabit = useCallback(
+    (habitId: string) => {
+      onUpdate(habits.map((h) => (h.id === habitId ? restoreTransaction(h) : h)));
+    },
+    [habits, onUpdate]
+  );
+
   const updateHabit = useCallback(
     (updatedHabit: Habit) => {
       const stats = getHabitStats(updatedHabit);
@@ -79,7 +86,7 @@ export function useHabitManager({ habits, onUpdate }: UseHabitManagerOptions) {
             ? touch({
                 ...updatedHabit,
                 streak: stats.currentStreak,
-                bestStreak: Math.max(stats.bestStreak, updatedHabit.bestStreak || 0),
+                bestStreak: stats.bestStreak,
                 habitScore: stats.strengthScore,
                 habitHealth: stats.healthLabel,
               })
@@ -97,7 +104,7 @@ export function useHabitManager({ habits, onUpdate }: UseHabitManagerOptions) {
       return {
         ...h,
         streak: stats.currentStreak,
-        bestStreak: Math.max(stats.bestStreak, h.bestStreak || 0),
+        bestStreak: stats.bestStreak,
         habitScore: stats.strengthScore,
         habitHealth: stats.healthLabel,
       };
@@ -108,6 +115,7 @@ export function useHabitManager({ habits, onUpdate }: UseHabitManagerOptions) {
     toggleHabitDate,
     addHabit,
     deleteHabit,
+    restoreHabit,
     updateHabit,
     getHabitsWithScores,
   };

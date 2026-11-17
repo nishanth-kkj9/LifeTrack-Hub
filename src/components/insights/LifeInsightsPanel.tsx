@@ -76,7 +76,7 @@ export function LifeInsightsPanel({
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
           <div className="text-[11px] font-medium text-slate-400">Mood</div>
           <div className="text-2xl font-bold font-mono tabular-nums text-amber-400 mt-1">
-            {summary.averageMood.toFixed(1)}/5
+            {summary.moodCount > 0 && Number.isFinite(summary.averageMood) ? `${summary.averageMood.toFixed(1)}/5` : '—'}
           </div>
           <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
         </div>
@@ -84,7 +84,7 @@ export function LifeInsightsPanel({
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
           <div className="text-[11px] font-medium text-slate-400">Energy</div>
           <div className="text-2xl font-bold font-mono tabular-nums text-cyan-400 mt-1">
-            {summary.averageEnergy.toFixed(1)}/5
+            {summary.energyCount > 0 && Number.isFinite(summary.averageEnergy) ? `${summary.averageEnergy.toFixed(1)}/5` : '—'}
           </div>
           <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
         </div>
@@ -92,7 +92,7 @@ export function LifeInsightsPanel({
         <div className="col-span-2 sm:col-span-1 bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
           <div className="text-[11px] font-medium text-slate-400">Sleep</div>
           <div className="text-2xl font-bold font-mono tabular-nums text-rose-400 mt-1">
-            {summary.averageSleep.toFixed(1)}h
+            {summary.sleepCount > 0 && Number.isFinite(summary.averageSleep) ? `${summary.averageSleep.toFixed(1)}h` : '—'}
           </div>
           <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
         </div>

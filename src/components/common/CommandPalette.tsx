@@ -19,6 +19,7 @@ import { Task, ExamReminder, Habit, QuickNote } from '../../types/index.ts';
 import { useModalFocus } from '../../hooks/useModalFocus.ts';
 import { formatAppTime } from '../../lib/dateUtils.ts';
 import { useTimeFormat } from '../../hooks/useTimeFormat.ts';
+import { getHabitStats } from '../../lib/habitScoring.ts';
 
 export interface CommandPaletteProps {
   isOpen: boolean;
@@ -274,17 +275,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const matchingHabits = habits
     .filter((h) => h.name.toLowerCase().includes(trimmed))
     .slice(0, 3)
-    .map((h) => ({
-      id: `habit-${h.id}`,
-      title: h.name,
-      subtitle: `${h.streak || 0} day streak`,
-      category: 'Habits',
-      icon: Flame,
-      action: () => {
-        onClose();
-        onNavigate('habits');
-      },
-    }));
+    .map((h) => {
+      const stats = getHabitStats(h);
+      const unit = h.scheduleType === 'weekly_target' ? 'w' : 'd';
+      return {
+        id: `habit-${h.id}`,
+        title: h.name,
+        subtitle: `${stats.currentStreak}${unit} streak`,
+        category: 'Habits',
+        icon: Flame,
+        action: () => {
+          onClose();
+          onNavigate('habits');
+        },
+      };
+    });
 
   const matchingNotes = notes
     .filter(

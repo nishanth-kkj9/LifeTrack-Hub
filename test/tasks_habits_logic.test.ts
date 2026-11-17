@@ -1,5 +1,13 @@
 import { parseNaturalLanguageTask } from '../src/lib/todoUtils.ts';
-import { getHabitStats } from '../src/lib/habitScoring.ts';
+import {
+  HABIT_CATEGORIES,
+  expandVacationDates,
+  formatCustomDaysLabel,
+  getHabitCategoryColor,
+  getHabitStats,
+  getHabitTodayStatus,
+  isHabitDueOnDate,
+} from '../src/lib/habitScoring.ts';
 import { getLocalDateOffset, getLocalDateString, getLocalMonthPrefix, parseLocalDate } from '../src/lib/dateUtils.ts';
 import { calculateHabitStreaks, generateDueDates } from '../src/lib/schedule.ts';
 import { formatCurrency } from '../src/lib/format.ts';
@@ -295,15 +303,15 @@ function runTasksHabitsDateTests() {
     `30 consecutive daily completions yields ~80% strength (got ${stats30.strengthScore}%)`
   );
   assert(
-    stats30.currentStreak === 30 && stats30.bestStreak === 30 && stats30.healthLabel === 'Excellent',
-    '30 consecutive completions sets streak=30 and healthLabel="Excellent"'
+    stats30.currentStreak === 30 && stats30.bestStreak === 30 && stats30.healthLabel === 'Strong',
+    '30 consecutive completions (~80%) sets streak=30 and unified healthLabel="Strong"'
   );
 
   const dates60 = Array.from({ length: 60 }, (_, i) => getLocalDateOffset(-i, todayLocal));
   const stats60 = getHabitStats(makeHabit({ completedDates: dates60 }), todayStr);
   assert(
-    stats60.strengthScore >= 94 && stats60.strengthScore <= 97,
-    `60 consecutive daily completions yields ~96% strength (got ${stats60.strengthScore}%)`
+    stats60.strengthScore >= 94 && stats60.strengthScore <= 97 && stats60.healthLabel === 'Excellent',
+    `60 consecutive daily completions yields ~96% strength and healthLabel="Excellent" (got ${stats60.strengthScore}%)`
   );
 
   const dates90 = Array.from({ length: 90 }, (_, i) => getLocalDateOffset(-i, todayLocal));
@@ -586,6 +594,296 @@ function runTasksHabitsDateTests() {
       emptyDayProg.dueToday === 0 &&
       emptyDayProg.percent === 0,
     'computeDailyProgress computes completedToday / tasksDueToday accurately'
+  );
+
+  // ------------------------------------------------------------------
+  // 7. Habit Schedule Model (custom_days & weekly_target)
+  // ------------------------------------------------------------------
+  console.log('\n[7. Habit Schedule Model: custom_days & weekly_target]');
+
+  const week8SundayStr = '2026-11-15'; // Sunday
+  const week8SundayLocal = parseLocalDate(week8SundayStr);
+
+  // isHabitDueOnDate checks
+  const mwfHabit = makeHabit({
+    scheduleType: 'custom_days',
+    customDays: [1, 3, 5], // Mon, Wed, Fri
+    targetDaysPerWeek: 3,
+    createdAt: parseLocalDate('2026-09-21').getTime(),
+  });
+  assert(
+    isHabitDueOnDate(mwfHabit, '2026-11-09') === true && // Mon
+      isHabitDueOnDate(mwfHabit, '2026-11-10') === false && // Tue
+      isHabitDueOnDate(mwfHabit, '2026-11-11') === true && // Wed
+      isHabitDueOnDate(mwfHabit, '2026-11-12') === false && // Thu
+      isHabitDueOnDate(mwfHabit, '2026-11-13') === true && // Fri
+      isHabitDueOnDate(mwfHabit, '2026-11-14') === false && // Sat
+      isHabitDueOnDate(mwfHabit, '2026-11-15') === false, // Sun
+    'isHabitDueOnDate(custom_days [1,3,5]) is true on Mon/Wed/Fri and false on other weekdays'
+  );
+  assert(
+    formatCustomDaysLabel([5, 1, 3]) === 'Mon Wed Fri',
+    `formatCustomDaysLabel orders Mon..Sun cleanly (got "${formatCustomDaysLabel([5, 1, 3])}")`
+  );
+
+  const weekly3Habit = makeHabit({
+    scheduleType: 'weekly_target',
+    targetDaysPerWeek: 3,
+    createdAt: parseLocalDate('2026-09-21').getTime(),
+  });
+  assert(
+    ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'].every(
+      (d) => isHabitDueOnDate(weekly3Habit, d) === false
+    ),
+    'isHabitDueOnDate(weekly_target) is NEVER due on a specific day'
+  );
+
+  // 8 weeks (56 days) ending Sunday 2026-11-15 -> Mon 2026-09-21 .. Sun 2026-11-15
+  const mwf8WeeksDates: string[] = [];
+  for (let offset = -55; offset <= 0; offset++) {
+    const dStr = getLocalDateOffset(offset, week8SundayLocal);
+    const dow = parseLocalDate(dStr).getDay();
+    if (dow === 1 || dow === 3 || dow === 5) {
+      mwf8WeeksDates.push(dStr);
+    }
+  }
+  const mwfStats = getHabitStats(
+    { ...mwfHabit, completedDates: mwf8WeeksDates },
+    week8SundayStr
+  );
+  assert(
+    mwfStats.strengthScore >= 90 &&
+      mwfStats.currentStreak === 24 &&
+      mwfStats.bestStreak === 24 &&
+      mwfStats.backlogDays === 0,
+    `Perfect Mon/Wed/Fri custom_days for 8 weeks yields strength>=90 (${mwfStats.strengthScore}) and streak=24 without breaking on Tue/Thu`
+  );
+
+  // 3x/week done on varying 3 days across 8 Mon-Sun weeks
+  const weekly8WeeksDates: string[] = [];
+  const weekPatterns = [
+    [0, 2, 4], // Mon, Wed, Fri (offsets from week Monday)
+    [1, 3, 5], // Tue, Thu, Sat
+    [4, 5, 6], // Fri, Sat, Sun
+    [0, 1, 6], // Mon, Tue, Sun
+  ];
+  for (let w = 0; w < 8; w++) {
+    const monday = getLocalDateOffset(-55 + w * 7, week8SundayLocal);
+    const mondayDate = parseLocalDate(monday);
+    const pattern = weekPatterns[w % weekPatterns.length];
+    for (const dayOffset of pattern) {
+      weekly8WeeksDates.push(getLocalDateOffset(dayOffset, mondayDate));
+    }
+  }
+  const weekly8Stats = getHabitStats(
+    { ...weekly3Habit, completedDates: weekly8WeeksDates },
+    week8SundayStr
+  );
+  assert(
+    weekly8Stats.currentStreak === 8 &&
+      weekly8Stats.bestStreak === 8 &&
+      weekly8Stats.strengthScore >= 85 &&
+      weekly8Stats.backlogDays === 0 &&
+      weekly8Stats.completionRate === 100,
+    `3x/week for 8 weeks yields streak=8w, strength>=85 (${weekly8Stats.strengthScore}), backlog=0 (got streak=${weekly8Stats.currentStreak}, backlog=${weekly8Stats.backlogDays})`
+  );
+
+  // Missed week breaks weekly_target streak (miss week 7, week 8 has 1 of 3 checks on Wednesday 2026-11-11)
+  const missedWeek7Dates = weekly8WeeksDates.filter(
+    (d) => d < '2026-11-02' || d > '2026-11-08'
+  );
+  const brokenMidWeekStats = getHabitStats(
+    {
+      ...weekly3Habit,
+      completedDates: [...missedWeek7Dates.filter((d) => d < '2026-11-09'), '2026-11-09'],
+    },
+    '2026-11-11'
+  );
+  assert(
+    brokenMidWeekStats.currentStreak === 0 &&
+      brokenMidWeekStats.bestStreak === 6 &&
+      brokenMidWeekStats.backlogDays === 2,
+    `Missed week breaks weekly_target streak (current=0, best=6) and backlog reflects remaining checks (2)`
+  );
+
+  // Missed week 7 then met week 8 starts new streak=1 while preserving bestStreak=6
+  const recoveredWeek8Stats = getHabitStats(
+    { ...weekly3Habit, completedDates: missedWeek7Dates },
+    week8SundayStr
+  );
+  assert(
+    recoveredWeek8Stats.currentStreak === 1 && recoveredWeek8Stats.bestStreak === 6,
+    `Meeting target after a missed week starts fresh streak=1 while keeping bestStreak=6`
+  );
+
+  // Empty customDays behaves as daily
+  const emptyCustomHabit = makeHabit({
+    scheduleType: 'custom_days',
+    customDays: [],
+    completedDates: dates30,
+  });
+  const emptyCustomStats = getHabitStats(emptyCustomHabit, todayStr);
+  assert(
+    isHabitDueOnDate(emptyCustomHabit, '2026-11-10') === true &&
+      emptyCustomStats.strengthScore === stats30.strengthScore &&
+      emptyCustomStats.currentStreak === 30 &&
+      emptyCustomStats.backlogDays === 0,
+    `Empty customDays behaves identically to daily (strength=${emptyCustomStats.strengthScore}, streak=${emptyCustomStats.currentStreak})`
+  );
+
+  // ------------------------------------------------------------------
+  // 8. Unified Label Scale, 7-Day Backlog Window & Today's Status
+  // ------------------------------------------------------------------
+  console.log('\n[8. Unified Label Scale, 7-Day Backlog & Today Status]');
+
+  // Unified threshold scale across all 5 tiers + 12-day (~47%) benchmark
+  const dates12 = Array.from({ length: 12 }, (_, i) => getLocalDateOffset(-i, todayLocal));
+  const stats12 = getHabitStats(makeHabit({ completedDates: dates12 }), todayStr);
+  const dates16 = Array.from({ length: 16 }, (_, i) => getLocalDateOffset(-i, todayLocal));
+  const stats16 = getHabitStats(makeHabit({ completedDates: dates16 }), todayStr);
+  const stats2 = getHabitStats(makeHabit({ completedDates: [todayStr, getLocalDateOffset(-1, todayLocal)] }), todayStr);
+
+  assert(
+    stats12.strengthScore >= 45 &&
+      stats12.strengthScore <= 49 &&
+      stats12.healthLabel === 'Building' &&
+      stats12.levelLabel.includes('Building') &&
+      stats12.levelBadgeColor.includes('amber'),
+    `12 consecutive days yields ~47% strength (${stats12.strengthScore}%) with unified Building tier`
+  );
+  assert(
+    stats16.strengthScore >= 50 &&
+      stats16.strengthScore < 70 &&
+      stats16.healthLabel === 'Stable' &&
+      stats16.levelLabel.includes('Developing') &&
+      stats16.levelBadgeColor.includes('indigo'),
+    `Score >=50 & <70 (${stats16.strengthScore}%) maps consistently to Stable / Developing`
+  );
+  assert(
+    stats30.strengthScore >= 70 &&
+      stats30.strengthScore < 85 &&
+      stats30.healthLabel === 'Strong' &&
+      stats30.levelLabel.includes('Strong') &&
+      stats30.levelBadgeColor.includes('blue'),
+    `Score >=70 & <85 (${stats30.strengthScore}%) maps consistently to Strong`
+  );
+  assert(
+    stats60.strengthScore >= 85 &&
+      stats60.healthLabel === 'Excellent' &&
+      stats60.levelLabel.includes('Mastered') &&
+      stats60.levelBadgeColor.includes('emerald'),
+    `Score >=85 (${stats60.strengthScore}%) maps consistently to Excellent / Mastered`
+  );
+  assert(
+    stats2.strengthScore < 25 &&
+      stats2.healthLabel === 'Needs focus' &&
+      stats2.levelLabel.includes('Needs Focus') &&
+      stats2.levelBadgeColor.includes('rose'),
+    `Score <25 (${stats2.strengthScore}%) maps consistently to Needs focus / Needs Focus`
+  );
+
+  // 7-day backlogDays window
+  const oldTwoDates = [getLocalDateOffset(-300, todayLocal), getLocalDateOffset(-299, todayLocal)];
+  const last7Completed = Array.from({ length: 7 }, (_, i) => getLocalDateOffset(-(i + 1), todayLocal));
+  const oldCheckedRecentClean = getHabitStats(
+    makeHabit({
+      createdAt: parseLocalDate(oldTwoDates[0]).getTime(),
+      completedDates: [...oldTwoDates, ...last7Completed],
+    }),
+    todayStr
+  );
+  assert(
+    oldCheckedRecentClean.backlogDays === 0,
+    `Habit checked twice 300 days ago with clean last 7 days (today unchecked) has backlog=0 (got ${oldCheckedRecentClean.backlogDays})`
+  );
+
+  const oldCheckedAbandoned = getHabitStats(
+    makeHabit({
+      createdAt: parseLocalDate(oldTwoDates[0]).getTime(),
+      completedDates: oldTwoDates,
+    }),
+    todayStr
+  );
+  assert(
+    oldCheckedAbandoned.backlogDays === 7,
+    `Habit checked twice 300 days ago with no recent checks caps backlog strictly to last 7 days=7, not ~298 (got ${oldCheckedAbandoned.backlogDays})`
+  );
+
+  // Exclude today, vacation, and not-due days from last-7-day backlogDays
+  // todayStr = 2026-11-12 (Thu). Last 7 days: Nov 5 (Thu) .. Nov 11 (Wed).
+  // custom_days [1, 3, 5] (Mon, Wed, Fri) -> due in last 7 days: Nov 6 (Fri), Nov 9 (Mon), Nov 11 (Wed).
+  // Put Nov 9 on vacation, complete Nov 6 -> only Nov 11 (Wed) missed -> backlogDays === 1 (today Thu not counted).
+  const selectiveBacklog = getHabitStats(
+    makeHabit({
+      scheduleType: 'custom_days',
+      customDays: [1, 3, 5],
+      completedDates: ['2026-11-06'],
+      vacationPeriods: [{ id: 'v-7', startDate: '2026-11-08', endDate: '2026-11-10' }],
+    }),
+    todayStr
+  );
+  assert(
+    selectiveBacklog.backlogDays === 1,
+    `7-day backlog excludes today, vacation, and non-due days (got ${selectiveBacklog.backlogDays})`
+  );
+
+  // Vacation range expansion & Today's Status (COMPLETED | DUE | REST, never FAILED)
+  const expandedVac = expandVacationDates([
+    { id: 'v-mid', startDate: '2026-11-09', endDate: '2026-11-13' },
+  ]);
+  assert(
+    expandedVac.length === 5 &&
+      expandedVac.includes('2026-11-09') &&
+      expandedVac.includes('2026-11-11') &&
+      expandedVac.includes('2026-11-13'),
+    `expandVacationDates expands every date from start to end inclusive (${expandedVac.length} days)`
+  );
+
+  const midVacationHabit = makeHabit({
+    vacationPeriods: [{ id: 'v-mid', startDate: '2026-11-09', endDate: '2026-11-13' }],
+  });
+  assert(
+    getHabitTodayStatus(midVacationHabit, '2026-11-11') === 'REST',
+    'Mid-vacation day returns Today Status REST (never FAILED)'
+  );
+  assert(
+    getHabitTodayStatus(makeHabit({ completedDates: [] }), todayStr) === 'DUE',
+    'Unchecked due day returns Today Status DUE (never FAILED)'
+  );
+  assert(
+    getHabitTodayStatus(makeHabit({ completedDates: [todayStr] }), todayStr) === 'COMPLETED',
+    'Checked today returns Today Status COMPLETED'
+  );
+  assert(
+    getHabitTodayStatus(
+      makeHabit({ scheduleType: 'custom_days', customDays: [1, 3, 5], completedDates: [] }),
+      '2026-11-12' // Thursday
+    ) === 'REST',
+    'Non-due custom_days weekday returns Today Status REST'
+  );
+  assert(
+    getHabitTodayStatus(
+      makeHabit({ scheduleType: 'weekly_target', targetDaysPerWeek: 3, completedDates: [] }),
+      todayStr
+    ) === 'REST',
+    'Unchecked weekly_target day returns Today Status REST'
+  );
+
+  assert(
+    HABIT_CATEGORIES.join(',') === 'Study,Health,Fitness,Mindfulness,Finance,Personal,Other',
+    'HABIT_CATEGORIES exposes all 7 canonical categories'
+  );
+  assert(
+    getHabitCategoryColor('Study') === getHabitCategoryColor('study') &&
+      getHabitCategoryColor('STUDY') === getHabitCategoryColor(' study ') &&
+      getHabitCategoryColor('Fitness') === getHabitCategoryColor('fitness') &&
+      getHabitCategoryColor('Mindfulness') === getHabitCategoryColor('MINDFULNESS') &&
+      getHabitCategoryColor('Health') === getHabitCategoryColor('health') &&
+      getHabitCategoryColor('Finance') === getHabitCategoryColor('finance') &&
+      getHabitCategoryColor('Personal') === getHabitCategoryColor('personal') &&
+      getHabitCategoryColor('Other') === getHabitCategoryColor('other') &&
+      getHabitCategoryColor(undefined) === getHabitCategoryColor('Personal'),
+    'Habit category color lookup is case-insensitive across all categories and defaults undefined to Personal'
   );
 
   console.log('\n--- All Tasks, Habits & Date Logic Tests Passed! ---');

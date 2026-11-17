@@ -43,6 +43,9 @@ export interface LifeDashboardProps {
   averageMood?: number;
   averageEnergy?: number;
   averageSleep?: number;
+  moodCount?: number;
+  energyCount?: number;
+  sleepCount?: number;
   insights?: string[];
   className?: string;
 }
@@ -53,9 +56,20 @@ export function LifeDashboard({
   averageMood = 0,
   averageEnergy = 0,
   averageSleep = 0,
+  moodCount,
+  energyCount,
+  sleepCount,
   insights = [],
   className = '',
 }: LifeDashboardProps) {
+  const safeCompletion = Number.isFinite(completionRate) ? `${completionRate.toFixed(0)}%` : '0%';
+  const moodValue =
+    moodCount === 0 || !Number.isFinite(averageMood) ? '—' : `${averageMood.toFixed(1)}/5`;
+  const energyValue =
+    energyCount === 0 || !Number.isFinite(averageEnergy) ? '—' : `${averageEnergy.toFixed(1)}/5`;
+  const sleepValue =
+    sleepCount === 0 || !Number.isFinite(averageSleep) ? '—' : `${averageSleep.toFixed(1)}h`;
+
   return (
     <div className={className} style={{ display: 'grid', gap: 18 }}>
       <div
@@ -66,10 +80,10 @@ export function LifeDashboard({
         }}
       >
         <DashboardCard title="Habits" value={String(totalHabits)} subtitle="Active routines" accent="#8b5cf6" />
-        <DashboardCard title="Completion" value={`${completionRate.toFixed(0)}%`} subtitle="Weekly average" accent="#22c55e" />
-        <DashboardCard title="Mood" value={`${averageMood.toFixed(1)}/5`} subtitle="Tracked sentiment" accent="#f59e0b" />
-        <DashboardCard title="Energy" value={`${averageEnergy.toFixed(1)}/5`} subtitle="Current rhythm" accent="#06b6d4" />
-        <DashboardCard title="Sleep" value={`${averageSleep.toFixed(1)}h`} subtitle="Average nightly sleep" accent="#ef4444" />
+        <DashboardCard title="Completion" value={safeCompletion} subtitle="Weekly average" accent="#22c55e" />
+        <DashboardCard title="Mood" value={moodValue} subtitle="Tracked sentiment" accent="#f59e0b" />
+        <DashboardCard title="Energy" value={energyValue} subtitle="Current rhythm" accent="#06b6d4" />
+        <DashboardCard title="Sleep" value={sleepValue} subtitle="Average nightly sleep" accent="#ef4444" />
       </div>
 
       <div
