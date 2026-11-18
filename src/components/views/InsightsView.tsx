@@ -5,10 +5,8 @@ import {
   Flame,
   Wallet,
   GraduationCap,
-  Calendar,
   Sparkles,
   BarChart3,
-  Award,
   Activity,
   Download,
   Upload,
@@ -16,8 +14,9 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { Task, Habit, Transaction, BudgetSettings, ExamReminder, DailyLifeMetric, UserAppData } from '../../types/index.ts';
-import { getLocalDateString } from '../../lib/dateUtils.ts';
+import { getLocalDateString, parseLocalDate } from '../../lib/dateUtils.ts';
 import { isActive } from '../../lib/entity.ts';
+import { isOverdue } from '../../lib/taskUtils.ts';
 import { analyzeLifeMetricCorrelations } from '../../lib/correlationEngine.ts';
 import {
   exportAppDataJson,
@@ -25,18 +24,19 @@ import {
   exportTasksCsv,
   exportTransactionsCsv,
   exportDailyMetricsCsv,
-  parseAppDataJsonFile,
+  prepareRestore,
+  summarizeAppDataCounts,
+  type PreparedRestoreResult,
 } from '../../lib/dataExport.ts';
 import { DailyLifeCheckinModal } from '../insights/DailyLifeCheckinModal.tsx';
 import { LifeInsightsPanel } from '../insights/LifeInsightsPanel.tsx';
-import { LifeDashboard } from '../../features/dashboard/LifeDashboard.tsx';
-import { buildWeeklySummary, generateInsights } from '../../lib/analytics.ts';
+import { RestoreConfirmDialog } from '../common/RestoreConfirmDialog.tsx';
+import { filterMetricsByRange } from '../../lib/analytics.ts';
 import { getHabitStats } from '../../lib/habitScoring.ts';
 import { formatCurrency } from '../../lib/format.ts';
 import {
   monthKey,
   summarizeMonth,
-  summarizeAllTime,
   budgetStatus,
 } from '../../lib/financeUtils.ts';
 
@@ -64,64 +64,85 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
   onRestoreAppData,
 }) => {
   const todayStr = getLocalDateString();
+  const [rangeDays, setRangeDays] = useState<7 | 30 | null>(7);
   const [isCheckinOpen, setIsCheckinOpen] = useState(false);
-  const [backupStatusMessage, setBackupStatusMessage] = useState<string | null>(null);
+  const [backupStatus, setBackupStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<PreparedRestoreResult | null>(null);
+
+  const effectiveAppData = useMemo<UserAppData>(
+    () =>
+      appData ?? {
+        tasks,
+        transactions,
+        budget,
+        exams,
+        habits,
+        notes: [],
+        dailyMetrics,
+      },
+    [appData, tasks, transactions, budget, exams, habits, dailyMetrics]
+  );
+  const currentSummary = useMemo(
+    () => summarizeAppDataCounts(effectiveAppData),
+    [effectiveAppData]
+  );
+
+  const filteredMetrics = useMemo(
+    () => filterMetricsByRange(dailyMetrics, rangeDays, todayStr),
+    [dailyMetrics, rangeDays, todayStr]
+  );
+
+  // Correlations always use at least 30 days (when 7 days is selected, widen to 30 days)
+  const correlationMetrics = useMemo(
+    () => filterMetricsByRange(dailyMetrics, rangeDays === 7 ? 30 : rangeDays, todayStr),
+    [dailyMetrics, rangeDays, todayStr]
+  );
 
   const correlations = useMemo(() => {
-    return analyzeLifeMetricCorrelations(dailyMetrics, tasks, habits);
-  }, [dailyMetrics, tasks, habits]);
-
-  // Analytics Engine Life Summary (from analytics.ts & habitScoring.ts)
-  const { weeklySummary, lifeInsights } = useMemo(() => {
-    const habitLikes = habits.map((h) => {
-      const stats = getHabitStats(h, todayStr);
-      return {
-        id: h.id,
-        name: h.name,
-        score: {
-          currentStrength: stats.strengthScore,
-          completionRate: stats.completionRate,
-        },
-      };
-    });
-
-    const metricLikes = dailyMetrics.map((m) => ({
-      date: m.date,
-      mood: m.moodLevel,
-      energy: m.energyLevel,
-      stress: m.stressLevel,
-      sleepHours: m.sleepHours,
-      steps: m.stepsCount,
-      workoutDone: m.workoutDone,
-    }));
-
-    const summary = buildWeeklySummary(habitLikes, metricLikes);
-    const insights = generateInsights(habitLikes, metricLikes);
-
-    return { weeklySummary: summary, lifeInsights: insights };
-  }, [habits, dailyMetrics, todayStr]);
+    return analyzeLifeMetricCorrelations(correlationMetrics, tasks, habits);
+  }, [correlationMetrics, tasks, habits]);
 
   // 1. Task Metrics
   const taskStats = useMemo(() => {
-    const total = tasks.length;
-    const completed = tasks.filter((t) => t.completed).length;
+    const activeTasks = tasks.filter(isActive);
+    const total = activeTasks.length;
+    const completed = activeTasks.filter((t) => t.completed).length;
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    // Last 7 days completed tasks
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const completedRecently = tasks.filter(
-      (t) => t.completed && t.completedAt && t.completedAt >= sevenDaysAgo
-    ).length;
+    const now = new Date();
+    const rangeStartMs =
+      rangeDays === null
+        ? null
+        : new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() - (rangeDays - 1),
+            0,
+            0,
+            0,
+            0
+          ).getTime();
+
+    const completedInRange = activeTasks.filter((t) => {
+      if (!t.completed) return false;
+      if (typeof t.completedAt !== 'number' || !Number.isFinite(t.completedAt)) {
+        return false;
+      }
+      if (rangeStartMs === null) return true;
+      return t.completedAt >= rangeStartMs;
+    }).length;
+
+    const overdueCount = activeTasks.filter((t) => isOverdue(t, now)).length;
 
     // Categories breakdown
     const categoryCount: Record<string, number> = {};
-    tasks.forEach((t) => {
+    activeTasks.forEach((t) => {
       const cat = t.category || 'other';
       categoryCount[cat] = (categoryCount[cat] || 0) + 1;
     });
 
-    return { total, completed, rate, completedRecently, categoryCount };
-  }, [tasks]);
+    return { total, completed, rate, completedInRange, overdueCount, categoryCount };
+  }, [tasks, rangeDays]);
 
   // 2. Habit Consistency (computed strictly from completedDates via getHabitStats)
   const habitStats = useMemo(() => {
@@ -138,50 +159,112 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
     return { avgStreak, bestStreak, checkedInToday };
   }, [habits, todayStr]);
 
-  // 3. Financial Review (shared financeUtils rules)
+  // 3. Financial Review (shared financeUtils rules, scoped to current month)
   const financeStats = useMemo(() => {
     const currentMonth = monthKey(todayStr);
-    const allTimeSummary = summarizeAllTime(transactions, todayStr);
     const currentMonthSummary = summarizeMonth(transactions, currentMonth, todayStr);
-    const budgetHealth = budgetStatus(currentMonthSummary.expense, budget.monthlyBudget ?? 0);
-    const savingsRate =
-      allTimeSummary.income > 0
-        ? Math.round((allTimeSummary.net / allTimeSummary.income) * 100)
+    const rawBudget = budget?.monthlyBudget;
+    const monthlyBudget =
+      typeof rawBudget === 'number' && Number.isFinite(rawBudget) && rawBudget > 0
+        ? rawBudget
         : 0;
+    const budgetHealth = budgetStatus(currentMonthSummary.expense, monthlyBudget);
+    const overAmount = budgetHealth.over ? Math.abs(budgetHealth.remaining) : 0;
 
     return {
-      totalIncome: allTimeSummary.income,
-      totalExpense: allTimeSummary.expense,
-      savings: allTimeSummary.net,
-      savingsRate,
+      monthlyBudget,
+      hasBudget: monthlyBudget > 0,
+      monthlyIncome: currentMonthSummary.income,
+      monthlySpent: currentMonthSummary.expense,
+      savings: currentMonthSummary.net,
       budgetUsage: budgetHealth.percent,
       budgetOver: budgetHealth.over,
+      overAmount,
     };
   }, [transactions, budget, todayStr]);
 
   // 4. Academic Readiness
   const academicStats = useMemo(() => {
-    const upcoming = exams.filter(
-      (e) => new Date(`${e.examDate}T${e.examTime || '23:59'}`).getTime() >= Date.now()
-    );
-    return { upcomingCount: upcoming.length };
-  }, [exams]);
+    const nowMs = Date.now();
+    const todayDate = parseLocalDate(todayStr);
+    const upcoming = exams
+      .filter((e) => {
+        if (!isActive(e) || !e.examDate) return false;
+        const examTs = new Date(`${e.examDate}T${e.examTime || '23:59'}`).getTime();
+        return Number.isFinite(examTs) && examTs >= nowMs;
+      })
+      .sort((a, b) => {
+        const aTs = new Date(`${a.examDate}T${a.examTime || '23:59'}`).getTime();
+        const bTs = new Date(`${b.examDate}T${b.examTime || '23:59'}`).getTime();
+        return aTs - bTs;
+      });
+
+    const nextExam = upcoming[0] ?? null;
+    const nextExamDaysLeft = nextExam
+      ? Math.max(
+          0,
+          Math.round(
+            (parseLocalDate(nextExam.examDate).getTime() - todayDate.getTime()) /
+              (24 * 60 * 60 * 1000)
+          )
+        )
+      : null;
+
+    return {
+      upcomingCount: upcoming.length,
+      nextExam,
+      nextExamDaysLeft,
+    };
+  }, [exams, todayStr]);
 
   return (
     <div id="insights-view" className="space-y-6 animate-fadeIn pb-12">
-      {/* Header */}
+      {/* Header + Time Range Control */}
       <div className="bg-gradient-to-b from-white to-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-slate-900 text-white shadow-xs">
-            <TrendingUp className="w-5 h-5 text-emerald-400" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-slate-900 text-white shadow-xs">
+              <TrendingUp className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                Review & Insights
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Reflect on task execution, habit consistency loops, and life check-in trends.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              Review & Insights
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Reflect on weekly task execution, habit consistency loops, and financial balance.
-            </p>
+
+          <div
+            id="insights-range-control"
+            role="group"
+            aria-label="Insights time range"
+            className="grid grid-cols-3 sm:inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto shrink-0"
+          >
+            {([
+              { id: 'insights-range-7', label: '7 days', value: 7 as const },
+              { id: 'insights-range-30', label: '30 days', value: 30 as const },
+              { id: 'insights-range-all', label: 'All time', value: null },
+            ]).map((opt) => {
+              const isSelected = rangeDays === opt.value;
+              return (
+                <button
+                  key={opt.id}
+                  id={opt.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => setRangeDays(opt.value)}
+                  className={`min-h-[44px] px-2.5 sm:px-3.5 py-2 text-xs font-semibold rounded-lg transition cursor-pointer inline-flex items-center justify-center whitespace-nowrap ${
+                    isSelected
+                      ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -204,8 +287,14 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
               Overall task completion ({taskStats.completed}/{taskStats.total})
             </p>
           </div>
-          <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-emerald-700 font-medium">
-            +{taskStats.completedRecently} completed in past 7 days
+          <div className="mt-3 pt-3 border-t border-slate-100 text-xs font-medium flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <span className="text-emerald-700">
+              {taskStats.completedInRange} completed{' '}
+              {rangeDays === null ? 'across all time' : `in last ${rangeDays} days`}
+            </span>
+            <span className={taskStats.overdueCount > 0 ? 'text-rose-700 font-semibold' : 'text-slate-500'}>
+              {taskStats.overdueCount} overdue
+            </span>
           </div>
         </div>
 
@@ -239,15 +328,27 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
-              {financeStats.budgetUsage}%
-            </span>
-            <p className="text-xs text-slate-500 mt-1">
-              Monthly budget utilized
-            </p>
+            {financeStats.hasBudget ? (
+              <span className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
+                {financeStats.budgetUsage}%
+              </span>
+            ) : (
+              <span className="text-xl sm:text-2xl font-extrabold text-slate-700 tracking-tight block leading-9">
+                No budget set
+              </span>
+            )}
+            {financeStats.hasBudget && financeStats.budgetOver ? (
+              <p className="text-xs font-bold text-rose-700 mt-1">
+                Over budget by {formatCurrency(financeStats.overAmount)}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-1">
+                {financeStats.hasBudget ? 'Monthly budget utilized' : 'Set a monthly budget in Finances'}
+              </p>
+            )}
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-blue-700 font-medium">
-            {formatCurrency(financeStats.savings)} net balance
+            {formatCurrency(financeStats.savings)} net this month
           </div>
         </div>
 
@@ -267,46 +368,51 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
               Upcoming scheduled exams
             </p>
           </div>
-          <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-indigo-700 font-medium">
-            Exam dates synchronized
+          <div
+            className="mt-3 pt-3 border-t border-slate-100 text-xs text-indigo-700 font-medium truncate"
+            title={
+              academicStats.nextExam
+                ? `${academicStats.nextExam.subject} · ${
+                    academicStats.nextExamDaysLeft === 0
+                      ? 'Today'
+                      : academicStats.nextExamDaysLeft === 1
+                      ? '1 day left'
+                      : `${academicStats.nextExamDaysLeft} days left`
+                  }`
+                : 'No upcoming exams'
+            }
+          >
+            {academicStats.nextExam
+              ? `${academicStats.nextExam.subject} · ${
+                  academicStats.nextExamDaysLeft === 0
+                    ? 'Today'
+                    : academicStats.nextExamDaysLeft === 1
+                    ? '1 day left'
+                    : `${academicStats.nextExamDaysLeft} days left`
+                }`
+              : 'No upcoming exams'}
           </div>
         </div>
       </div>
 
-      {/* Executive Life Intelligence Dashboard (from src/features/dashboard/LifeDashboard.tsx) */}
-      <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl text-white space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-400" />
-            <h2 className="text-base font-bold text-white tracking-tight">
-              Life Intelligence Engine (FxLifeSheet & Loop Analytics)
-            </h2>
-          </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-900/60 text-purple-200 border border-purple-700 self-start sm:self-auto">
-            Real-Time Synthesis
-          </span>
+      {/* Life Overview Panel */}
+      <div className="bg-slate-950 p-4 sm:p-6 rounded-2xl border border-slate-800 shadow-xl text-white space-y-4">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-purple-400 shrink-0" />
+          <h2 className="text-base font-bold text-white tracking-tight">
+            Life overview
+          </h2>
         </div>
 
-        <LifeDashboard
-          totalHabits={weeklySummary.totalHabits}
-          completionRate={weeklySummary.completionRate}
-          averageMood={weeklySummary.averageMood}
-          averageEnergy={weeklySummary.averageEnergy}
-          averageSleep={weeklySummary.averageSleep}
-          moodCount={weeklySummary.moodCount}
-          energyCount={weeklySummary.energyCount}
-          sleepCount={weeklySummary.sleepCount}
-          insights={lifeInsights}
+        <LifeInsightsPanel
+          habits={habits}
+          dailyMetrics={filteredMetrics}
+          rangeDays={rangeDays}
         />
-
-        {/* Deep Habit & Life Insights Panel */}
-        <div className="pt-4 border-t border-slate-800">
-          <LifeInsightsPanel habits={habits} dailyMetrics={dailyMetrics} />
-        </div>
       </div>
 
       {/* Weekly Review Summary Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
         <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-emerald-600" />
           <span>Weekly LifeTrack Reflection</span>
@@ -314,14 +420,23 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
 
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 text-sm text-slate-700 leading-relaxed">
           <p className="font-medium text-slate-900">
-            {taskStats.rate >= 70
-              ? 'Excellent momentum this cycle!'
-              : 'Steady progress in motion.'}
+            {taskStats.total === 0
+              ? 'No tasks logged yet'
+              : taskStats.rate >= 70
+              ? 'Strong week'
+              : 'Room to grow'}
           </p>
           <p className="mt-1 text-slate-600 text-xs sm:text-sm">
             You have marked {taskStats.completed} tasks complete across your focus areas.
             {habitStats.bestStreak > 3 && ` Your best habit streak is currently ${habitStats.bestStreak} days.`}
-            {financeStats.budgetUsage > 80 && ' Note: your monthly budget is over 80% utilized.'}
+            {financeStats.hasBudget && financeStats.budgetOver && (
+              <span className="text-rose-700 font-semibold">
+                {` Note: Over budget by ${formatCurrency(financeStats.overAmount)} (${financeStats.budgetUsage}% used).`}
+              </span>
+            )}
+            {financeStats.hasBudget && !financeStats.budgetOver && financeStats.budgetUsage > 80 && (
+              ` Note: your monthly budget is ${financeStats.budgetUsage}% used.`
+            )}
           </p>
         </div>
 
@@ -339,8 +454,8 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
         </div>
       </div>
 
-      {/* Multi-Dimensional Life Correlations (FxLifeSheet Model) */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+      {/* Multi-Dimensional Life Correlations */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -355,7 +470,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
             <button
               type="button"
               onClick={() => setIsCheckinOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition cursor-pointer self-start sm:self-auto"
+              className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition cursor-pointer self-start sm:self-auto"
             >
               <Activity className="w-4 h-4 text-purple-600" />
               <span>Log Daily Check-In</span>
@@ -363,23 +478,61 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {correlations.map((c, idx) => (
-            <div key={idx} className={`p-4 rounded-xl border ${c.color} space-y-2`}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold">{c.metricA} ↔ {c.metricB}</span>
-                <span className="text-xs font-mono font-extrabold px-2 py-0.5 rounded-full bg-white/80 shadow-2xs">
-                  r = {c.coefficient > 0 ? `+${c.coefficient}` : c.coefficient}
-                </span>
-              </div>
-              <p className="text-xs font-medium leading-snug">{c.insightText}</p>
-              <div className="flex items-center justify-between text-[10px] font-semibold opacity-75 pt-1 border-t border-current/20">
-                <span>{c.relationship}</span>
-                <span>{c.sampleSize} Days Analyzed</span>
-              </div>
+        {correlations.length === 0 ? (
+          <div
+            id="correlations-empty-state"
+            className="p-5 sm:p-6 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center space-y-3"
+          >
+            <p className="text-xs sm:text-sm font-medium text-slate-600 max-w-md mx-auto">
+              Log at least 3 days of sleep + mood (or focus/energy, water/energy) to see correlations
+            </p>
+            <button
+              id="correlations-empty-checkin-btn"
+              type="button"
+              onClick={() => setIsCheckinOpen(true)}
+              className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition cursor-pointer"
+            >
+              <Activity className="w-4 h-4 text-purple-600" />
+              <span>Open Daily Check-In</span>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {correlations.map((c, idx) => {
+                const conf =
+                  c.confidence ??
+                  (c.sampleSize < 7 ? 'low' : c.sampleSize < 14 ? 'medium' : 'high');
+                const confLabel = `${conf.charAt(0).toUpperCase()}${conf.slice(1)} confidence`;
+
+                return (
+                  <div key={idx} className={`p-4 rounded-xl border ${c.color} space-y-2`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                        <span className="text-xs font-bold">{c.metricA} ↔ {c.metricB}</span>
+                        {c.isSimulated === true && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                            Sample insight
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs font-mono font-extrabold px-2 py-0.5 rounded-full bg-white/80 shadow-2xs shrink-0">
+                        r = {c.coefficient > 0 ? `+${c.coefficient}` : c.coefficient}
+                      </span>
+                    </div>
+                    <p className="text-xs font-medium leading-snug">{c.insightText}</p>
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] font-semibold opacity-85 pt-1 border-t border-current/20">
+                      <span>{c.relationship}</span>
+                      <span>{confLabel}</span>
+                      <span>{c.sampleSize} days</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+            <p className="text-[11px] text-slate-500">Correlation does not prove cause.</p>
+          </div>
+        )}
       </div>
 
       {/* Data Portability & Export / Backup Hub */}
@@ -398,7 +551,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           <button
             type="button"
             onClick={() => exportTasksCsv(tasks)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+            className="min-h-[44px] p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
           >
             <div>
               <p className="text-xs font-bold text-slate-900">Tasks CSV</p>
@@ -410,7 +563,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           <button
             type="button"
             onClick={() => exportHabitsCsv(habits)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+            className="min-h-[44px] p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
           >
             <div>
               <p className="text-xs font-bold text-slate-900">Habits CSV</p>
@@ -422,7 +575,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           <button
             type="button"
             onClick={() => exportTransactionsCsv(transactions)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+            className="min-h-[44px] p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
           >
             <div>
               <p className="text-xs font-bold text-slate-900">Finances CSV</p>
@@ -434,7 +587,7 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           <button
             type="button"
             onClick={() => exportDailyMetricsCsv(dailyMetrics)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
+            className="min-h-[44px] p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between text-left cursor-pointer"
           >
             <div>
               <p className="text-xs font-bold text-slate-900">Metrics CSV</p>
@@ -450,14 +603,14 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
             onClick={() => {
               if (appData) exportAppDataJson(appData);
             }}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs"
+            className="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-xs"
           >
             <Download className="w-4 h-4" />
             <span>Export Full JSON Backup</span>
           </button>
 
           {onRestoreAppData && (
-            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer">
+            <label className="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer">
               <Upload className="w-4 h-4 text-slate-600" />
               <span>Restore JSON Backup</span>
               <input
@@ -468,13 +621,16 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
-                    const restored = await parseAppDataJsonFile(file);
-                    onRestoreAppData(restored);
-                    setBackupStatusMessage('Data restored successfully!');
-                    setTimeout(() => setBackupStatusMessage(null), 3000);
+                    const prepared = await prepareRestore(file);
+                    setPendingRestore(prepared);
+                    setBackupStatus(null);
                   } catch (err: any) {
-                    setBackupStatusMessage(err?.message || 'Failed to parse JSON backup file.');
-                    setTimeout(() => setBackupStatusMessage(null), 4000);
+                    setPendingRestore(null);
+                    setBackupStatus({
+                      type: 'error',
+                      text: err?.message || "That file isn't valid JSON",
+                    });
+                    setTimeout(() => setBackupStatus(null), 4000);
                   } finally {
                     e.target.value = '';
                   }
@@ -484,21 +640,55 @@ export const InsightsView: React.FC<InsightsViewProps> = ({
           )}
         </div>
 
-        {backupStatusMessage && (
-          <div className="mt-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-semibold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span>{backupStatusMessage}</span>
+        {backupStatus && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+              backupStatus.type === 'error'
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-indigo-50 border-indigo-200 text-indigo-900'
+            }`}
+          >
+            <CheckCircle2
+              className={`w-4 h-4 shrink-0 ${
+                backupStatus.type === 'error' ? 'text-rose-600' : 'text-indigo-600'
+              }`}
+            />
+            <span>{backupStatus.text}</span>
           </div>
         )}
       </div>
 
+      {/* Restore Confirmation Dialog */}
+      {pendingRestore && onRestoreAppData && (
+        <RestoreConfirmDialog
+          isOpen={true}
+          incomingSummary={pendingRestore.summary}
+          currentSummary={currentSummary}
+          onDownloadBackupFirst={() => exportAppDataJson(effectiveAppData)}
+          onCancel={() => setPendingRestore(null)}
+          onConfirmReplace={() => {
+            onRestoreAppData(pendingRestore.data);
+            setBackupStatus({
+              type: 'success',
+              text: pendingRestore.repaired
+                ? 'Backup restored with integrity repairs.'
+                : 'Data restored successfully!',
+            });
+            setPendingRestore(null);
+            setTimeout(() => setBackupStatus(null), 3000);
+          }}
+        />
+      )}
+
       {/* Daily Metrics Check-In Modal */}
-      {onSaveDailyMetric && (
+      {(onSaveDailyMetric || isCheckinOpen) && (
         <DailyLifeCheckinModal
           isOpen={isCheckinOpen}
           onClose={() => setIsCheckinOpen(false)}
           existingMetric={dailyMetrics.find((m) => m.date === todayStr)}
-          onSaveMetric={onSaveDailyMetric}
+          onSaveMetric={onSaveDailyMetric ?? (() => {})}
         />
       )}
     </div>

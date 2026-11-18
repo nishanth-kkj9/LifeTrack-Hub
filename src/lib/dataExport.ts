@@ -264,29 +264,105 @@ export function exportNotesJson(notes: QuickNote[]) {
   downloadFile(`LifeTrack_Notes_${dateStr}.json`, json, 'application/json');
 }
 
+export const MAX_BACKUP_FILE_BYTES = 2 * 1024 * 1024;
+
+export interface BackupDataCounts {
+  tasks: number;
+  habits: number;
+  notes: number;
+  transactions: number;
+  exams: number;
+  dailyMetrics: number;
+}
+
+export interface PreparedRestoreResult {
+  data: UserAppData;
+  repaired: boolean;
+  summary: BackupDataCounts;
+}
+
+export function summarizeAppDataCounts(data?: Partial<UserAppData> | null): BackupDataCounts {
+  return {
+    tasks: (data?.tasks || []).filter(isActive).length,
+    habits: (data?.habits || []).filter(isActive).length,
+    notes: (data?.notes || []).filter(isActive).length,
+    transactions: (data?.transactions || []).filter(isActive).length,
+    exams: (data?.exams || []).filter(isActive).length,
+    dailyMetrics: (data?.dailyMetrics || []).filter(isActive).length,
+  };
+}
+
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (typeof FileReader === 'undefined') {
+      if (typeof file.text === 'function') {
+        file.text().then(resolve, () => reject(new Error('Could not read that file. Please try again.')));
+        return;
+      }
+      reject(new Error('Could not read that file. Please try again.'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      resolve(typeof e.target?.result === 'string' ? e.target.result : '');
+    };
+    reader.onerror = () => {
+      reject(new Error('Could not read that file. Please try again.'));
+    };
+    reader.readAsText(file);
+  });
+}
+
+/**
+ * Shared backup preparation helper for Insights restore & Settings import:
+ * - Enforces a 2 MB file size limit
+ * - Rejects malformed JSON with a friendly message ("That file isn't valid JSON")
+ * - Sanitizes structure and rejects empty backups ("This file has no LifeTrack data")
+ * - Returns sanitized data + active item counts summary
+ */
+export async function prepareRestore(file: File): Promise<PreparedRestoreResult> {
+  if (!file) {
+    throw new Error('No backup file was selected.');
+  }
+  if (file.size > MAX_BACKUP_FILE_BYTES) {
+    throw new Error('That backup file is too large (limit is 2 MB).');
+  }
+
+  const raw = await readFileAsText(file);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("That file isn't valid JSON");
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error("That file isn't valid JSON");
+  }
+
+  const { data, repaired } = sanitizeUserAppData(parsed);
+  const summary = summarizeAppDataCounts(data);
+  const totalItems =
+    summary.tasks +
+    summary.habits +
+    summary.notes +
+    summary.transactions +
+    summary.exams +
+    summary.dailyMetrics;
+
+  if (totalItems === 0) {
+    throw new Error('This file has no LifeTrack data');
+  }
+
+  return { data, repaired, summary };
+}
+
 /**
  * Imports JSON backup file and parses as UserAppData
  */
-export function parseAppDataJsonFile(file: File): Promise<UserAppData> {
-  return new Promise((resolve, reject) => {
-    if (file.size > 2 * 1024 * 1024) {
-      return reject(new Error('Backup file exceeds the 2 MB limit.'));
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const content = e.target?.result as string;
-        const parsed = JSON.parse(content);
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error('Invalid JSON structure');
-        }
-        const { data } = sanitizeUserAppData(parsed);
-        resolve(data);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = (err) => reject(err);
-    reader.readAsText(file);
-  });
+export async function parseAppDataJsonFile(file: File): Promise<UserAppData> {
+  const { data } = await prepareRestore(file);
+  return data;
 }

@@ -21,15 +21,21 @@ import {
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { UserAppData } from '../../types/index.ts';
-import { sanitizeUserAppData } from '../../lib/firebase.ts';
-import { exportNotesMarkdown, exportNotesJson } from '../../lib/dataExport.ts';
+import {
+  exportAppDataJson,
+  exportNotesMarkdown,
+  exportNotesJson,
+  prepareRestore,
+  summarizeAppDataCounts,
+  type PreparedRestoreResult,
+} from '../../lib/dataExport.ts';
 import { Button } from '../ui/Button.tsx';
+import { RestoreConfirmDialog } from '../common/RestoreConfirmDialog.tsx';
 import {
   getTimeFormatPreference,
   setTimeFormatPreference,
   getWeekStartPreference,
   setWeekStartPreference,
-  getLocalDateString,
   type TimeFormat,
   type WeekStart,
 } from '../../lib/dateUtils.ts';
@@ -65,39 +71,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [copiedUid, setCopiedUid] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<PreparedRestoreResult | null>(null);
   const [timeFormat, setTimeFormatState] = useState<TimeFormat>(() => getTimeFormatPreference());
   const [weekStart, setWeekStartState] = useState<WeekStart>(() => getWeekStartPreference());
   const [taskReminders, setTaskReminders] = useState<boolean>(() => getTaskRemindersPreference());
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const showStatus = (text: string, type: 'success' | 'error' = 'success', durationMs = 2500) => {
+    setSyncStatus({ type, text });
+    setTimeout(() => setSyncStatus(null), durationMs);
+  };
+
   const handleTimeFormatChange = (fmt: TimeFormat) => {
     setTimeFormatState(fmt);
     setTimeFormatPreference(fmt);
-    setSyncStatusMsg(`Time format updated to ${fmt === '12h' ? '12-Hour' : '24-Hour'}`);
-    setTimeout(() => setSyncStatusMsg(null), 2500);
+    showStatus(`Time format updated to ${fmt === '12h' ? '12-Hour' : '24-Hour'}`, 'success', 2500);
   };
 
   const handleWeekStartChange = (ws: WeekStart) => {
     setWeekStartState(ws);
     setWeekStartPreference(ws);
-    setSyncStatusMsg(`Calendar week start updated to ${ws === 'mon' ? 'Monday' : 'Sunday'}`);
-    setTimeout(() => setSyncStatusMsg(null), 2500);
+    showStatus(`Calendar week start updated to ${ws === 'mon' ? 'Monday' : 'Sunday'}`, 'success', 2500);
   };
 
   const handleToggleTaskReminders = async () => {
     if (taskReminders) {
       setTaskReminders(false);
       setTaskRemindersPreference(false);
-      setSyncStatusMsg('Task reminders disabled');
-      setTimeout(() => setSyncStatusMsg(null), 2500);
+      showStatus('Task reminders disabled', 'success', 2500);
       return;
     }
 
     if (typeof window === 'undefined' || typeof Notification === 'undefined') {
-      setSyncStatusMsg('Browser notifications are not supported in this environment.');
-      setTimeout(() => setSyncStatusMsg(null), 3500);
+      showStatus('Browser notifications are not supported in this environment.', 'error', 3500);
       return;
     }
 
@@ -113,80 +121,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (permission === 'granted') {
       setTaskReminders(true);
       setTaskRemindersPreference(true);
-      setSyncStatusMsg('Task reminders enabled for tasks due in the next 24 hours.');
-      setTimeout(() => setSyncStatusMsg(null), 3000);
+      showStatus('Task reminders enabled for tasks due in the next 24 hours.', 'success', 3000);
     } else {
       setTaskReminders(false);
       setTaskRemindersPreference(false);
-      setSyncStatusMsg('Notification permission denied. Enable notifications in browser settings.');
-      setTimeout(() => setSyncStatusMsg(null), 4000);
+      showStatus('Notification permission denied. Enable notifications in browser settings.', 'error', 4000);
     }
   };
 
   // Export JSON backup
   const handleExportJson = () => {
-    const jsonStr = JSON.stringify(appData, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `lifetrack_hub_backup_${getLocalDateString()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    exportAppDataJson(appData);
   };
 
-  // Import JSON backup with defensive 2MB clamp and shape sanitization
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Import JSON backup using shared prepareRestore + confirmation dialog
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      setSyncStatusMsg('Error: Backup file exceeds the 2 MB limit.');
-      setTimeout(() => setSyncStatusMsg(null), 4000);
+    try {
+      const prepared = await prepareRestore(file);
+      setPendingRestore(prepared);
+      setSyncStatus(null);
+    } catch (err: any) {
+      setPendingRestore(null);
+      showStatus(err?.message || "That file isn't valid JSON", 'error', 4000);
+    } finally {
       e.target.value = '';
-      return;
     }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const raw = event.target?.result as string;
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error('Invalid JSON format');
-        }
-        const { data: sanitized, repaired } = sanitizeUserAppData(parsed);
-        if (
-          sanitized &&
-          (sanitized.tasks?.length > 0 ||
-            sanitized.habits?.length > 0 ||
-            sanitized.notes?.length > 0 ||
-            sanitized.transactions?.length > 0 ||
-            sanitized.exams?.length > 0)
-        ) {
-          onRestoreData(sanitized);
-          setSyncStatusMsg(repaired ? 'Data imported with integrity repairs.' : 'Data imported successfully!');
-          setTimeout(() => setSyncStatusMsg(null), 3000);
-        } else {
-          setSyncStatusMsg('Error: Backup file contains no valid LifeTrack data.');
-          setTimeout(() => setSyncStatusMsg(null), 4000);
-        }
-      } catch (err: any) {
-        console.error('Failed to parse backup:', err);
-        setSyncStatusMsg('Error: Failed to parse JSON backup file.');
-        setTimeout(() => setSyncStatusMsg(null), 4000);
-      } finally {
-        e.target.value = '';
-      }
-    };
-    reader.onerror = () => {
-      setSyncStatusMsg('Error reading backup file.');
-      setTimeout(() => setSyncStatusMsg(null), 4000);
-      e.target.value = '';
-    };
-    reader.readAsText(file);
   };
 
   const handleCopyUid = () => {
@@ -216,10 +178,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {syncStatusMsg && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          <span>{syncStatusMsg}</span>
+      {syncStatus && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`p-4 rounded-xl border text-sm flex items-center gap-2 ${
+            syncStatus.type === 'error'
+              ? 'bg-rose-50 border-rose-200 text-rose-800'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}
+        >
+          {syncStatus.type === 'error' ? (
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          )}
+          <span>{syncStatus.text}</span>
         </div>
       )}
 
@@ -641,6 +615,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Restore Confirmation Dialog */}
+      {pendingRestore && (
+        <RestoreConfirmDialog
+          isOpen={true}
+          incomingSummary={pendingRestore.summary}
+          currentSummary={summarizeAppDataCounts(appData)}
+          onDownloadBackupFirst={() => exportAppDataJson(appData)}
+          onCancel={() => setPendingRestore(null)}
+          onConfirmReplace={() => {
+            onRestoreData(pendingRestore.data);
+            showStatus(
+              pendingRestore.repaired
+                ? 'Data imported with integrity repairs.'
+                : 'Data imported successfully!',
+              'success',
+              3000
+            );
+            setPendingRestore(null);
+          }}
+        />
+      )}
 
       {/* 5. About LifeTrack Hub */}
       <div className="text-center py-4 text-xs text-slate-400">

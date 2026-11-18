@@ -2152,8 +2152,10 @@ async function runBrowserUiTests() {
       );
     });
     assert(
-      (inMount.textContent || '').includes('119%') && (inMount.textContent || '').includes('-₹7,449.80'),
-      'InsightsView uses shared financeUtils showing identical 119% budget usage and -₹7,449.80 net balance'
+      (inMount.textContent || '').includes('119%') &&
+        (inMount.textContent || '').includes('-₹5,949.80') &&
+        (inMount.textContent || '').includes('Over budget by ₹949.80'),
+      'InsightsView uses shared financeUtils showing identical 119% budget usage and -₹5,949.80 monthly net balance'
     );
     await act(async () => {
       inRoot.unmount();

@@ -12,12 +12,14 @@ import { getHabitStats } from '../../lib/habitScoring.ts';
 export interface LifeInsightsPanelProps {
   habits: Habit[];
   dailyMetrics: DailyLifeMetric[];
+  rangeDays?: 7 | 30 | null;
   className?: string;
 }
 
 export function LifeInsightsPanel({
   habits,
   dailyMetrics,
+  rangeDays = 7,
   className = '',
 }: LifeInsightsPanelProps) {
   const habitItems = useMemo(
@@ -46,17 +48,26 @@ export function LifeInsightsPanel({
         sleepHours: m.sleepHours,
         steps: m.stepsCount,
         workoutDone: m.workoutDone,
+        deletedAt: m.deletedAt,
       })),
     [dailyMetrics]
   );
 
-  const summary = useMemo(() => buildWeeklySummary(habitItems, metricsItems), [habitItems, metricsItems]);
-  const insights = useMemo(() => generateInsights(habitItems, metricsItems), [habitItems, metricsItems]);
+  const summary = useMemo(
+    () => buildWeeklySummary(habitItems, metricsItems, rangeDays),
+    [habitItems, metricsItems, rangeDays]
+  );
+  const insights = useMemo(
+    () => generateInsights(habitItems, metricsItems, rangeDays),
+    [habitItems, metricsItems, rangeDays]
+  );
+  const rangeAvgLabel =
+    rangeDays === null ? 'All-time avg' : rangeDays === 30 ? '30-day avg' : '7-day avg';
 
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* Weekly Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      {/* Period Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
           <div className="text-[11px] font-medium text-slate-400">Habits</div>
           <div className="text-2xl font-bold font-mono tabular-nums text-purple-400 mt-1">
@@ -66,11 +77,19 @@ export function LifeInsightsPanel({
         </div>
 
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
-          <div className="text-[11px] font-medium text-slate-400">Completion</div>
+          <div className="text-[11px] font-medium text-slate-400">Done this period</div>
           <div className="text-2xl font-bold font-mono tabular-nums text-emerald-400 mt-1">
             {summary.completionRate.toFixed(0)}%
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Weekly</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">{rangeAvgLabel}</div>
+        </div>
+
+        <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
+          <div className="text-[11px] font-medium text-slate-400">Habit strength</div>
+          <div className="text-2xl font-bold font-mono tabular-nums text-teal-400 mt-1">
+            {summary.averageStrength.toFixed(0)}%
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Consistency</div>
         </div>
 
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
@@ -78,7 +97,7 @@ export function LifeInsightsPanel({
           <div className="text-2xl font-bold font-mono tabular-nums text-amber-400 mt-1">
             {summary.moodCount > 0 && Number.isFinite(summary.averageMood) ? `${summary.averageMood.toFixed(1)}/5` : '—'}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">{rangeAvgLabel}</div>
         </div>
 
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
@@ -86,22 +105,22 @@ export function LifeInsightsPanel({
           <div className="text-2xl font-bold font-mono tabular-nums text-cyan-400 mt-1">
             {summary.energyCount > 0 && Number.isFinite(summary.averageEnergy) ? `${summary.averageEnergy.toFixed(1)}/5` : '—'}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">{rangeAvgLabel}</div>
         </div>
 
-        <div className="col-span-2 sm:col-span-1 bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
+        <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-center">
           <div className="text-[11px] font-medium text-slate-400">Sleep</div>
           <div className="text-2xl font-bold font-mono tabular-nums text-rose-400 mt-1">
             {summary.sleepCount > 0 && Number.isFinite(summary.averageSleep) ? `${summary.averageSleep.toFixed(1)}h` : '—'}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Avg</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">{rangeAvgLabel}</div>
         </div>
       </div>
 
       {/* Insights Section */}
       <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
         <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
-          Weekly Correlations & Recommendations
+          Insights
         </h3>
         <div className="space-y-2">
           {insights.length ? (
@@ -115,7 +134,7 @@ export function LifeInsightsPanel({
             ))
           ) : (
             <p className="text-xs text-slate-400 py-1">
-              Track more daily habits and logs to generate personalized correlations.
+              Track more daily habits and logs to generate personalized insights.
             </p>
           )}
         </div>

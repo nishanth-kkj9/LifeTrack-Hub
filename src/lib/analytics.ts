@@ -1,3 +1,5 @@
+import { getLocalDateString } from './dateUtils.ts';
+
 export interface DailyMetricLike {
   date?: string;
   mood?: number;
@@ -44,6 +46,39 @@ function averageDefined(values: Array<number | undefined>): { avg: number; count
   };
 }
 
+/**
+ * Filters daily metrics to the last `days` calendar dates inclusive of `today` (YYYY-MM-DD),
+ * ignoring tombstoned records (`deletedAt` set). Passing `null` returns all active records.
+ */
+export function filterMetricsByRange<T extends DailyMetricLike>(
+  metrics: T[],
+  days: number | null,
+  today: string = getLocalDateString()
+): T[] {
+  const active = (metrics || []).filter((m) => Boolean(m) && !m.deletedAt);
+  if (days === null) {
+    return active;
+  }
+  if (!Number.isFinite(days) || days <= 0) {
+    return [];
+  }
+  const windowDays = Math.floor(days);
+  const parts = today.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return active;
+  }
+  const startObj = new Date(parts[0], parts[1] - 1, parts[2] - (windowDays - 1));
+  const startStr = getLocalDateString(startObj);
+
+  return active.filter(
+    (m) =>
+      typeof m.date === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(m.date) &&
+      m.date >= startStr &&
+      m.date <= today
+  );
+}
+
 export function summarizeWeeklyMetrics(metrics: DailyMetricLike[]) {
   const activeMetrics = (metrics || []).filter((m) => m && !m.deletedAt);
   if (!activeMetrics.length) {
@@ -65,6 +100,9 @@ export function summarizeWeeklyMetrics(metrics: DailyMetricLike[]) {
 
   const validMetrics = activeMetrics.filter((m) => typeof m.date === 'string' && m.date.length > 0);
   const targetList = validMetrics.length ? validMetrics : activeMetrics;
+  const daysTracked = validMetrics.length
+    ? new Set(validMetrics.map((m) => m.date)).size
+    : targetList.length;
 
   const moodStat = averageDefined(targetList.map((item) => pickFinite(item.mood, item.moodLevel)));
   const energyStat = averageDefined(targetList.map((item) => pickFinite(item.energy, item.energyLevel)));
@@ -87,7 +125,7 @@ export function summarizeWeeklyMetrics(metrics: DailyMetricLike[]) {
     // completionRate is habit-derived; metrics alone cannot produce it.
     // Real value is computed in buildWeeklySummary() from habit scores.
     completionRate: 0,
-    daysTracked: targetList.length,
+    daysTracked,
     moodCount: moodStat.count,
     energyCount: energyStat.count,
     stressCount: stressStat.count,
@@ -95,7 +133,11 @@ export function summarizeWeeklyMetrics(metrics: DailyMetricLike[]) {
   };
 }
 
-export function buildWeeklySummary(habits: HabitLike[], metrics: DailyMetricLike[]) {
+export function buildWeeklySummary(
+  habits: HabitLike[],
+  metrics: DailyMetricLike[],
+  rangeDays: number | null = 7
+) {
   const totalHabits = habits.length;
   const avgStrength = totalHabits
     ? habits.reduce((sum, habit) => {
@@ -126,6 +168,11 @@ export function buildWeeklySummary(habits: HabitLike[], metrics: DailyMetricLike
     moodEnergyHighlight = 'Log daily mood or energy check-ins to track your well-being averages.';
   }
 
+  const trackingHighlight =
+    rangeDays === null
+      ? `You tracked ${summary.daysTracked} ${summary.daysTracked === 1 ? 'day' : 'days'} across all time.`
+      : `You tracked ${summary.daysTracked} of the last ${rangeDays} days.`;
+
   return {
     totalHabits,
     averageStrength: Number.isFinite(avgStrength) ? Number(avgStrength.toFixed(1)) : 0,
@@ -138,7 +185,7 @@ export function buildWeeklySummary(habits: HabitLike[], metrics: DailyMetricLike
     sleepCount: summary.sleepCount,
     completionRate: Number.isFinite(realCompletionRate) ? Number(realCompletionRate.toFixed(1)) : 0,
     weeklyHighlights: [
-      `You tracked ${summary.daysTracked} days of life data this week.`,
+      trackingHighlight,
       moodEnergyHighlight,
       totalHabits
         ? `Your habit strength average is ${Number.isFinite(avgStrength) ? Number(avgStrength.toFixed(1)) : 0}/100.`
@@ -147,17 +194,32 @@ export function buildWeeklySummary(habits: HabitLike[], metrics: DailyMetricLike
   };
 }
 
-export function generateInsights(habits: HabitLike[], metrics: DailyMetricLike[]): string[] {
-  const summary = buildWeeklySummary(habits, metrics);
+export function generateInsights(
+  habits: HabitLike[],
+  metrics: DailyMetricLike[],
+  rangeDays: number | null = 7
+): string[] {
+  const summary = buildWeeklySummary(habits, metrics, rangeDays);
+  const moodTrend = getWeeklyTrend(metrics);
   const insights: string[] = [];
 
   if (summary.moodCount > 0) {
     if (summary.averageMood >= 4) {
-      insights.push('✅ Your mood trend is strong this week. Keep the routine stable.');
-    } else if (summary.averageMood >= 2) {
-      insights.push('⚠️ Your mood is trending lower. Consider reducing overload and improving recovery.');
-    } else {
+      insights.push('✅ Your mood trend is strong for this period. Keep the routine stable.');
+    } else if (summary.averageMood < 2) {
       insights.push('🔴 Mood is significantly low. Prioritize self-care and stress management.');
+    } else if (summary.averageMood === 3) {
+      if (moodTrend.trend === 'declining') {
+        insights.push('Your mood is trending lower recently (average 3/5).');
+      } else {
+        insights.push('Average mood is 3/5.');
+      }
+    } else if (moodTrend.trend === 'declining') {
+      insights.push(
+        `⚠️ Your mood is trending lower (average ${summary.averageMood}/5). Consider reducing overload and improving recovery.`
+      );
+    } else {
+      insights.push(`Average mood is ${summary.averageMood}/5.`);
     }
   }
 

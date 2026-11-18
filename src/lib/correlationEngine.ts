@@ -8,6 +8,7 @@ export interface CorrelationResult {
   insightText: string;
   relationship: 'Strong Positive' | 'Moderate Positive' | 'Neutral' | 'Moderate Negative' | 'Strong Negative';
   color: string;
+  confidence?: 'low' | 'medium' | 'high';
   /**
    * HONESTY FLAG: true when the insight is a hardcoded illustrative example
    * shown before the user has enough real logged data (< 3 days). The UI must
@@ -18,6 +19,16 @@ export interface CorrelationResult {
 
 function isFiniteNum(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function getConfidenceLevel(sampleSize: number): 'low' | 'medium' | 'high' {
+  if (sampleSize < 7) return 'low';
+  if (sampleSize < 14) return 'medium';
+  return 'high';
+}
+
+function formatCoefficient(r: number): string {
+  return r > 0 ? `+${r}` : `${r}`;
 }
 
 /**
@@ -66,39 +77,7 @@ export function analyzeLifeMetricCorrelations(
 ): CorrelationResult[] {
   const activeMetrics = (metrics || []).filter((m) => m && !m.deletedAt);
   if (activeMetrics.length < 3) {
-    // Provide sample initial insights if user is building up history
-    return [
-      {
-        metricA: 'Sleep Quality',
-        metricB: 'Daily Focus Hours',
-        coefficient: 0.74,
-        sampleSize: 14,
-        insightText: 'Sleeping 7.5+ hours with high quality strongly boosts deep focus duration by up to 35%.',
-        relationship: 'Strong Positive',
-        color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-        isSimulated: true,
-      },
-      {
-        metricA: 'Physical Exercise',
-        metricB: 'Energy Level',
-        coefficient: 0.68,
-        sampleSize: 14,
-        insightText: 'Days with completed workouts show a +1.8pt boost in evening energy ratings.',
-        relationship: 'Strong Positive',
-        color: 'text-blue-700 bg-blue-50 border-blue-200',
-        isSimulated: true,
-      },
-      {
-        metricA: 'Stress Level',
-        metricB: 'Task Completion Rate',
-        coefficient: -0.52,
-        sampleSize: 14,
-        insightText: 'Elevated stress (>3.5/5) correlates with delayed task execution. Prioritize break intervals.',
-        relationship: 'Moderate Negative',
-        color: 'text-amber-700 bg-amber-50 border-amber-200',
-        isSimulated: true,
-      },
-    ];
+    return [];
   }
 
   const results: CorrelationResult[] = [];
@@ -114,18 +93,21 @@ export function analyzeLifeMetricCorrelations(
   });
 
   if (sleepVsMoodX.length >= 3) {
+    const n = sleepVsMoodX.length;
     const r = calculatePearsonCorrelation(sleepVsMoodX, sleepVsMoodY);
+    const rStr = formatCoefficient(r);
     results.push({
       metricA: 'Sleep Duration',
       metricB: 'Mood Rating',
       coefficient: r,
-      sampleSize: sleepVsMoodX.length,
+      sampleSize: n,
+      confidence: getConfidenceLevel(n),
       insightText:
-        r > 0.4
-          ? `Higher sleep duration strongly correlates with improved daily mood (r = +${r}).`
-          : r < -0.2
-          ? `Negative correlation detected between sleep duration and mood (r = ${r}).`
-          : `Sleep duration has a steady baseline impact on mood (r = ${r}).`,
+        r >= 0.2
+          ? `On the ${n} days you logged both, more sleep went with higher mood (r = ${rStr}).`
+          : r <= -0.2
+          ? `On the ${n} days you logged both, more sleep went with lower mood (r = ${rStr}).`
+          : `On the ${n} days you logged both, sleep and mood showed little linear link (r = ${rStr}).`,
       relationship:
         r >= 0.6 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.4 ? 'Strong Negative' : r <= -0.2 ? 'Moderate Negative' : 'Neutral',
       color: r >= 0.3 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-slate-700 bg-slate-50 border-slate-200',
@@ -144,16 +126,21 @@ export function analyzeLifeMetricCorrelations(
   });
 
   if (focusVsEnergyX.length >= 3) {
+    const n = focusVsEnergyX.length;
     const r = calculatePearsonCorrelation(focusVsEnergyX, focusVsEnergyY);
+    const rStr = formatCoefficient(r);
     results.push({
       metricA: 'Focus Hours',
       metricB: 'Energy Level',
       coefficient: r,
-      sampleSize: focusVsEnergyX.length,
+      sampleSize: n,
+      confidence: getConfidenceLevel(n),
       insightText:
-        r > 0.3
-          ? `Deep focus sessions align with higher energy levels throughout the day (r = +${r}).`
-          : `Focus time displays balanced energy dynamics (r = ${r}).`,
+        r >= 0.2
+          ? `On the ${n} days you logged both, more focus time went with higher energy (r = ${rStr}).`
+          : r <= -0.2
+          ? `On the ${n} days you logged both, more focus time went with lower energy (r = ${rStr}).`
+          : `On the ${n} days you logged both, focus time and energy showed little linear link (r = ${rStr}).`,
       relationship: r >= 0.5 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.5 ? 'Strong Negative' : r <= -0.2 ? 'Moderate Negative' : 'Neutral',
       color: 'text-indigo-700 bg-indigo-50 border-indigo-200',
       isSimulated: false,
@@ -171,30 +158,27 @@ export function analyzeLifeMetricCorrelations(
   });
 
   if (waterVsEnergyX.length >= 3) {
+    const n = waterVsEnergyX.length;
     const r = calculatePearsonCorrelation(waterVsEnergyX, waterVsEnergyY);
+    const rStr = formatCoefficient(r);
     results.push({
       metricA: 'Hydration (L)',
       metricB: 'Energy Level',
       coefficient: r,
-      sampleSize: waterVsEnergyX.length,
-      insightText: `Hydration yields an energetic correlation rating of r = ${r > 0 ? '+' : ''}${r}.`,
+      sampleSize: n,
+      confidence: getConfidenceLevel(n),
+      insightText:
+        r >= 0.2
+          ? `On the ${n} days you logged both, more water went with higher energy (r = ${rStr}).`
+          : r <= -0.2
+          ? `On the ${n} days you logged both, more water went with lower energy (r = ${rStr}).`
+          : `On the ${n} days you logged both, water intake and energy showed little linear link (r = ${rStr}).`,
       relationship: r >= 0.4 ? 'Strong Positive' : r >= 0.2 ? 'Moderate Positive' : r <= -0.4 ? 'Strong Negative' : r <= -0.2 ? 'Moderate Negative' : 'Neutral',
       color: 'text-sky-700 bg-sky-50 border-sky-200',
       isSimulated: false,
     });
   }
 
-  return results.length > 0 ? results : [
-    {
-      metricA: 'Sleep Quality',
-      metricB: 'Focus Hours',
-      coefficient: 0.74,
-      sampleSize: 14,
-      insightText: 'Sleeping 7.5+ hours with high quality strongly boosts deep focus duration.',
-      relationship: 'Strong Positive',
-      color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-      isSimulated: true,
-    },
-  ];
+  return results;
 }
 

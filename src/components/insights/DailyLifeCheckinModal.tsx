@@ -31,6 +31,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
   onSaveMetric,
   selectedDate = getLocalDateString(),
 }) => {
+  const todayStr = getLocalDateString();
   const { modalRef } = useModalFocus<HTMLDivElement>({ isOpen, onClose });
 
   const [dateStr, setDateStr] = useState(selectedDate);
@@ -40,6 +41,9 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
   const [moodLevel, setMoodLevel] = useState<number | undefined>(existingMetric?.moodLevel);
   const [stressLevel, setStressLevel] = useState<number | undefined>(existingMetric?.stressLevel);
   const [waterLitres, setWaterLitres] = useState<number | undefined>(existingMetric?.waterLitres);
+  const [stepsRaw, setStepsRaw] = useState<string>(
+    existingMetric?.stepsCount !== undefined ? String(existingMetric.stepsCount) : ''
+  );
   const [focusHours, setFocusHours] = useState<number | undefined>(existingMetric?.focusHours);
   const [workoutDone, setWorkoutDone] = useState<boolean | undefined>(existingMetric?.workoutDone);
   const [journalNotes, setJournalNotes] = useState<string>(existingMetric?.journalNotes ?? '');
@@ -54,6 +58,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
       setMoodLevel(existingMetric.moodLevel);
       setStressLevel(existingMetric.stressLevel);
       setWaterLitres(existingMetric.waterLitres);
+      setStepsRaw(existingMetric.stepsCount !== undefined ? String(existingMetric.stepsCount) : '');
       setFocusHours(existingMetric.focusHours);
       setWorkoutDone(existingMetric.workoutDone);
       setJournalNotes(existingMetric.journalNotes ?? '');
@@ -65,6 +70,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
       setMoodLevel(undefined);
       setStressLevel(undefined);
       setWaterLitres(undefined);
+      setStepsRaw('');
       setFocusHours(undefined);
       setWorkoutDone(undefined);
       setJournalNotes('');
@@ -72,6 +78,27 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
   }, [existingMetric, selectedDate, isOpen]);
 
   if (!isOpen) return null;
+
+  const trimmedDate = dateStr.trim();
+  const isDateEmpty = trimmedDate === '';
+  const isFutureDate = /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate) && trimmedDate > todayStr;
+  const isDateValid = /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate) && !isFutureDate;
+
+  const trimmedSteps = stepsRaw.trim();
+  const isStepsBlank = trimmedSteps === '';
+  const isWholeSteps = /^\d+$/.test(trimmedSteps);
+  const parsedStepsNum = isWholeSteps ? Number(trimmedSteps) : NaN;
+  const isStepsInRange =
+    isWholeSteps &&
+    Number.isSafeInteger(parsedStepsNum) &&
+    parsedStepsNum >= 0 &&
+    parsedStepsNum <= 100000;
+  const isStepsValid = isStepsBlank || isStepsInRange;
+  const resolvedStepsCount = isStepsBlank
+    ? existingMetric?.stepsCount
+    : isStepsInRange
+    ? parsedStepsNum
+    : undefined;
 
   const trimmedNotes = journalNotes.trim();
   const hasAnyMetricSet =
@@ -81,19 +108,21 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
     moodLevel !== undefined ||
     stressLevel !== undefined ||
     waterLitres !== undefined ||
+    resolvedStepsCount !== undefined ||
     focusHours !== undefined ||
     workoutDone !== undefined ||
     trimmedNotes.length > 0 ||
-    existingMetric?.stepsCount !== undefined ||
     existingMetric?.screenTimeHours !== undefined;
+
+  const canSave = hasAnyMetricSet && isDateValid && isStepsValid;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hasAnyMetricSet) return;
+    if (!canSave) return;
 
     const metric: DailyLifeMetric = {
-      id: existingMetric?.id || `metric-${dateStr}`,
-      date: dateStr,
+      id: existingMetric?.id || `metric-${trimmedDate}`,
+      date: trimmedDate,
       updatedAt: Date.now(),
     };
     if (sleepHours !== undefined) metric.sleepHours = sleepHours;
@@ -102,7 +131,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
     if (moodLevel !== undefined) metric.moodLevel = moodLevel;
     if (stressLevel !== undefined) metric.stressLevel = stressLevel;
     if (waterLitres !== undefined) metric.waterLitres = waterLitres;
-    if (existingMetric?.stepsCount !== undefined) metric.stepsCount = existingMetric.stepsCount;
+    if (resolvedStepsCount !== undefined) metric.stepsCount = resolvedStepsCount;
     if (focusHours !== undefined) metric.focusHours = focusHours;
     if (existingMetric?.screenTimeHours !== undefined) metric.screenTimeHours = existingMetric.screenTimeHours;
     if (workoutDone !== undefined) metric.workoutDone = workoutDone;
@@ -199,10 +228,22 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
             <input
               id="checkin-date-input"
               type="date"
+              required
+              max={todayStr}
               value={dateStr}
               onChange={(e) => setDateStr(e.target.value)}
               className="w-full px-3.5 py-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
             />
+            {isDateEmpty && (
+              <p className="mt-1 text-[11px] font-medium text-rose-700">
+                Please choose a date.
+              </p>
+            )}
+            {!isDateEmpty && isFutureDate && (
+              <p className="mt-1 text-[11px] font-medium text-rose-700">
+                Future dates cannot be logged.
+              </p>
+            )}
           </div>
 
           {/* Sleep Hours & Sleep Quality */}
@@ -469,6 +510,48 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
             </div>
           </div>
 
+          {/* Optional Steps Count */}
+          <div className="p-3.5 bg-teal-50/60 rounded-2xl border border-teal-100/80 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="steps-count-input" className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-teal-600" />
+                <span>Daily Steps (Optional)</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setStepsRaw('')}
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                  isStepsBlank
+                    ? 'bg-slate-200/80 text-slate-700 border-slate-300'
+                    : 'bg-white text-slate-600 border-teal-200 hover:bg-teal-100/60'
+                }`}
+              >
+                Clear
+              </button>
+            </div>
+            <input
+              id="steps-count-input"
+              type="number"
+              min={0}
+              max={100000}
+              step={1}
+              inputMode="numeric"
+              placeholder={
+                existingMetric?.stepsCount !== undefined
+                  ? String(existingMetric.stepsCount)
+                  : 'Not set (0–100000)'
+              }
+              value={stepsRaw}
+              onChange={(e) => setStepsRaw(e.target.value)}
+              className="w-full text-xs p-2.5 rounded-xl border border-teal-200/80 bg-white font-mono font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-teal-500 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400"
+            />
+            {!isStepsValid && (
+              <p className="text-[11px] font-medium text-rose-700">
+                Enter a whole number between 0 and 100,000.
+              </p>
+            )}
+          </div>
+
           {/* Quick Reflection / Notes */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -515,7 +598,7 @@ export const DailyLifeCheckinModal: React.FC<DailyLifeCheckinModalProps> = ({
             <button
               type="submit"
               id="daily-checkin-save-btn"
-              disabled={!hasAnyMetricSet}
+              disabled={!canSave}
               className="px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
             >
               Save Metrics

@@ -40,50 +40,66 @@ function DashboardCard({ title, value, subtitle, accent = '#7c3aed' }: Dashboard
 export interface LifeDashboardProps {
   totalHabits?: number;
   completionRate?: number;
+  averageStrength?: number;
   averageMood?: number;
   averageEnergy?: number;
   averageSleep?: number;
   moodCount?: number;
   energyCount?: number;
   sleepCount?: number;
+  rangeDays?: 7 | 30 | null;
   insights?: string[];
   className?: string;
+}
+
+function getRangeSubLabel(rangeDays?: 7 | 30 | null): string {
+  if (rangeDays === null) return 'All-time avg';
+  if (rangeDays === 30) return '30-day avg';
+  return '7-day avg';
 }
 
 export function LifeDashboard({
   totalHabits = 0,
   completionRate = 0,
+  averageStrength,
   averageMood = 0,
   averageEnergy = 0,
   averageSleep = 0,
   moodCount,
   energyCount,
   sleepCount,
+  rangeDays = 7,
   insights = [],
   className = '',
 }: LifeDashboardProps) {
   const safeCompletion = Number.isFinite(completionRate) ? `${completionRate.toFixed(0)}%` : '0%';
+  const safeStrength =
+    averageStrength !== undefined && Number.isFinite(averageStrength)
+      ? `${averageStrength.toFixed(0)}%`
+      : '—';
   const moodValue =
     moodCount === 0 || !Number.isFinite(averageMood) ? '—' : `${averageMood.toFixed(1)}/5`;
   const energyValue =
     energyCount === 0 || !Number.isFinite(averageEnergy) ? '—' : `${averageEnergy.toFixed(1)}/5`;
   const sleepValue =
     sleepCount === 0 || !Number.isFinite(averageSleep) ? '—' : `${averageSleep.toFixed(1)}h`;
+  const rangeAvgLabel = getRangeSubLabel(rangeDays);
 
   return (
     <div className={className} style={{ display: 'grid', gap: 18 }}>
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
           gap: 16,
         }}
       >
         <DashboardCard title="Habits" value={String(totalHabits)} subtitle="Active routines" accent="#8b5cf6" />
-        <DashboardCard title="Completion" value={safeCompletion} subtitle="Weekly average" accent="#22c55e" />
-        <DashboardCard title="Mood" value={moodValue} subtitle="Tracked sentiment" accent="#f59e0b" />
-        <DashboardCard title="Energy" value={energyValue} subtitle="Current rhythm" accent="#06b6d4" />
-        <DashboardCard title="Sleep" value={sleepValue} subtitle="Average nightly sleep" accent="#ef4444" />
+        <DashboardCard title="Done this period" value={safeCompletion} subtitle={rangeAvgLabel} accent="#22c55e" />
+        <DashboardCard title="Habit strength" value={safeStrength} subtitle="Consistency score" accent="#10b981" />
+        <DashboardCard title="Mood" value={moodValue} subtitle={rangeAvgLabel} accent="#f59e0b" />
+        <DashboardCard title="Energy" value={energyValue} subtitle={rangeAvgLabel} accent="#06b6d4" />
+        <DashboardCard title="Sleep" value={sleepValue} subtitle={rangeAvgLabel} accent="#ef4444" />
       </div>
 
       <div
