@@ -1,8 +1,10 @@
-import { UserAppData, Task, Transaction, Habit, DailyLifeMetric } from '../types/index.ts';
+import { UserAppData, Task, Transaction, Habit, DailyLifeMetric, QuickNote } from '../types/index.ts';
 import { sanitizeUserAppData } from './firebase.ts';
 import { isActive } from './entity.ts';
 import { getLocalDateString } from './dateUtils.ts';
 import { getHabitStats } from './habitScoring.ts';
+import { extractTags } from './noteFormat.ts';
+import { safeNoteText, safeNoteCategory, getNoteDisplayTimestamp } from './noteUtils.ts';
 
 /**
  * Triggers browser download of text content as file
@@ -193,6 +195,73 @@ export function exportDailyMetricsCsv(metrics: DailyLifeMetric[]) {
 
   const csv = convertToCsv(records);
   downloadFile(`LifeTrack_DailyMetrics_${dateStr}.csv`, csv, 'text/csv;charset=utf-8;');
+}
+
+/**
+ * Formats active (non-tombstoned) notes into a single Markdown document with
+ * "## Title" + metadata + verbatim content per note (no destructive escaping).
+ */
+export function formatNotesMarkdown(notes: QuickNote[]): string {
+  const active = (notes || []).filter(isActive);
+  if (active.length === 0) return '';
+
+  return active
+    .map((n) => {
+      const title =
+        safeNoteText(n.title).replace(/\r?\n/g, ' ').trim() || 'Untitled';
+      const content = safeNoteText(n.content);
+      const metaParts: string[] = [
+        `Category: ${safeNoteCategory(n.category)}`,
+      ];
+      if (n.pinned) metaParts.push('Pinned: Yes');
+      if (n.archived) metaParts.push('Archived: Yes');
+
+      const displayTs = getNoteDisplayTimestamp(n);
+      if (displayTs > 0) {
+        metaParts.push(`Updated: ${new Date(displayTs).toISOString()}`);
+      }
+      if (typeof n.createdAt === 'number' && Number.isFinite(n.createdAt) && n.createdAt > 0) {
+        metaParts.push(`Created: ${new Date(n.createdAt).toISOString()}`);
+      }
+
+      const tags = extractTags(content);
+      if (tags.length > 0) {
+        metaParts.push(`Tags: ${tags.map((t) => `#${t}`).join(', ')}`);
+      }
+
+      const sections = [`## ${title}`, metaParts.join(' | ')];
+      if (content.length > 0) {
+        sections.push(content);
+      }
+      return sections.join('\n\n');
+    })
+    .join('\n\n---\n\n');
+}
+
+/**
+ * Formats active (non-tombstoned) notes as clean JSON without destructive escaping.
+ */
+export function formatNotesJson(notes: QuickNote[]): string {
+  const active = (notes || []).filter(isActive);
+  return JSON.stringify(active, null, 2);
+}
+
+/**
+ * Export all active notes as a single Markdown file.
+ */
+export function exportNotesMarkdown(notes: QuickNote[]) {
+  const dateStr = getLocalDateString();
+  const md = formatNotesMarkdown(notes);
+  downloadFile(`LifeTrack_Notes_${dateStr}.md`, md, 'text/markdown;charset=utf-8;');
+}
+
+/**
+ * Export all active notes as a JSON file.
+ */
+export function exportNotesJson(notes: QuickNote[]) {
+  const dateStr = getLocalDateString();
+  const json = formatNotesJson(notes);
+  downloadFile(`LifeTrack_Notes_${dateStr}.json`, json, 'application/json');
 }
 
 /**

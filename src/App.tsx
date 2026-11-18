@@ -58,7 +58,7 @@ import { PomodoroFocusModal } from './components/todo/PomodoroFocusModal.tsx';
 import { TaskDetailDrawer } from './components/todo/TaskDetailDrawer.tsx';
 import { useHabitManager } from './hooks/useHabitManager.ts';
 import { getLocalDateString } from './lib/dateUtils.ts';
-import { touch, tombstone, restoreTransaction, isActive } from './lib/entity.ts';
+import { touch, tombstone, restoreEntity, restoreTransaction, isActive } from './lib/entity.ts';
 import { completeTask, reopenTask } from './lib/taskActions.ts';
 import { getTaskRemindersPreference, scheduleTaskReminders } from './lib/taskUtils.ts';
 import { scheduleHabitReminders } from './lib/habitReminders.ts';
@@ -102,6 +102,7 @@ export default function App() {
   const [taskToast, setTaskToast] = useState<string | null>(null);
   const [txUndoToast, setTxUndoToast] = useState<{ txId: string } | null>(null);
   const [habitUndoToast, setHabitUndoToast] = useState<{ habitId: string } | null>(null);
+  const [noteUndoToast, setNoteUndoToast] = useState<{ noteId: string } | null>(null);
   const [taskRemindersEnabled, setTaskRemindersEnabled] = useState<boolean>(() =>
     getTaskRemindersPreference()
   );
@@ -110,6 +111,7 @@ export default function App() {
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const txUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
   const habitUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const noteUndoTimerRef = useRef<NodeJS.Timeout | null>(null);
   const docUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // 1. Listen for Auth State Changes
@@ -192,6 +194,14 @@ export default function App() {
       if (txUndoTimerRef.current) {
         clearTimeout(txUndoTimerRef.current);
         txUndoTimerRef.current = null;
+      }
+      if (habitUndoTimerRef.current) {
+        clearTimeout(habitUndoTimerRef.current);
+        habitUndoTimerRef.current = null;
+      }
+      if (noteUndoTimerRef.current) {
+        clearTimeout(noteUndoTimerRef.current);
+        noteUndoTimerRef.current = null;
       }
       unsubscribe();
     };
@@ -689,7 +699,27 @@ export default function App() {
 
   // Notes Operations
   const handleAddNote = (newNote: QuickNote) => {
-    const stamped = touch(newNote);
+    const now = Date.now();
+    const initialUpdatedAt =
+      typeof newNote.updatedAt === 'number' && Number.isFinite(newNote.updatedAt)
+        ? newNote.updatedAt
+        : now;
+    const initialCreatedAt =
+      typeof newNote.createdAt === 'number' && Number.isFinite(newNote.createdAt)
+        ? newNote.createdAt
+        : initialUpdatedAt;
+    const stamped = touch(
+      {
+        ...newNote,
+        createdAt: initialCreatedAt,
+        contentUpdatedAt:
+          typeof newNote.contentUpdatedAt === 'number' &&
+          Number.isFinite(newNote.contentUpdatedAt)
+            ? newNote.contentUpdatedAt
+            : initialUpdatedAt,
+      },
+      initialUpdatedAt
+    );
     commitAppData((prev) => ({
       ...prev,
       notes: [stamped, ...prev.notes],
@@ -704,11 +734,26 @@ export default function App() {
     }));
   };
 
+  const handleRestoreNote = (noteId: string) => {
+    commitAppData((prev) => ({
+      ...prev,
+      notes: prev.notes.map((n) => (n.id === noteId ? restoreEntity(n) : n)),
+    }));
+  };
+
   const handleDeleteNote = (noteId: string) => {
     commitAppData((prev) => ({
       ...prev,
       notes: prev.notes.map((n) => (n.id === noteId ? tombstone(n) : n)),
     }));
+    if (noteUndoTimerRef.current) {
+      clearTimeout(noteUndoTimerRef.current);
+    }
+    setNoteUndoToast({ noteId });
+    noteUndoTimerRef.current = setTimeout(() => {
+      setNoteUndoToast(null);
+      noteUndoTimerRef.current = null;
+    }, 6000);
   };
 
   const handleUpdateVtuProfile = (updatedProfile: VtuProfile) => {
@@ -1047,6 +1092,7 @@ export default function App() {
         isOpen={isAddNoteOpen}
         onClose={() => setIsAddNoteOpen(false)}
         onAddNote={handleAddNote}
+        notes={activeNotes}
       />
 
       <AuthorizedDomainModal
@@ -1062,8 +1108,51 @@ export default function App() {
         onTryFirebasePopup={handleTryFirebasePopup}
       />
 
-      {(taskToast || txUndoToast || habitUndoToast) && (
+      {(taskToast || txUndoToast || habitUndoToast || noteUndoToast) && (
         <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 items-end">
+          {noteUndoToast && (
+            <div
+              id="note-undo-toast-banner"
+              data-testid="note-undo-toast"
+              data-note-id={noteUndoToast.noteId}
+              role="status"
+              aria-live="polite"
+              className="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-slate-700 text-xs font-bold flex items-center gap-3"
+            >
+              <span>Note deleted - </span>
+              <button
+                type="button"
+                id="note-undo-toast-btn"
+                onClick={() => {
+                  const id = noteUndoToast.noteId;
+                  if (noteUndoTimerRef.current) {
+                    clearTimeout(noteUndoTimerRef.current);
+                    noteUndoTimerRef.current = null;
+                  }
+                  setNoteUndoToast(null);
+                  handleRestoreNote(id);
+                }}
+                className="text-emerald-400 hover:text-emerald-300 underline cursor-pointer font-extrabold"
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (noteUndoTimerRef.current) {
+                    clearTimeout(noteUndoTimerRef.current);
+                    noteUndoTimerRef.current = null;
+                  }
+                  setNoteUndoToast(null);
+                }}
+                className="text-slate-400 hover:text-white cursor-pointer"
+                aria-label="Dismiss notification"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {habitUndoToast && (
             <div
               id="habit-undo-toast-banner"

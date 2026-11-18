@@ -292,16 +292,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     });
 
   const matchingNotes = notes
-    .filter(
-      (n) =>
-        n.title.toLowerCase().includes(trimmed) ||
-        n.content.toLowerCase().includes(trimmed)
-    )
+    .filter((n) => {
+      if (n.archived) return false;
+      const safeTitle = String(n.title ?? '').toLowerCase();
+      const safeContent = String(n.content ?? '').toLowerCase();
+      return safeTitle.includes(trimmed) || safeContent.includes(trimmed);
+    })
     .slice(0, 3)
     .map((n) => ({
       id: `note-${n.id}`,
-      title: n.title,
-      subtitle: n.content.slice(0, 40),
+      title: String(n.title ?? ''),
+      subtitle: String(n.content ?? '').slice(0, 40),
       category: 'Notes',
       icon: FileText,
       action: () => {

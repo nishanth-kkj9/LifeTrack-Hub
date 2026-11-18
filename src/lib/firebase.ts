@@ -760,11 +760,88 @@ export function sanitizeUserAppData(input: any): { data: UserAppData; repaired: 
 
   const notes = cleanArray<QuickNote>(
     src.notes,
-    (n) => isRecord(n) && typeof n.id === 'string',
-    (n) => ({
-      ...n,
-      updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : 0,
-    })
+    (n) =>
+      isRecord(n) &&
+      !Array.isArray(n) &&
+      typeof n.id === 'string' &&
+      n.id.trim().length > 0,
+    (n) => {
+      const content =
+        typeof n.content === 'string'
+          ? n.content
+          : ((repaired = true), '');
+
+      const title =
+        typeof n.title === 'string' && n.title.trim().length > 0
+          ? n.title
+          : ((repaired = true), content.trim().slice(0, 40) || 'Untitled');
+
+      const pinned =
+        typeof n.pinned === 'boolean'
+          ? n.pinned
+          : ((repaired = true), false);
+
+      const updatedAt =
+        typeof n.updatedAt === 'number' && Number.isFinite(n.updatedAt)
+          ? n.updatedAt
+          : ((repaired = true), 0);
+
+      const cleaned: QuickNote = {
+        ...n,
+        id: n.id,
+        title,
+        content,
+        pinned,
+        updatedAt,
+      };
+
+      if (n.category !== undefined) {
+        if (typeof n.category === 'string') {
+          cleaned.category = n.category;
+        } else {
+          delete cleaned.category;
+          repaired = true;
+        }
+      }
+
+      if (n.createdAt !== undefined) {
+        if (typeof n.createdAt === 'number' && Number.isFinite(n.createdAt)) {
+          cleaned.createdAt = n.createdAt;
+        } else {
+          delete cleaned.createdAt;
+          repaired = true;
+        }
+      }
+
+      if (n.contentUpdatedAt !== undefined) {
+        if (typeof n.contentUpdatedAt === 'number' && Number.isFinite(n.contentUpdatedAt)) {
+          cleaned.contentUpdatedAt = n.contentUpdatedAt;
+        } else {
+          delete cleaned.contentUpdatedAt;
+          repaired = true;
+        }
+      }
+
+      if (n.archived !== undefined) {
+        if (typeof n.archived === 'boolean') {
+          cleaned.archived = n.archived;
+        } else {
+          delete cleaned.archived;
+          repaired = true;
+        }
+      }
+
+      if (n.deletedAt !== undefined) {
+        if (typeof n.deletedAt === 'number' && Number.isFinite(n.deletedAt)) {
+          cleaned.deletedAt = n.deletedAt;
+        } else {
+          delete cleaned.deletedAt;
+          repaired = true;
+        }
+      }
+
+      return cleaned;
+    }
   );
 
   const dailyMetrics =

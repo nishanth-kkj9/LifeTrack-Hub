@@ -186,6 +186,9 @@ export interface QuickNote {
   content: string;
   category?: string;
   pinned: boolean;
+  archived?: boolean;
+  createdAt?: number;
+  contentUpdatedAt?: number;
   updatedAt: number;
   deletedAt?: number;
 }

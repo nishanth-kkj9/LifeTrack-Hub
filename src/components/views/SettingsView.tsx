@@ -22,6 +22,7 @@ import {
 import { User } from 'firebase/auth';
 import { UserAppData } from '../../types/index.ts';
 import { sanitizeUserAppData } from '../../lib/firebase.ts';
+import { exportNotesMarkdown, exportNotesJson } from '../../lib/dataExport.ts';
 import { Button } from '../ui/Button.tsx';
 import {
   getTimeFormatPreference,
@@ -469,6 +470,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={handleExportJson}
           >
             Export JSON Backup
+          </Button>
+
+          <Button
+            id="settings-export-notes-md-btn"
+            variant="secondary"
+            size="sm"
+            icon={<Download className="w-4 h-4" />}
+            onClick={() => exportNotesMarkdown(appData.notes || [])}
+          >
+            Export notes (Markdown)
+          </Button>
+
+          <Button
+            id="settings-export-notes-json-btn"
+            variant="secondary"
+            size="sm"
+            icon={<Download className="w-4 h-4" />}
+            onClick={() => exportNotesJson(appData.notes || [])}
+          >
+            Export notes (JSON)
           </Button>
 
           <Button
